@@ -1,0 +1,61 @@
+import type { CharacterSummary, Direction, EntityId, Vector2 } from "./entities.js";
+
+export const PROTOCOL_VERSION = 1;
+
+export enum ClientToServerOp {
+  LoginRequest = 0x01,
+  Move = 0x10,
+  Disconnect = 0xff,
+}
+
+export enum ServerToClientOp {
+  LoginResponse = 0x81,
+  MapData = 0x90,
+  EntityUpdate = 0x91,
+  EntitySpawn = 0x92,
+  EntityDespawn = 0x93,
+}
+
+export interface LoginRequest {
+  readonly op: ClientToServerOp.LoginRequest;
+  readonly token: string;
+  readonly characterId: EntityId;
+  readonly clientVersion: number;
+}
+
+export interface LoginResponse {
+  readonly op: ServerToClientOp.LoginResponse;
+  readonly ok: boolean;
+  readonly reason?: string;
+  readonly character?: CharacterSummary;
+}
+
+export interface MoveRequest {
+  readonly op: ClientToServerOp.Move;
+  readonly direction: Direction;
+  readonly sequence: number;
+}
+
+export interface MapData {
+  readonly op: ServerToClientOp.MapData;
+  readonly mapId: number;
+  readonly width: number;
+  readonly height: number;
+  readonly tiles: ReadonlyArray<number>;
+  readonly entities: ReadonlyArray<{
+    readonly id: EntityId;
+    readonly position: Vector2;
+    readonly name: string;
+  }>;
+}
+
+export interface EntityUpdate {
+  readonly op: ServerToClientOp.EntityUpdate;
+  readonly id: EntityId;
+  readonly position: Vector2;
+  readonly direction: Direction;
+}
+
+export type ClientPacket = LoginRequest | MoveRequest;
+export type ServerPacket = LoginResponse | MapData | EntityUpdate;
+export type AnyPacket = ClientPacket | ServerPacket;

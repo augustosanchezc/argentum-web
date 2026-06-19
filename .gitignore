@@ -1,0 +1,53 @@
+# Dependencias
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Vite cache
+.vite/
+packages/*/dist/
+packages/*/.vite/
+
+# Variables de entorno
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Docker volumes locales (datos persistentes de Postgres/Redis en dev)
+data/
+.docker-data/
+
+# Archivos temporales del proyecto
+*.tmp
+*.bak
+.cache/
+
+# Claude Code (mantener agentes y memorias compartidas; ignorar transitorios)
+.claude/sessions/
+.claude/logs/

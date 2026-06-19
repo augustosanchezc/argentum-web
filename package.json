@@ -1,0 +1,24 @@
+{
+  "name": "argentum-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Servidor y cliente web de Argentum Online sobre stack moderno (Node.js + TypeScript + PixiJS).",
+  "license": "AGPL-3.0-or-later",
+  "author": "clokm <augusto.sanchez.cardarelli@gmail.com>",
+  "type": "module",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:server": "pnpm --filter @ao/server dev",
+    "dev:client": "pnpm --filter @ao/client dev",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r exec rimraf dist .tsbuildinfo"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

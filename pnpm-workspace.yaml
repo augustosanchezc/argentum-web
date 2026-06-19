@@ -1,0 +1,7 @@
+packages:
+  - "packages/*"
+
+# esbuild necesita su postinstall para verificar el binario nativo.
+# pnpm 11+ requiere aprobacion explicita de scripts de build de dependencias.
+allowBuilds:
+  esbuild: true

@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roadmap — Argentum Online Web</title>
+
+  <style>
+    :root {
+      --bg: #0d0a07;
+      --bg-soft: #15110b;
+      --bg-card: #1a140d;
+      --gold: #d4af37;
+      --gold-dim: #a08428;
+      --gold-soft: rgba(212, 175, 55, 0.15);
+      --parchment: #f5e6c8;
+      --crimson: #8b1a1a;
+      --emerald: #2d8659;
+      --azure: #3a6ea5;
+      --amber: #c97b1f;
+      --violet: #6b4a8b;
+      --steel: #4a5568;
+      --text: #e8dfc8;
+      --text-dim: #a89c80;
+      --text-faint: #6f6650;
+      --risk-low: #2d8659;
+      --risk-med: #c97b1f;
+      --risk-high: #8b1a1a;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at top, rgba(212, 175, 55, 0.06), transparent 60%),
+        radial-gradient(ellipse at bottom, rgba(139, 26, 26, 0.04), transparent 60%);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: Georgia, "Cinzel", serif;
+      color: var(--gold);
+      letter-spacing: 0.02em;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      margin-top: 0;
+    }
+
+    h1 { font-size: 2.4em; margin-bottom: 0.2em; }
+    h2 { font-size: 1.8em; margin-top: 2em; border-bottom: 1px solid var(--gold-soft); padding-bottom: 0.3em; }
+    h3 { font-size: 1.3em; margin-top: 1.5em; }
+    h4 { font-size: 1.05em; color: var(--parchment); margin-bottom: 0.4em; }
+
+    a { color: var(--gold); text-decoration: underline dotted var(--gold-dim); }
+    a:hover { color: #fff; }
+
+    code {
+      background: var(--gold-soft);
+      color: var(--gold);
+      padding: 0.1em 0.4em;
+      border-radius: 3px;
+      font-size: 0.9em;
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    /* ============ NAV ============ */
+    nav.topnav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13, 10, 7, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--gold-soft);
+      padding: 0.7em 1.5em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1em;
+    }
+    nav.topnav .brand {
+      font-family: Georgia, "Cinzel", serif;
+      color: var(--gold);
+      font-size: 1.05em;
+      font-weight: bold;
+      letter-spacing: 0.04em;
+    }
+    nav.topnav ul {
+      list-style: none;
+      display: flex;
+      gap: 1.4em;
+      margin: 0;
+      padding: 0;
+      flex-wrap: wrap;
+    }
+    nav.topnav a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.9em;
+      padding: 0.3em 0;
+      border-bottom: 2px solid transparent;
+      transition: color .15s, border-color .15s;
+    }
+    nav.topnav a:hover {
+      color: var(--gold);
+      border-bottom-color: var(--gold);
+    }
+
+    /* ============ LAYOUT ============ */
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 2em 1.5em 4em;
+    }
+
+    .hero {
+      text-align: center;
+      padding: 2em 1em 1em;
+      border-bottom: 1px dashed var(--gold-soft);
+      margin-bottom: 2em;
+    }
+    .hero .subtitle {
+      color: var(--text-dim);
+      font-size: 1.05em;
+      max-width: 760px;
+      margin: 0.8em auto 0;
+    }
+    .hero .meta {
+      margin-top: 1.2em;
+      display: flex;
+      gap: 1.5em;
+      justify-content: center;
+      flex-wrap: wrap;
+      font-size: 0.85em;
+      color: var(--text-faint);
+    }
+    .hero .meta span strong { color: var(--gold); }
+
+    /* ============ TIMELINE ============ */
+    .timeline {
+      background: var(--bg-soft);
+      border: 1px solid var(--gold-soft);
+      border-radius: 8px;
+      padding: 1.5em;
+      margin: 2em 0;
+      overflow-x: auto;
+    }
+    .timeline h3 {
+      margin-top: 0;
+      text-align: center;
+      font-size: 1.1em;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+    .timeline-track {
+      display: grid;
+      grid-template-columns: 1fr 2fr 2fr 3fr 4fr;
+      gap: 4px;
+      margin: 1em 0 0.4em;
+      min-width: 720px;
+    }
+    .timeline-bar {
+      padding: 0.9em 0.7em;
+      border-radius: 4px;
+      color: #fff;
+      font-size: 0.85em;
+      text-align: center;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s;
+      text-decoration: none;
+      display: block;
+    }
+    .timeline-bar:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.5);
+    }
+    .timeline-bar .phase-label {
+      font-family: Georgia, serif;
+      font-weight: bold;
+      font-size: 0.95em;
+      display: block;
+      margin-bottom: 0.3em;
+    }
+    .timeline-bar .phase-sprint {
+      opacity: 0.75;
+      font-size: 0.8em;
+    }
+    .timeline-bar.p0 { background: var(--steel); }
+    .timeline-bar.p1 { background: var(--azure); }
+    .timeline-bar.p2 { background: var(--emerald); }
+    .timeline-bar.p3 { background: var(--amber); }
+    .timeline-bar.p4 { background: var(--crimson); }
+
+    .timeline-dates {
+      display: grid;
+      grid-template-columns: 1fr 2fr 2fr 3fr 4fr;
+      gap: 4px;
+      font-size: 0.72em;
+      color: var(--text-faint);
+      text-align: center;
+      min-width: 720px;
+    }
+
+    /* ============ DECISIONS GRID ============ */
+    .decisions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1em;
+      margin: 1.5em 0;
+    }
+    .decision-card {
+      background: var(--bg-card);
+      border: 1px solid var(--gold-soft);
+      border-left: 4px solid var(--gold);
+      border-radius: 6px;
+      padding: 1em 1.1em;
+      position: relative;
+    }
+    .decision-card .badge {
+      position: absolute;
+      top: -10px;
+      right: 10px;
+      background: var(--bg);
+      color: var(--gold);
+      border: 1px solid var(--gold);
+      padding: 0.1em 0.7em;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: bold;
+    }
+    .decision-card h4 {
+      color: var(--parchment);
+      margin-bottom: 0.3em;
+      font-size: 0.95em;
+    }
+    .decision-card .answer {
+      color: var(--gold);
+      font-size: 0.95em;
+      font-weight: bold;
+      margin: 0.4em 0;
+    }
+    .decision-card .why {
+      color: var(--text-dim);
+      font-size: 0.85em;
+      margin-top: 0.5em;
+    }
+    .decision-card .assumption {
+      color: var(--amber);
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-top: 0.6em;
+    }
+
+    /* ============ PHASE CARD ============ */
+    .phase {
+      background: var(--bg-soft);
+      border: 1px solid var(--gold-soft);
+      border-radius: 8px;
+      margin: 1.2em 0;
+      overflow: hidden;
+    }
+    .phase-header {
+      padding: 1.2em 1.5em;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 1em;
+      transition: background .15s;
+      user-select: none;
+    }
+    .phase-header:hover { background: var(--gold-soft); }
+    .phase-header .marker {
+      width: 12px;
+      height: 60px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+    .phase.p0 .phase-header .marker { background: var(--steel); }
+    .phase.p1 .phase-header .marker { background: var(--azure); }
+    .phase.p2 .phase-header .marker { background: var(--emerald); }
+    .phase.p3 .phase-header .marker { background: var(--amber); }
+    .phase.p4 .phase-header .marker { background: var(--crimson); }
+    .phase.p5 .phase-header .marker { background: var(--violet); }
+
+    .phase-header .info { flex: 1; }
+    .phase-header h3 {
+      margin: 0 0 0.2em;
+      font-size: 1.25em;
+    }
+    .phase-header .meta {
+      color: var(--text-dim);
+      font-size: 0.85em;
+    }
+    .phase-header .meta strong { color: var(--parchment); }
+    .phase-header .toggle {
+      color: var(--gold);
+      font-size: 1.5em;
+      transition: transform .2s;
+    }
+    .phase.open .phase-header .toggle { transform: rotate(180deg); }
+
+    .phase-body {
+      display: none;
+      padding: 0 1.5em 1.5em;
+      border-top: 1px dashed var(--gold-soft);
+    }
+    .phase.open .phase-body { display: block; }
+
+    .phase-body .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5em;
+      margin-top: 1em;
+    }
+    @media (max-width: 760px) {
+      .phase-body .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    .block {
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 1em 1.2em;
+      border-left: 3px solid var(--gold-dim);
+    }
+    .block h4 {
+      margin-top: 0;
+      color: var(--gold);
+      font-size: 0.85em;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .block ul {
+      padding-left: 1.1em;
+      margin: 0.5em 0 0;
+    }
+    .block li {
+      margin: 0.35em 0;
+      color: var(--text);
+      font-size: 0.92em;
+    }
+    .block .agent-tag {
+      display: inline-block;
+      background: var(--gold-soft);
+      color: var(--gold);
+      padding: 0.1em 0.5em;
+      border-radius: 3px;
+      font-size: 0.78em;
+      font-weight: bold;
+      margin-right: 0.4em;
+      font-family: Consolas, monospace;
+    }
+
+    /* ============ TABLES ============ */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1em 0;
+      background: var(--bg-soft);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td {
+      padding: 0.7em 0.9em;
+      text-align: left;
+      border-bottom: 1px solid var(--gold-soft);
+      font-size: 0.9em;
+    }
+    th {
+      background: var(--bg-card);
+      color: var(--gold);
+      font-family: Georgia, serif;
+      letter-spacing: 0.05em;
+      font-size: 0.85em;
+      text-transform: uppercase;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(212, 175, 55, 0.04); }
+
+    .risk-pill {
+      display: inline-block;
+      padding: 0.15em 0.6em;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #fff;
+    }
+    .risk-pill.low { background: var(--risk-low); }
+    .risk-pill.med { background: var(--risk-med); }
+    .risk-pill.high { background: var(--risk-high); }
+
+    /* ============ QUESTION CARDS ============ */
+    .questions {
+      display: grid;
+      gap: 1em;
+      margin: 1em 0;
+    }
+    .question {
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 1em 1.2em;
+      border-left: 4px solid var(--crimson);
+    }
+    .question.important { border-left-color: var(--amber); }
+    .question.later { border-left-color: var(--steel); }
+    .question .priority {
+      font-size: 0.72em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: bold;
+      margin-bottom: 0.4em;
+    }
+    .question.urgent .priority { color: var(--crimson); }
+    .question.important .priority { color: var(--amber); }
+    .question.later .priority { color: var(--text-dim); }
+    .question h4 {
+      color: var(--parchment);
+      margin: 0.2em 0 0.5em;
+    }
+    .question p {
+      color: var(--text-dim);
+      margin: 0;
+      font-size: 0.92em;
+    }
+
+    /* ============ DEPENDENCY DIAGRAM ============ */
+    .deps {
+      background: var(--bg-soft);
+      border: 1px solid var(--gold-soft);
+      border-radius: 8px;
+      padding: 1.5em;
+      margin: 1em 0;
+      text-align: center;
+    }
+    .deps-chain {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 0.6em;
+      margin-top: 1em;
+    }
+    .deps-node {
+      padding: 0.6em 1em;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.85em;
+      font-weight: bold;
+      font-family: Georgia, serif;
+    }
+    .deps-arrow {
+      color: var(--gold);
+      font-size: 1.4em;
+    }
+
+    /* ============ DOD ============ */
+    .dod-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1em;
+      margin: 1em 0;
+    }
+    .dod-card {
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 1em 1.2em;
+      border-top: 3px solid;
+    }
+    .dod-card.p0 { border-top-color: var(--steel); }
+    .dod-card.p1 { border-top-color: var(--azure); }
+    .dod-card.p2 { border-top-color: var(--emerald); }
+    .dod-card.p3 { border-top-color: var(--amber); }
+    .dod-card.p4 { border-top-color: var(--crimson); }
+    .dod-card h4 {
+      margin: 0 0 0.5em;
+      color: var(--parchment);
+      font-size: 0.9em;
+    }
+    .dod-card p {
+      margin: 0;
+      color: var(--text-dim);
+      font-size: 0.87em;
+      line-height: 1.5;
+    }
+
+    /* ============ COSTS ============ */
+    .cost-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1em;
+      margin: 1.5em 0;
+    }
+    .cost-card {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 1.3em 1.2em;
+      border-top: 3px solid;
+      text-align: center;
+    }
+    .cost-card.minimum { border-top-color: var(--emerald); }
+    .cost-card.comfort { border-top-color: var(--amber); }
+    .cost-card.premium { border-top-color: var(--crimson); }
+    .cost-card h4 {
+      margin: 0 0 0.4em;
+      font-size: 0.9em;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--parchment);
+    }
+    .cost-card .amount {
+      font-size: 1.8em;
+      font-family: Georgia, serif;
+      font-weight: bold;
+      color: var(--gold);
+      margin: 0.3em 0;
+      line-height: 1.1;
+    }
+    .cost-card .amount-detail {
+      color: var(--text-dim);
+      font-size: 0.8em;
+      margin-top: 0.2em;
+    }
+    .cost-card .breakdown {
+      margin-top: 0.8em;
+      padding-top: 0.8em;
+      border-top: 1px dashed var(--gold-soft);
+      font-size: 0.82em;
+      color: var(--text-dim);
+      text-align: left;
+    }
+    .cost-card .breakdown li { margin: 0.2em 0; }
+
+    .cost-by-phase {
+      margin: 1.5em 0;
+    }
+    .cost-by-phase td.amount-cell {
+      font-family: Consolas, monospace;
+      font-weight: bold;
+      color: var(--gold);
+      text-align: right;
+      white-space: nowrap;
+    }
+    .cost-by-phase td.amount-cell.zero { color: var(--emerald); }
+    .cost-by-phase td.amount-cell.high { color: var(--amber); }
+
+    .cost-categories {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1em;
+      margin: 1.5em 0;
+    }
+    .cat-card {
+      background: var(--bg-card);
+      border-radius: 6px;
+      padding: 1em 1.2em;
+      border-left: 3px solid var(--gold-dim);
+    }
+    .cat-card h4 {
+      margin: 0 0 0.4em;
+      color: var(--gold);
+      font-size: 0.85em;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .cat-card .badge-cost {
+      display: inline-block;
+      padding: 0.1em 0.55em;
+      border-radius: 10px;
+      font-size: 0.72em;
+      font-weight: bold;
+      margin-left: 0.4em;
+      vertical-align: middle;
+    }
+    .badge-cost.free { background: var(--emerald); color: #fff; }
+    .badge-cost.low { background: var(--azure); color: #fff; }
+    .badge-cost.mid { background: var(--amber); color: #fff; }
+    .badge-cost.high { background: var(--crimson); color: #fff; }
+    .cat-card ul {
+      margin: 0.5em 0 0;
+      padding-left: 1.1em;
+    }
+    .cat-card li {
+      margin: 0.3em 0;
+      font-size: 0.88em;
+      color: var(--text);
+    }
+    .cat-card li em {
+      color: var(--text-faint);
+      font-style: normal;
+      font-size: 0.85em;
+    }
+
+    .cost-note {
+      background: rgba(212, 175, 55, 0.05);
+      border-left: 3px solid var(--gold);
+      padding: 0.9em 1.2em;
+      border-radius: 4px;
+      margin: 1em 0;
+      font-size: 0.9em;
+      color: var(--text-dim);
+    }
+    .cost-note strong { color: var(--gold); }
+
+    /* ============ FOOTER ============ */
+    footer {
+      text-align: center;
+      margin-top: 3em;
+      padding-top: 1.5em;
+      border-top: 1px dashed var(--gold-soft);
+      color: var(--text-faint);
+      font-size: 0.85em;
+    }
+
+    /* ============ MOBILE ============ */
+    @media (max-width: 640px) {
+      h1 { font-size: 1.7em; }
+      h2 { font-size: 1.4em; }
+      .timeline-track, .timeline-dates {
+        grid-template-columns: 1fr;
+      }
+      nav.topnav ul { gap: 0.8em; }
+      .phase-header { padding: 1em; gap: 0.7em; }
+      .phase-header .marker { width: 8px; height: 50px; }
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <span class="brand">Roadmap AO Web</span>
+  <ul>
+    <li><a href="#decisiones">Decisiones</a></li>
+    <li><a href="#fases">Fases</a></li>
+    <li><a href="#dependencias">Dependencias</a></li>
+    <li><a href="#riesgos">Riesgos</a></li>
+    <li><a href="#dod">DoD</a></li>
+    <li><a href="#costos">Costos</a></li>
+    <li><a href="#preguntas">Preguntas</a></li>
+  </ul>
+</nav>
+
+<main>
+
+  <section class="hero">
+    <h1>Roadmap — Argentum Online Web</h1>
+    <p class="subtitle">Construir un servidor web moderno de Argentum Online sobre stack Node.js/TypeScript + cliente PixiJS, en 5 fases secuenciales que llevan de un repo vacío a una Beta pública jugable.</p>
+    <div class="meta">
+      <span><strong>Inicio:</strong> Sprint 1 — semana del 2026-06-23</span>
+      <span><strong>Beta pública estimada:</strong> 2026-10-23</span>
+      <span><strong>Duración de sprint:</strong> 2 semanas</span>
+    </div>
+  </section>
+
+  <section class="timeline">
+    <h3>Línea de tiempo — 12 sprints / 5 fases</h3>
+    <div class="timeline-track">
+      <a class="timeline-bar p0" href="#fase-0">
+        <span class="phase-label">Fase 0 · Setup</span>
+        <span class="phase-sprint">Sprint 1</span>
+      </a>
+      <a class="timeline-bar p1" href="#fase-1">
+        <span class="phase-label">Fase 1 · Proto red</span>
+        <span class="phase-sprint">Sprints 2-3</span>
+      </a>
+      <a class="timeline-bar p2" href="#fase-2">
+        <span class="phase-label">Fase 2 · Slice jugable</span>
+        <span class="phase-sprint">Sprints 4-5</span>
+      </a>
+      <a class="timeline-bar p3" href="#fase-3">
+        <span class="phase-label">Fase 3 · MVP cerrado</span>
+        <span class="phase-sprint">Sprints 6-8</span>
+      </a>
+      <a class="timeline-bar p4" href="#fase-4">
+        <span class="phase-label">Fase 4 · Beta pública</span>
+        <span class="phase-sprint">Sprints 9-12</span>
+      </a>
+    </div>
+    <div class="timeline-dates">
+      <span>23 jun</span>
+      <span>07 jul → 31 jul</span>
+      <span>03 ago → 28 ago</span>
+      <span>01 sep → 25 sep</span>
+      <span>29 sep → 23 oct</span>
+    </div>
+  </section>
+
+  <section id="decisiones">
+    <h2>1. Decisiones asumidas</h2>
+    <p>Las 7 decisiones que estaban abiertas se cerraron con asunciones para no bloquear la planificación. <strong>Todas son revisables</strong> antes del fin de la Fase 0.</p>
+
+    <div class="decisions">
+      <div class="decision-card">
+        <span class="badge">D-1</span>
+        <h4>Licencia del proyecto</h4>
+        <div class="answer">AGPL-3.0 desde el día 1</div>
+        <div class="why">Elimina ambigüedad legal con los repos de referencia. Coherente con la cultura del juego.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-2</span>
+        <h4>Versión de AO objetivo</h4>
+        <div class="answer">Clónico de 0.13.3 con balance propio</div>
+        <div class="why">Versión con mayor documentación de-facto. AO20 agrega complejidad sin ventaja inmediata.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-3</span>
+        <h4>Alcance funcional del MVP</h4>
+        <div class="answer">Caminar + chat + PvP, sin inventario ni NPCs</div>
+        <div class="why">Valida el stack con el menor scope. Inventario y NPCs entran en Fase 3.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-4</span>
+        <h4>Compatibilidad con clientes</h4>
+        <div class="answer">No — WebSocket binario propio</div>
+        <div class="why">Trabaja nativo en navegador sin proxy TCP. El cliente propio es parte del diferencial.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-5</span>
+        <h4>Modelo de comunidad</h4>
+        <div class="answer">Servidor único oficial</div>
+        <div class="why">Facilita moderación, balance y coherencia. Multi-server queda para Fase 5+.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-6</span>
+        <h4>Monetización</h4>
+        <div class="answer">Donaciones voluntarias (F2P puro)</div>
+        <div class="why">Coherente con AGPL. Sin sistema de tienda en MVP. Pase cosmético se evalúa en Fase 4.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+
+      <div class="decision-card">
+        <span class="badge">D-7</span>
+        <h4>Mobile-first vs desktop-first</h4>
+        <div class="answer">Desktop-first; táctil paralelo desde Fase 2</div>
+        <div class="why">Grilla y UI densa difícil de adaptar en mobile sin rediseño. Validamos mobile con comunidad.</div>
+        <div class="assumption">⚠ Asunción — revisable</div>
+      </div>
+    </div>
+  </section>
+
+  <section id="fases">
+    <h2>2. Fases del proyecto</h2>
+    <p style="color: var(--text-dim); font-size: 0.92em;">Cada fase bloquea la siguiente. Click en cada fase para expandir detalle.</p>
+
+    <!-- FASE 0 -->
+    <div class="phase p0 open" id="fase-0">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 0 — Setup y decisiones</h3>
+          <div class="meta">
+            <strong>Sprint 1</strong> · 2026-06-23 → 2026-07-04 · <em>Sentar el entorno: repo, licencia, Docker, ADRs.</em>
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <p><strong>Objetivo:</strong> tener el entorno de desarrollo funcionando, el repositorio inicializado con licencia y estructura acordada, y los primeros ADRs escritos para que backend y frontend puedan arrancar sin ambigüedades.</p>
+
+        <div class="grid-2">
+          <div class="block">
+            <h4>Criterios de aceptación</h4>
+            <ul>
+              <li>Repositorio Git con <code>LICENSE</code> AGPL-3.0, <code>.gitignore</code> y estructura monorepo.</li>
+              <li>README con instalación y guía de contribución.</li>
+              <li>Programas de <code>PROGRAMAS-NECESARIOS.md</code> instalados y verificados.</li>
+              <li>Docker Compose levanta PostgreSQL + Redis sin errores.</li>
+              <li>ADR-001 (licencia), ADR-002 (stack), ADR-003 (protocolo) mergeados.</li>
+              <li>Borrador de <code>docs/protocol.md</code> con paquetes de login y movimiento.</li>
+              <li><code>docs/design-system.md</code> con paleta, tipografía y principios de UI.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <h4>Entregables por agente</h4>
+            <ul>
+              <li><span class="agent-tag">backend</span> Monorepo (<code>packages/server</code>, <code>packages/shared</code>), <code>docker-compose.yml</code>, esquema SQL inicial, borrador <code>docs/protocol.md</code>.</li>
+              <li><span class="agent-tag">frontend</span> Scaffolding <code>packages/client</code> con Vite + PixiJS v8 + TS, <code>docs/design-system.md</code>, paleta inspirada en AO clásico.</li>
+              <li><span class="agent-tag">PM</span> Este roadmap, <code>backlog.md</code>, <code>risks.md</code>, ADR-001 a ADR-003, <code>definition-of-done.md</code>.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top: 1em;">
+          <h4>Hitos visibles</h4>
+          <ul>
+            <li><strong>Semana 1:</strong> repo público, licencia y estructura, Docker Compose funcional.</li>
+            <li><strong>Semana 2:</strong> primer <code>npx vite</code> y primer <code>node server/index.ts</code> sin errores; ADRs mergeados.</li>
+          </ul>
+        </div>
+
+        <h4 style="margin-top: 1em;">Riesgos en esta fase</h4>
+        <table>
+          <thead><tr><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Mitigación</th></tr></thead>
+          <tbody>
+            <tr><td>Demora en decisión de licencia</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill high">Alto</span></td><td>D-1 asumida; confirmar antes de fin de sprint</td></tr>
+            <tr><td>Incompatibilidades de Docker Desktop en Windows 11</td><td><span class="risk-pill low">Baja</span></td><td><span class="risk-pill med">Medio</span></td><td>WSL2 + Ubuntu como fallback documentado</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FASE 1 -->
+    <div class="phase p1" id="fase-1">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 1 — Prototipo de red</h3>
+          <div class="meta">
+            <strong>Sprints 2-3</strong> · 2026-07-07 → 2026-07-31 · <em>Login + WebSocket + un personaje moviéndose en un mapa.</em>
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <p><strong>Objetivo:</strong> un personaje puede conectarse desde el navegador, autenticarse con usuario y contraseña, ver un mapa estático y moverse en tiempo real. Sin combate, sin chat completo, sin NPCs. Solo validar que el stack de red funciona de punta a punta.</p>
+
+        <div class="grid-2">
+          <div class="block">
+            <h4>Criterios de aceptación</h4>
+            <ul>
+              <li>Cliente web carga en Chromium y Firefox sin errores críticos.</li>
+              <li>Login HTTP con JWT: registro, inicio de sesión, selección de personaje.</li>
+              <li>WebSocket establecido con token validado.</li>
+              <li>Personaje aparece en el mapa con sprite y posición correctos.</li>
+              <li>Movimiento WASD / flechas con servidor autoritativo.</li>
+              <li>Dos clientes ven moverse al otro (latencia &lt; 200ms en LAN).</li>
+              <li>Mapa 50×50 cargado desde servidor (JSON/Tiled).</li>
+              <li>Posición persistida al desconectarse.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <h4>Entregables por agente</h4>
+            <ul>
+              <li><span class="agent-tag">backend</span> Servidor WebSocket, game loop 100ms, módulos <code>auth</code> / <code>session</code> / <code>movement</code> / <code>map-loader</code>; paquetes <code>LOGIN</code>, <code>MOVE</code>, <code>DISCONNECT</code>, <code>MAP_DATA</code>, <code>ENTITY_UPDATE</code>.</li>
+              <li><span class="agent-tag">frontend</span> Canvas PixiJS con tilemap, sprite animado (idle + walk 4 direcciones), input WASD, pantalla de login y selección de personaje.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top: 1em;">
+          <h4>Hitos visibles</h4>
+          <ul>
+            <li><strong>Fin Sprint 2:</strong> login funcional, WebSocket conectando, tile en pantalla.</li>
+            <li><strong>Fin Sprint 3:</strong> dos jugadores viéndose moverse en el mismo mapa.</li>
+          </ul>
+        </div>
+
+        <h4 style="margin-top: 1em;">Riesgos en esta fase</h4>
+        <table>
+          <thead><tr><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Mitigación</th></tr></thead>
+          <tbody>
+            <tr><td>Drift entre spec y protocolo implementado</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td><code>docs/protocol.md</code> como fuente de verdad; PR no mergeable sin spec actualizada</td></tr>
+            <tr><td>Latencia WebSocket inaceptable con <code>ws</code></td><td><span class="risk-pill low">Baja</span></td><td><span class="risk-pill med">Medio</span></td><td>Evaluar <code>uWebSockets.js</code> si supera 150ms en LAN</td></tr>
+            <tr><td>Sprites del AO clásico sin licencia clara</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill med">Medio</span></td><td>Placeholder libres (OpenGameArt); decisión final con el usuario</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FASE 2 -->
+    <div class="phase p2" id="fase-2">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 2 — Slice vertical jugable</h3>
+          <div class="meta">
+            <strong>Sprints 4-5</strong> · 2026-08-03 → 2026-08-28 · <em>Caminar + chat + combate PvP en un mapa. Primera demo filmable.</em>
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <p><strong>Objetivo:</strong> el juego es jugable de forma mínima — caminar, chatear con otros jugadores y golpear con ataque cuerpo a cuerpo, con persistencia de stats y muerte/respawn simple. Es el primer momento en que el proyecto se puede mostrar a jugadores externos.</p>
+
+        <div class="grid-2">
+          <div class="block">
+            <h4>Criterios de aceptación</h4>
+            <ul>
+              <li>Chat global funcional con nombre, timestamp y scroll.</li>
+              <li>Ataque cuerpo a cuerpo: animación, daño en servidor, barra de vida visible.</li>
+              <li>Stats persistidos en PostgreSQL: HP, MaxHP, nivel 1 fijo.</li>
+              <li>Muerte y respawn en punto fijo del mapa.</li>
+              <li>HUD mínimo: barra HP, nombre, lista de online.</li>
+              <li>Servidor rechaza movimientos y ataques inválidos.</li>
+              <li>Conexión a sesión jugable &lt; 10 s en LAN.</li>
+              <li>Log de errores funcionando (Winston o Pino).</li>
+            </ul>
+          </div>
+          <div class="block">
+            <h4>Entregables por agente</h4>
+            <ul>
+              <li><span class="agent-tag">backend</span> Módulos <code>chat</code>, <code>combat</code>, <code>stats</code>, <code>death-respawn</code>; paquetes <code>CHAT_MSG</code>, <code>ATTACK</code>, <code>DAMAGE</code>, <code>DEATH</code>, <code>RESPAWN</code>; migraciones SQL; logging.</li>
+              <li><span class="agent-tag">frontend</span> HUD con barra HP, chat overlay, animación de ataque, número flotante de daño, pantalla de death/respawn; primer pase de controles táctiles.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top: 1em;">
+          <h4>Hitos visibles</h4>
+          <ul>
+            <li><strong>Fin Sprint 4:</strong> chat funcional, stats persistidos.</li>
+            <li><strong>Fin Sprint 5:</strong> combate PvP básico jugable, demo interna filmable.</li>
+          </ul>
+        </div>
+
+        <h4 style="margin-top: 1em;">Riesgos en esta fase</h4>
+        <table>
+          <thead><tr><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Mitigación</th></tr></thead>
+          <tbody>
+            <tr><td>Balance de daño inestable</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill low">Bajo</span></td><td>Fórmulas hardcodeadas simples; balance real en Fase 3</td></tr>
+            <tr><td>Anti-cheat complejo → scope creep</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill med">Medio</span></td><td>MVP: solo validación de posición y cooldown</td></tr>
+            <tr><td>Performance del loop con chat + combate</td><td><span class="risk-pill low">Baja</span></td><td><span class="risk-pill high">Alto</span></td><td>Load test con k6 antes de cerrar fase (20 conexiones)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FASE 3 -->
+    <div class="phase p3" id="fase-3">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 3 — MVP cerrado</h3>
+          <div class="meta">
+            <strong>Sprints 6-8</strong> · 2026-09-01 → 2026-09-25 · <em>NPCs + inventario + items + experiencia. Loop de gameplay completo.</em>
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <p><strong>Objetivo:</strong> experiencia de juego completa mínima — NPCs con IA básica, inventario, items lootables, sistema de experiencia y niveles, comercio con NPCs. El juego tiene un loop cerrado: <strong>matar → lootear → subir de nivel → volverse más fuerte</strong>.</p>
+
+        <div class="grid-2">
+          <div class="block">
+            <h4>Criterios de aceptación</h4>
+            <ul>
+              <li>3 tipos de NPC: hostil, neutro, comerciante.</li>
+              <li>Inventario persistido: recoger, equipar, soltar.</li>
+              <li>5 items base: espada, escudo, poción HP, oro, trofeo.</li>
+              <li>Comercio con NPC: ventana de tienda, compra/venta.</li>
+              <li>Sistema de experiencia, niveles 1-10.</li>
+              <li>NPCs reaparecen en posición original.</li>
+              <li>Servidor soporta 50 conexiones simultáneas.</li>
+              <li><code>docs/architecture.md</code> actualizado.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <h4>Entregables por agente</h4>
+            <ul>
+              <li><span class="agent-tag">backend</span> Módulos <code>npc-ai</code>, <code>inventory</code>, <code>items</code>, <code>experience</code>, <code>shop</code>; spawners; migraciones SQL; prueba de carga k6.</li>
+              <li><span class="agent-tag">frontend</span> Ventana de inventario drag-and-drop, ventana de tienda, barra XP, indicadores de nivel, sprites placeholder de NPCs.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top: 1em;">
+          <h4>Hitos visibles</h4>
+          <ul>
+            <li><strong>Fin Sprint 6:</strong> NPC hostil funcional, drops de items.</li>
+            <li><strong>Fin Sprint 7:</strong> inventario completo persistido, comercio con NPC.</li>
+            <li><strong>Fin Sprint 8:</strong> niveles 1-10, prueba de carga superada, cierre del MVP.</li>
+          </ul>
+        </div>
+
+        <h4 style="margin-top: 1em;">Riesgos en esta fase</h4>
+        <table>
+          <thead><tr><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Mitigación</th></tr></thead>
+          <tbody>
+            <tr><td>IA de NPCs más compleja de lo estimado</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill med">Medio</span></td><td>Pathfinding A* simple; comportamientos avanzados → backlog</td></tr>
+            <tr><td>Inventario drag-and-drop en mobile</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill low">Bajo</span></td><td>Mobile en Fase 3 es best-effort; firme es desktop</td></tr>
+            <tr><td>Scope creep: nuevas clases / hechizos</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>Solo los 5 items base; el resto va al backlog de Fase 5</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FASE 4 -->
+    <div class="phase p4" id="fase-4">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 4 — Beta pública</h3>
+          <div class="meta">
+            <strong>Sprints 9-12</strong> · 2026-09-29 → 2026-10-23 · <em>Múltiples mapas + banco + party + comercio P2P + infra prod + observabilidad.</em>
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <p><strong>Objetivo:</strong> el servidor está accesible en internet, con múltiples mapas, teletransportes, banco, party, comercio jugador-jugador, observabilidad de producción y canal de feedback. Se invitan los primeros jugadores externos.</p>
+
+        <div class="grid-2">
+          <div class="block">
+            <h4>Criterios de aceptación</h4>
+            <ul>
+              <li>3+ mapas con transiciones (portales).</li>
+              <li>Banco de items persistido por personaje.</li>
+              <li>Party de hasta 5 jugadores; no daño entre aliados.</li>
+              <li>Comercio P2P seguro (commit/cancel).</li>
+              <li>VPS con dominio, HTTPS y WSS.</li>
+              <li>Grafana + Prometheus + alertas de caída.</li>
+              <li>Sentry en cliente y servidor.</li>
+              <li>Discord con #bugs y #feedback.</li>
+              <li>200 conexiones simultáneas.</li>
+              <li>Política de privacidad y términos publicados.</li>
+            </ul>
+          </div>
+          <div class="block">
+            <h4>Entregables por agente</h4>
+            <ul>
+              <li><span class="agent-tag">backend</span> Sistema multi-mapa, banco, party, comercio seguro, despliegue VPS (Caddy + Docker), Prometheus + Grafana, Sentry server-side.</li>
+              <li><span class="agent-tag">frontend</span> UI multi-mapa, ventana de banco, UI de party (HP aliados), ventana de comercio seguro, Sentry client-side, mejoras UX por feedback.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="block" style="margin-top: 1em;">
+          <h4>Hitos visibles</h4>
+          <ul>
+            <li><strong>Fin Sprint 9:</strong> multi-mapa funcional.</li>
+            <li><strong>Fin Sprint 10:</strong> banco y party.</li>
+            <li><strong>Fin Sprint 11:</strong> servidor en producción, observabilidad activa.</li>
+            <li><strong>Fin Sprint 12:</strong> primera invitación a externos, Discord abierto.</li>
+          </ul>
+        </div>
+
+        <h4 style="margin-top: 1em;">Riesgos en esta fase</h4>
+        <table>
+          <thead><tr><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Mitigación</th></tr></thead>
+          <tbody>
+            <tr><td>Bugs de seguridad en comercio P2P</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill high">Alto</span></td><td>Commit/rollback atómico; revisión de código obligatoria</td></tr>
+            <tr><td>Exploits de duplicación de items (dupe)</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>Transacciones SQL atómicas + logs auditables</td></tr>
+            <tr><td>Costos de VPS subestimados</td><td><span class="risk-pill low">Baja</span></td><td><span class="risk-pill med">Medio</span></td><td>Empezar con 4 vCPU / 8 GB; escalar vertical</td></tr>
+            <tr><td>Toxicidad en comunidad early-beta</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill med">Medio</span></td><td>Moderación activa; mute/ban desde Sprint 12</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- FASE 5 -->
+    <div class="phase p5" id="fase-5">
+      <div class="phase-header" onclick="togglePhase(this)">
+        <div class="marker"></div>
+        <div class="info">
+          <h3>Fase 5+ — Post-beta (tentativo)</h3>
+          <div class="meta">
+            <strong>Sin fecha</strong> · Backlog priorizado según feedback de la comunidad.
+          </div>
+        </div>
+        <div class="toggle">▾</div>
+      </div>
+      <div class="phase-body">
+        <table>
+          <thead><tr><th>Épica</th><th>Descripción</th></tr></thead>
+          <tbody>
+            <tr><td>Clases de personaje</td><td>Guerrero, mago, druida, asesino con habilidades diferenciadas</td></tr>
+            <tr><td>Hechicería completa</td><td>Sistema de maná, hechizos ofensivos / defensivos / utilidad</td></tr>
+            <tr><td>PvP organizado</td><td>Duelos, arenas, zonas seguras vs zonas libres</td></tr>
+            <tr><td>Guilds (clanes)</td><td>Creación, jerarquía, chat de clan, territorio</td></tr>
+            <tr><td>Multi-servidor</td><td>Código desplegable por la comunidad bajo AGPL; guía de instalación</td></tr>
+            <tr><td>Assets pixel-art originales</td><td>Sprites comisionados o generados para eliminar riesgo legal de assets AO clásico</td></tr>
+            <tr><td>Mobile completo</td><td>Layout responsivo, controles táctiles completos, PWA</td></tr>
+            <tr><td>Economía avanzada</td><td>Subastas, consignación, mercado entre personajes</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="dependencias">
+    <h2>3. Dependencias críticas entre fases</h2>
+    <div class="deps">
+      <p style="color: var(--text-dim); margin: 0 0 0.5em;">Las fases son secuenciales. Cada una bloquea la siguiente.</p>
+      <div class="deps-chain">
+        <div class="deps-node" style="background: var(--steel);">Fase 0</div>
+        <span class="deps-arrow">→</span>
+        <div class="deps-node" style="background: var(--azure);">Fase 1</div>
+        <span class="deps-arrow">→</span>
+        <div class="deps-node" style="background: var(--emerald);">Fase 2</div>
+        <span class="deps-arrow">→</span>
+        <div class="deps-node" style="background: var(--amber);">Fase 3</div>
+        <span class="deps-arrow">→</span>
+        <div class="deps-node" style="background: var(--crimson);">Fase 4</div>
+      </div>
+    </div>
+
+    <h4>Dependencias transversales</h4>
+    <ul>
+      <li><code>docs/protocol.md</code> es interfaz entre backend y frontend en cada fase. Cualquier cambio requiere actualización sincronizada de ambos lados.</li>
+      <li>Assets gráficos no bloquean lógica de servidor, pero sí bloquean cierre de fases en el lado frontend. Placeholders libres desbloquean el desarrollo.</li>
+      <li>Infra de producción (VPS) no es necesaria hasta Fase 4, pero el contrato debe iniciarse durante Fase 3.</li>
+    </ul>
+  </section>
+
+  <section id="riesgos">
+    <h2>4. Riesgos globales del proyecto</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th><th>Riesgo</th><th>Prob.</th><th>Impacto</th><th>Fase</th><th>Mitigación</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>R-01</strong></td><td>Contagio AGPL por copia de código de repos de referencia</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill high">Alto</span></td><td>Todas</td><td>AGPL día 1 (D-1); prohibido copiar verbatim; solo lectura conceptual</td></tr>
+        <tr><td><strong>R-02</strong></td><td>Assets gráficos sin licencia (sprites AO clásico)</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill med">Medio</span></td><td>1+</td><td>Placeholders libres; decisión de assets propios antes de Beta</td></tr>
+        <tr><td><strong>R-03</strong></td><td>Reverse engineering del protocolo VB6 (si cambia D-4)</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>1</td><td>WebSocket propio (D-4 actual); no aplica salvo revisión</td></tr>
+        <tr><td><strong>R-04</strong></td><td>Anti-cheat insuficiente → exploits</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>2+</td><td>Servidor autoritativo desde Fase 1; validar cada paquete</td></tr>
+        <tr><td><strong>R-05</strong></td><td>Dupe de items (bug histórico crítico)</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>3+</td><td>Transacciones SQL atómicas para toda transferencia</td></tr>
+        <tr><td><strong>R-06</strong></td><td>Escalado del game loop bajo carga real</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill high">Alto</span></td><td>4</td><td>Diseño por zona desde Fase 1; sharding como plan B</td></tr>
+        <tr><td><strong>R-07</strong></td><td>Comunidad fragmentada vs aoweb.app</td><td><span class="risk-pill med">Media</span></td><td><span class="risk-pill med">Medio</span></td><td>4</td><td>Diferenciación: stack abierto, AGPL, desktop-first de calidad</td></tr>
+        <tr><td><strong>R-08</strong></td><td>Scope creep — features comunidad antes del MVP</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill med">Medio</span></td><td>2-3</td><td>Backlog visible; política "no en este sprint"</td></tr>
+        <tr><td><strong>R-09</strong></td><td>Un solo dev backend → bus factor = 1</td><td><span class="risk-pill high">Alta</span></td><td><span class="risk-pill high">Alto</span></td><td>Todas</td><td>Documentación de arquitectura actualizada; ADRs</td></tr>
+        <tr><td><strong>R-10</strong></td><td>Costos de infra subestimados en Beta</td><td><span class="risk-pill low">Baja</span></td><td><span class="risk-pill med">Medio</span></td><td>4</td><td>VPS ≤ USD 40/mes; escalar solo con jugadores reales</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section id="dod">
+    <h2>5. Definition of Done por fase</h2>
+    <div class="dod-grid">
+      <div class="dod-card p0">
+        <h4>Fase 0 — Setup</h4>
+        <p>Repo público con licencia; Docker Compose funcional; ADRs 1-3 mergeados; todos los programas verificados.</p>
+      </div>
+      <div class="dod-card p1">
+        <h4>Fase 1 — Proto red</h4>
+        <p>Dos navegadores distintos conectados simultáneamente, dos personajes visibles moviéndose, posición persistida al desconectar.</p>
+      </div>
+      <div class="dod-card p2">
+        <h4>Fase 2 — Slice jugable</h4>
+        <p>Sesión de 5 min grabada: un jugador mata a otro, chatea, y el perdedor reaparece. Sin bugs críticos.</p>
+      </div>
+      <div class="dod-card p3">
+        <h4>Fase 3 — MVP</h4>
+        <p>Loop completo: personaje nivel 1 → mata NPC → lootea item → compra en tienda → sube a nivel 2. Probado con 50 conexiones.</p>
+      </div>
+      <div class="dod-card p4">
+        <h4>Fase 4 — Beta</h4>
+        <p>100 jugadores reales en Discord; servidor estable 24/7 con uptime &gt; 99% en las primeras 2 semanas; canal de bugs activo.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="costos">
+    <h2>6. Costos e infraestructura</h2>
+    <p style="color: var(--text-dim);">Resumen ejecutivo. Detalle completo en <a href="costos-e-infraestructura.md">docs/costos-e-infraestructura.md</a>: comparativa de proveedores, alternativas free vs paid, riesgos económicos, y método de pago desde Argentina.</p>
+
+    <div class="cost-note">
+      <strong>Headline:</strong> el proyecto se puede llevar hasta la <strong>Beta pública gastando ~USD 130</strong> totales, manteniéndose en USD 0 durante Fases 0-3. El costo está dominado por dos decisiones: <strong>assets gráficos</strong> (libres = USD 0 vs comisión = USD 1.000-3.000) y <strong>VPS de producción</strong> (~USD 15-25/mes desde Fase 4).
+    </div>
+
+    <h3>Tres escenarios de inversión hasta cierre de Beta</h3>
+    <div class="cost-summary">
+      <div class="cost-card minimum">
+        <h4>Mínimo realista</h4>
+        <div class="amount">~USD 130</div>
+        <div class="amount-detail">total 5 meses</div>
+        <ul class="breakdown">
+          <li>Assets libres (OpenGameArt)</li>
+          <li>VPS Hetzner CX22 → CCX13</li>
+          <li>Dominio .com</li>
+          <li>Todo lo demás en free tier</li>
+        </ul>
+      </div>
+      <div class="cost-card comfort">
+        <h4>Cómodo</h4>
+        <div class="amount">~USD 400-600</div>
+        <div class="amount-detail">total 5 meses</div>
+        <ul class="breakdown">
+          <li>+ Asset pack comercial (~USD 100)</li>
+          <li>+ GitHub Copilot (USD 10/mes)</li>
+          <li>+ Aseprite (USD 20)</li>
+          <li>+ Sentry Team si hace falta</li>
+        </ul>
+      </div>
+      <div class="cost-card premium">
+        <h4>Premium con arte propio</h4>
+        <div class="amount">USD 2.5K-4.5K</div>
+        <div class="amount-detail">total 5 meses</div>
+        <ul class="breakdown">
+          <li>+ Pixel-art comisionado (USD 1K-3K)</li>
+          <li>+ Música original (~USD 500)</li>
+          <li>+ VPS holgado</li>
+          <li>Estética visual propia y libre de riesgo</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>Costo por fase</h3>
+    <table class="cost-by-phase">
+      <thead>
+        <tr><th>Fase</th><th>Sprint</th><th>Concepto principal</th><th>One-time</th><th>Mensual</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Fase 0</strong></td><td>1</td>
+          <td>Setup local; opcional Aseprite + dominio</td>
+          <td class="amount-cell zero">USD 0-32</td>
+          <td class="amount-cell zero">USD 0</td>
+        </tr>
+        <tr>
+          <td><strong>Fase 1</strong></td><td>2-3</td>
+          <td>Desarrollo 100% local con assets libres</td>
+          <td class="amount-cell zero">USD 0</td>
+          <td class="amount-cell zero">USD 0</td>
+        </tr>
+        <tr>
+          <td><strong>Fase 2</strong></td><td>4-5</td>
+          <td>Sin nuevos servicios</td>
+          <td class="amount-cell zero">USD 0</td>
+          <td class="amount-cell zero">USD 0</td>
+        </tr>
+        <tr>
+          <td><strong>Fase 3</strong></td><td>6-8</td>
+          <td>VPS staging Hetzner CX22 + dominio</td>
+          <td class="amount-cell zero">USD 0</td>
+          <td class="amount-cell">~USD 6</td>
+        </tr>
+        <tr>
+          <td><strong>Fase 4</strong></td><td>9-12</td>
+          <td>VPS prod CCX13 + backup + observabilidad free</td>
+          <td class="amount-cell high">USD 0-2.500*</td>
+          <td class="amount-cell">~USD 19</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size: 0.82em; color: var(--text-faint); margin-top: -0.5em;">* El rango one-time de Fase 4 depende de la decisión de assets: USD 0 (libres) ó USD 1.000-2.500 (pixel-art comisionado).</p>
+
+    <h3>Categorías de herramientas y servicios</h3>
+    <div class="cost-categories">
+      <div class="cat-card">
+        <h4>Desarrollo local <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Git + GitHub (repos públicos)</li>
+          <li>Node.js LTS + pnpm</li>
+          <li>VS Code + extensiones</li>
+          <li>Docker Desktop (uso personal)</li>
+          <li>PostgreSQL + Redis en Docker</li>
+          <li>DBeaver / pgAdmin / Bruno</li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Hosting de código + CI <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>GitHub Free — repos públicos ilimitados</li>
+          <li>GitHub Actions — minutos ilimitados en público</li>
+          <li><em>(Alternativa: GitLab, Codeberg)</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>VPS de producción <span class="badge-cost low">USD 5-25/mes</span></h4>
+        <ul>
+          <li><strong>Hetzner CX22</strong> — staging — EUR 4,51/mes</li>
+          <li><strong>Hetzner CCX13</strong> — prod beta — EUR 13,99/mes</li>
+          <li><em>Alt: Contabo VPS-S USD 4,50; DigitalOcean USD 24</em></li>
+          <li>Backups +20% del precio del VPS</li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Dominio + SSL <span class="badge-cost low">USD 12/año</span></h4>
+        <ul>
+          <li>.com en Namecheap o Cloudflare Registrar ~USD 12/año</li>
+          <li>.io o .gg = USD 30-80/año (más caros)</li>
+          <li>Let's Encrypt + Caddy = SSL gratis y automático</li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Proxy / CDN / DDoS <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Cloudflare Free — incluye proxy WebSocket, DNS, SSL, anti-DDoS L3/L4</li>
+          <li><em>Pro USD 20/mes si las métricas lo justifican post-Beta</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Bases de datos <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>PostgreSQL self-hosted en el mismo VPS</li>
+          <li>Redis self-hosted en el mismo VPS</li>
+          <li><em>Diferido: Neon Launch USD 19 + Upstash si Fase 5+ lo necesita</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Email transaccional <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Resend Free — 3.000 emails/mes alcanza para Beta</li>
+          <li><em>Alt: Postmark, AWS SES</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Observabilidad <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Sentry Free — 5k events/mes</li>
+          <li>Grafana Cloud Free + Prometheus self-hosted</li>
+          <li>UptimeRobot Free — 50 monitores</li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Assets gráficos <span class="badge-cost mid">USD 0-3.000</span></h4>
+        <ul>
+          <li><strong>Libres</strong> (OpenGameArt, Kenney): USD 0</li>
+          <li><strong>Packs comerciales</strong>: USD 50-300</li>
+          <li><strong>Comisión pixel-artist</strong>: USD 1.000-2.500</li>
+          <li><em>Decisión revisable en Sprint 9</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Audio / música <span class="badge-cost free">USD 0-500</span></h4>
+        <ul>
+          <li>Freesound / OpenGameArt / Pixabay (CC0)</li>
+          <li><em>Comisión post-Beta si justifica</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Comunidad <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Discord servidor + bots</li>
+          <li>Twitter / X cuenta básica</li>
+          <li>Landing page servida desde el VPS</li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Donaciones (Fase 4+) <span class="badge-cost free">USD 0 fijo</span></h4>
+        <ul>
+          <li>Ko-fi — 0% en donaciones, fee Stripe ~3%</li>
+          <li>MercadoPago AR — ~6-7% para donantes argentinos</li>
+          <li><em>Patreon opcional para suscripciones</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Productividad (opcional) <span class="badge-cost low">USD 10-40/mes</span></h4>
+        <ul>
+          <li>GitHub Copilot — USD 10/mes</li>
+          <li>Claude Pro — USD 20/mes</li>
+          <li><em>Aseprite — USD 20 one-time</em></li>
+        </ul>
+      </div>
+
+      <div class="cat-card">
+        <h4>Legal <span class="badge-cost free">USD 0</span></h4>
+        <ul>
+          <li>Templates T&amp;C/Privacy gratuitos (Termly)</li>
+          <li><em>Iubenda USD 27/año o abogado USD 200-800 si crece</em></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="cost-note">
+      <strong>Decisiones de inversión que necesitan tu confirmación:</strong> ver §11 del documento completo. Las dos críticas son: (1) <strong>assets gráficos</strong> antes de Sprint 9 — define si gastás USD 0 o USD 1.500+; (2) <strong>proveedor de VPS</strong> antes de Sprint 7 — Hetzner si tenés tarjeta internacional, Contabo si no.
+    </div>
+  </section>
+
+  <section id="preguntas">
+    <h2>7. Preguntas para el usuario</h2>
+    <p style="color: var(--text-dim);">Estas decisiones afectan el alcance y requieren confirmación antes de que sus fases inicien. Ordenadas por urgencia.</p>
+
+    <h3>Urgentes — antes de fin de Fase 0 (Sprint 1)</h3>
+    <div class="questions">
+      <div class="question urgent">
+        <div class="priority">⚑ Urgente</div>
+        <h4>D-1 — Licencia</h4>
+        <p>¿Confirmás AGPL-3.0 como licencia del proyecto? Si preferís privado o MIT, el alcance del uso de repos de referencia cambia significativamente.</p>
+      </div>
+      <div class="question urgent">
+        <div class="priority">⚑ Urgente</div>
+        <h4>D-2 — Versión objetivo</h4>
+        <p>¿Clon fiel de AO 0.13.3 o más libertad para rebalancear desde el principio? Afecta el diseño de fórmulas de combate desde Fase 2.</p>
+      </div>
+      <div class="question urgent">
+        <div class="priority">⚑ Urgente</div>
+        <h4>Assets gráficos (R-02)</h4>
+        <p>¿Sprites clásicos de AO asumiendo riesgo, contratar pixel-art original, o empezar con assets libres? Define si el frontend-designer necesita presupuesto.</p>
+      </div>
+    </div>
+
+    <h3>Importantes — antes de Fase 2</h3>
+    <div class="questions">
+      <div class="question important">
+        <div class="priority">◆ Importante</div>
+        <h4>D-7 — Mobile</h4>
+        <p>¿Mobile es requisito de negocio para la Beta, o puede ir post-Beta? Si es requisito, frontend empieza diseño táctil desde Fase 1.</p>
+      </div>
+      <div class="question important">
+        <div class="priority">◆ Importante</div>
+        <h4>D-6 — Monetización</h4>
+        <p>¿Solo donaciones, o algún modelo cosmético para la Beta? Afecta qué datos persistir y si hace falta integración de pagos.</p>
+      </div>
+    </div>
+
+    <h3>Puede esperar — hasta Fase 3</h3>
+    <div class="questions">
+      <div class="question later">
+        <div class="priority">○ Diferido</div>
+        <h4>D-5 — Multi-servidor</h4>
+        <p>¿Experiencia única (servidor oficial) o que cualquiera pueda levantar el suyo? Afecta arquitectura de Fase 4+.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Roadmap generado el 2026-06-19 · Documento vivo · Próxima revisión: al cierre de cada fase o ante cambio de scope significativo.<br>
+    Fuente markdown: <a href="roadmap.md">docs/roadmap.md</a> · Backlog: <a href="backlog.md">docs/backlog.md</a> · Contexto: <a href="contexto-y-analisis.md">docs/contexto-y-analisis.md</a> · Costos: <a href="costos-e-infraestructura.md">docs/costos-e-infraestructura.md</a>
+  </footer>
+
+</main>
+
+<script>
+  function togglePhase(headerEl) {
+    headerEl.parentElement.classList.toggle('open');
+  }
+
+  document.querySelectorAll('nav.topnav a, .timeline-bar').forEach(a => {
+    a.addEventListener('click', e => {
+      const href = a.getAttribute('href');
+      if (!href || !href.startsWith('#')) return;
+      const target = document.querySelector(href);
+      if (target && target.classList.contains('phase') && !target.classList.contains('open')) {
+        target.classList.add('open');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

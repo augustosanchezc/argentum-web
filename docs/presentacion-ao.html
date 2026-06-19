@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Argentum Online — Código Abierto para Dummys</title>
+
+  <style>
+    :root {
+      --bg: #0d0a07;
+      --bg-soft: #15110b;
+      --gold: #d4af37;
+      --gold-dim: #a08428;
+      --gold-soft: rgba(212, 175, 55, 0.15);
+      --parchment: #f5e6c8;
+      --crimson: #8b1a1a;
+      --steel: #4a5568;
+      --text: #e8dfc8;
+      --text-dim: #a89c80;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 70px; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: Georgia, "Cinzel", serif;
+      color: var(--gold);
+      letter-spacing: 0.02em;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      margin-top: 0;
+    }
+
+    a { color: var(--gold); text-decoration: underline dotted var(--gold-dim); }
+    a:hover { color: #fff; }
+
+    code {
+      background: var(--gold-soft);
+      color: var(--gold);
+      padding: 0.1em 0.4em;
+      border-radius: 3px;
+      font-size: 0.9em;
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    pre {
+      background: #0a0a0a;
+      color: var(--parchment);
+      padding: 1em 1.2em;
+      border-left: 3px solid var(--gold);
+      border-radius: 4px;
+      overflow-x: auto;
+      font-size: 0.85em;
+      line-height: 1.5;
+    }
+    pre code { background: transparent; color: inherit; padding: 0; }
+
+    /* ============ NAV ============ */
+    nav.topnav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(13, 10, 7, 0.95);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--gold-soft);
+      padding: 0.7em 1.5em;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1em;
+    }
+    nav.topnav .brand {
+      color: var(--gold);
+      font-family: Georgia, serif;
+      font-weight: bold;
+      font-size: 1.1em;
+    }
+    nav.topnav ul {
+      list-style: none;
+      display: flex;
+      gap: 1.2em;
+      margin: 0;
+      padding: 0;
+      flex-wrap: wrap;
+    }
+    nav.topnav a {
+      color: var(--text-dim);
+      text-decoration: none;
+      font-size: 0.85em;
+      padding: 0.3em 0.6em;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    nav.topnav a:hover {
+      color: var(--gold);
+      background: var(--gold-soft);
+    }
+
+    /* ============ LAYOUT ============ */
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 1.5em;
+    }
+
+    section {
+      padding: 4em 0 3em;
+      border-bottom: 1px solid rgba(212, 175, 55, 0.08);
+    }
+    section:last-of-type { border-bottom: none; }
+
+    section > h2 {
+      font-size: 2em;
+      border-bottom: 2px solid var(--gold-dim);
+      padding-bottom: 0.3em;
+      margin-bottom: 1em;
+    }
+    section > h3 {
+      font-size: 1.3em;
+      color: var(--parchment);
+      margin-top: 2em;
+    }
+
+    /* ============ HERO ============ */
+    .hero {
+      min-height: 92vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 3em 1.5em;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(212, 175, 55, 0.08), transparent 50%),
+        radial-gradient(circle at 70% 80%, rgba(139, 26, 26, 0.06), transparent 50%),
+        linear-gradient(180deg, #0a0805 0%, #15110b 100%);
+      border-bottom: 2px solid var(--gold-dim);
+    }
+    .hero h1 {
+      font-size: 4em;
+      margin: 0;
+      line-height: 1.1;
+    }
+    .hero .tagline {
+      font-size: 1.4em;
+      color: var(--parchment);
+      font-style: italic;
+      margin: 0.5em 0 1em;
+    }
+    .hero .lede {
+      max-width: 700px;
+      font-size: 1.1em;
+      color: var(--text);
+      margin: 1em auto;
+    }
+    .hero .scroll-cue {
+      margin-top: 3em;
+      color: var(--text-dim);
+      font-size: 0.85em;
+      animation: bob 2s infinite;
+    }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(8px); }
+    }
+
+    /* ============ COMPONENTS ============ */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5em; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1em; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8em; }
+    @media (max-width: 800px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    }
+
+    .card {
+      background: rgba(212, 175, 55, 0.05);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      border-radius: 6px;
+      padding: 1em 1.2em;
+    }
+    .card h4 { margin: 0 0 0.5em; color: var(--gold); font-size: 1.05em; }
+    .card p { margin: 0; font-size: 0.9em; }
+    .card ul { margin: 0; padding-left: 1.2em; font-size: 0.9em; }
+    .card.danger { border-color: rgba(139, 26, 26, 0.5); background: rgba(139, 26, 26, 0.08); }
+    .card.danger h4 { color: #ff7070; }
+
+    .badge {
+      display: inline-block;
+      background: var(--gold);
+      color: #1a1a1a;
+      padding: 0.15em 0.6em;
+      border-radius: 4px;
+      font-size: 0.7em;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      margin: 0 0.2em;
+    }
+    .badge.crimson { background: var(--crimson); color: #fff; }
+    .badge.steel { background: var(--steel); color: #fff; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9em;
+      margin: 1em 0;
+    }
+    th {
+      background: var(--gold-dim);
+      color: #1a1a1a;
+      padding: 0.6em 0.8em;
+      text-align: left;
+    }
+    td {
+      padding: 0.5em 0.8em;
+      border-bottom: 1px solid var(--gold-soft);
+      vertical-align: top;
+    }
+    tr:hover td { background: rgba(212, 175, 55, 0.04); }
+
+    .cmd {
+      font-family: Consolas, "Courier New", monospace;
+      color: var(--gold);
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    .timeline {
+      border-left: 3px solid var(--gold);
+      padding-left: 1.5em;
+      margin: 1em 0;
+    }
+    .timeline > div {
+      position: relative;
+      margin: 1em 0;
+      font-size: 0.95em;
+    }
+    .timeline > div::before {
+      content: "";
+      position: absolute;
+      left: -2em;
+      top: 0.5em;
+      width: 14px; height: 14px;
+      background: var(--gold);
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px var(--bg);
+    }
+    .timeline .year {
+      color: var(--gold);
+      font-weight: bold;
+      font-family: Georgia, serif;
+      margin-right: 0.6em;
+      font-size: 1.05em;
+    }
+
+    .stat-row {
+      display: flex;
+      align-items: center;
+      gap: 0.8em;
+      margin: 0.4em 0;
+      font-size: 0.9em;
+    }
+    .stat-name { width: 130px; color: var(--parchment); }
+    .stat-bar {
+      flex: 1;
+      height: 16px;
+      background: rgba(255,255,255,0.06);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .stat-bar > div {
+      height: 100%;
+      background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+    }
+    .stat-value {
+      width: 30px;
+      text-align: right;
+      color: var(--gold);
+      font-weight: bold;
+    }
+
+    .note {
+      font-size: 0.85em;
+      color: var(--text-dim);
+      font-style: italic;
+      margin-top: 1em;
+    }
+
+    .quote {
+      font-size: 1.3em;
+      color: var(--parchment);
+      font-style: italic;
+      text-align: center;
+      max-width: 700px;
+      margin: 1.5em auto;
+      padding: 1em 1.5em;
+      border-left: 3px solid var(--gold);
+      background: var(--gold-soft);
+    }
+
+    footer {
+      text-align: center;
+      padding: 3em 1.5em 4em;
+      color: var(--text-dim);
+      font-size: 0.85em;
+      background: linear-gradient(180deg, transparent, #0a0805);
+      border-top: 1px solid var(--gold-soft);
+    }
+    footer .resume {
+      max-width: 700px;
+      margin: 0 auto 2em;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="topnav">
+  <div class="brand">⚔️ Argentum Online</div>
+  <ul>
+    <li><a href="#que-es">¿Qué es?</a></li>
+    <li><a href="#historia">Historia</a></li>
+    <li><a href="#mundo">Mundo</a></li>
+    <li><a href="#razas-clases">Razas y Clases</a></li>
+    <li><a href="#combate">Combate</a></li>
+    <li><a href="#gms">Game Masters</a></li>
+    <li><a href="#codigo">Código</a></li>
+    <li><a href="#proyecto">Nuestro proyecto</a></li>
+    <li><a href="#recursos">Recursos</a></li>
+  </ul>
+</nav>
+
+<header class="hero">
+  <h1>⚔️ Argentum Online</h1>
+  <p class="tagline">El código abierto del MMORPG argentino</p>
+  <p class="lede">
+    Una guía para dummys: qué es el juego, cómo se juega, cómo está hecho por dentro
+    y por qué su código sigue vivo casi 30 años después.
+  </p>
+  <div class="scroll-cue">↓ scrollea para empezar ↓</div>
+</header>
+
+<main>
+
+<section id="que-es">
+  <h2>¿Qué es Argentum Online?</h2>
+  <div class="grid-2">
+    <div>
+      <p>
+        <strong>AO</strong> es un <strong>MMORPG 2D</strong> (juego de rol masivo en línea)
+        con vista cenital y estética de pixel-art medieval-fantástico.
+      </p>
+      <ul>
+        <li>Te creás un personaje (raza + clase)</li>
+        <li>Subís niveles matando monstruos y haciendo misiones</li>
+        <li>Conseguís oro, items y hechizos</li>
+        <li>Peleás contra otros jugadores (PvP)</li>
+        <li>Te unís a clanes, hacés guerras, comerciás</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📌 Datos clave</h4>
+      <ul>
+        <li><strong>Origen:</strong> Argentina, 1999</li>
+        <li><strong>Creador:</strong> Pablo "Gulfas Morgolock" Marquez</li>
+        <li><strong>Lenguaje original:</strong> Visual Basic 6</li>
+        <li><strong>Licencia:</strong> Open Source desde 2003</li>
+        <li><strong>Hito:</strong> Primer MMORPG de Latinoamérica</li>
+        <li><strong>Mundo:</strong> ~291 mapas conectados</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="historia">
+  <h2>📜 Historia rápida</h2>
+  <div class="timeline">
+    <div><span class="year">1999</span> Pablo Márquez ("Gulfas Morgolock") y Fernando Testa lanzan AO en Argentina, basado en ORE v0.4 de Baronsoft.</div>
+    <div><span class="year">2001</span> Tras un año ininterrumpido online, explota en popularidad. Servidores llenos.</div>
+    <div><span class="year">2003</span> <span class="badge">HITO</span> Liberan el código fuente bajo <strong>GNU GPL</strong>. Cualquiera puede crear su servidor.</div>
+    <div><span class="year">2007</span> Implementan <strong>protocolo binario</strong> sobre TCP. 550 conexiones simultáneas con ping de 62ms.</div>
+    <div><span class="year">2010-2020</span> Decenas de forks, servidores piratas y reescrituras (Java, C++, web). Comunidad fragmentada.</div>
+    <div><span class="year">2020+</span> <strong>AO20</strong> emerge como fork canónico moderno, con mantenimiento activo y entrada en Steam.</div>
+    <div><span class="year">2026</span> Cuatro ecosistemas activos en GitHub. Proyectos web con PixiJS retoman fuerza.</div>
+  </div>
+</section>
+
+<section id="mundo">
+  <h2>🗺️ El mundo de Argentum</h2>
+  <p>
+    El mundo está dividido en una grilla de <strong>~291 mapas</strong>, cada uno de
+    <strong>100×100 tiles</strong>. Los personajes caminan tile-por-tile (estilo grilla, no movimiento libre).
+  </p>
+  <div class="grid-2">
+    <div class="card">
+      <h4>🏰 Ciudades principales</h4>
+      <table>
+        <tr><th>Ciudad</th><th>Mapa</th><th>Detalle</th></tr>
+        <tr><td><strong>Ullathorpe</strong></td><td>1</td><td>Centro del mundo. La más transitada. Iglesia, banco, tiendas.</td></tr>
+        <tr><td><strong>Nix</strong></td><td>34</td><td>Cercana a Ullathorpe. Quests con NPC Lyra.</td></tr>
+        <tr><td><strong>Banderbill</strong></td><td>59</td><td>La más grande. Banco Goliath, Palacio Real, único entrenador.</td></tr>
+        <tr><td><strong>Lindos</strong></td><td>62</td><td>Isla libre sin Guardias. Refugio de criminales.</td></tr>
+      </table>
+    </div>
+    <div class="card">
+      <h4>🌲 Tipos de zonas</h4>
+      <ul>
+        <li><strong>Ciudades</strong> — comercio, banco, sacerdote</li>
+        <li><strong>Bosques y praderas</strong> — leveleo bajo</li>
+        <li><strong>Dungeons</strong> — mazmorras con monstruos fuertes</li>
+        <li><strong>Zonas seguras (verdes)</strong> — sin PvP</li>
+        <li><strong>Zonas inseguras (rojas)</strong> — PvP libre</li>
+        <li><strong>Mar</strong> — navegable con barcos</li>
+        <li><strong>Catacumbas, Yulminaki, Sherwood, Helheim</strong>...</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">Cada mapa es un archivo binario (<code>.map</code>, <code>.inf</code>, <code>.dat</code>) con tiles, triggers, NPCs y objetos.</p>
+</section>
+
+<section id="razas-clases">
+  <h2>🧝 Razas y ⚔️ Clases</h2>
+
+  <h3>Razas (modificadores de atributos)</h3>
+  <div class="grid-3">
+    <div class="card"><h4>👤 Humano</h4><p>Balanceado. Sin debilidades pero sin grandes fortalezas. Ideal para empezar.</p></div>
+    <div class="card"><h4>🧝 Elfo</h4><p>Ágiles e inteligentes. Mejores como cazadores, magos y arqueros.</p></div>
+    <div class="card"><h4>🌙 Drow (Elfo Oscuro)</h4><p>Sigilo y magia. Bonus a inteligencia y agilidad. Asesinos y magos.</p></div>
+    <div class="card"><h4>🧙 Gnomo</h4><p>Magos natos. Alta inteligencia, baja fuerza y resistencia.</p></div>
+    <div class="card"><h4>⛏️ Enano</h4><p>Tanques. Mucha fuerza y constitución, baja agilidad y carisma.</p></div>
+    <div class="card" style="opacity:0.55;"><h4>+ variantes</h4><p>Algunos forks suman razas como Goblin, Orco, Troll, etc.</p></div>
+  </div>
+
+  <h3>Las 12 clases clásicas</h3>
+  <div class="grid-4">
+    <div class="card"><h4>🗡️ Guerrero</h4><p>Tanque/DPS físico. Sin maná. Mucha vida y daño cuerpo a cuerpo.</p></div>
+    <div class="card"><h4>🧙 Mago</h4><p>Caster puro. Hechizos de daño, control y curación. Frágil.</p></div>
+    <div class="card"><h4>⛑️ Clérigo</h4><p>Sanador y soporte. Hechizos curativos y revivir.</p></div>
+    <div class="card"><h4>🛡️ Paladín</h4><p>Híbrido guerrero + magia ligera. Anti-criminal.</p></div>
+    <div class="card"><h4>🥷 Asesino</h4><p>Sigilo + daño crítico. Cazador de PKs.</p></div>
+    <div class="card"><h4>🗝️ Ladrón</h4><p>Roba items y oro. Veloz y sigiloso.</p></div>
+    <div class="card"><h4>🏹 Cazador</h4><p>Arquería + mascotas. Buen DPS a distancia.</p></div>
+    <div class="card"><h4>🎵 Bardo</h4><p>Buffs y debuffs musicales. Versátil.</p></div>
+    <div class="card"><h4>🌳 Druida</h4><p>Magia natural + transformaciones.</p></div>
+    <div class="card"><h4>🏴‍☠️ Pirata</h4><p>Combate naval. Especial en barcos.</p></div>
+    <div class="card"><h4>🪤 Bandido</h4><p>Ladrón con orientación PK.</p></div>
+    <div class="card"><h4>⚒️ Trabajador</h4><p>Skills de oficio: minero, pescador, leñador.</p></div>
+  </div>
+
+  <h3>Atributos y skills</h3>
+  <div class="grid-2">
+    <div>
+      <p><strong>Al crear el personaje se "tiran dados"</strong> — el juego sortea valores entre 6 y 18.</p>
+      <div class="stat-row"><span class="stat-name">Fuerza</span><div class="stat-bar"><div style="width:80%"></div></div><span class="stat-value">18</span></div>
+      <div class="stat-row"><span class="stat-name">Agilidad</span><div class="stat-bar"><div style="width:70%"></div></div><span class="stat-value">17</span></div>
+      <div class="stat-row"><span class="stat-name">Inteligencia</span><div class="stat-bar"><div style="width:50%"></div></div><span class="stat-value">12</span></div>
+      <div class="stat-row"><span class="stat-name">Constitución</span><div class="stat-bar"><div style="width:90%"></div></div><span class="stat-value">19</span></div>
+      <div class="stat-row"><span class="stat-name">Carisma</span><div class="stat-bar"><div style="width:40%"></div></div><span class="stat-value">10</span></div>
+      <p class="note">Los buenos rolls definen qué clase conviene jugar.</p>
+    </div>
+    <div>
+      <h4 style="color:var(--gold); margin-top:0;">Skills principales</h4>
+      <ul style="font-size:0.92em;">
+        <li><strong>Combate:</strong> Combate con armas, Apuñalar, Tácticas, Defensa con escudos</li>
+        <li><strong>Magia:</strong> Magia, Meditar, Robar (intelecto)</li>
+        <li><strong>Sigilo:</strong> Ocultarse, Robar</li>
+        <li><strong>Distancia:</strong> Proyectiles, Wrestling</li>
+        <li><strong>Oficios:</strong> Talar, Pescar, Minería, Domar, Liderazgo</li>
+        <li><strong>Supervivencia:</strong> Sobrevivir, Navegación, Comerciar</li>
+      </ul>
+      <p class="note">Cada nivel das puntos a 2-3 skills. Tope de 100 por skill.</p>
+    </div>
+  </div>
+</section>
+
+<section id="combate">
+  <h2>⚔️ Combate y muerte</h2>
+  <div class="grid-2">
+    <div class="card">
+      <h4>Cómo se pelea</h4>
+      <ul>
+        <li><strong>Cuerpo a cuerpo:</strong> click en enemigo (tile adyacente)</li>
+        <li><strong>Magia:</strong> seleccionás hechizo + objetivo</li>
+        <li><strong>Distancia:</strong> arco/proyectil con línea de visión</li>
+        <li><strong>Daño = ataque + arma + skill − defensa enemigo + dado</strong></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>Qué pasa al morir</h4>
+      <ul>
+        <li>Te convertís en <strong>fantasma</strong> 👻</li>
+        <li>Tirás todo el inventario al suelo (items + oro)</li>
+        <li>Necesitás un <strong>clérigo</strong> o sacerdote para revivir</li>
+        <li>Si te mata otro player → ese gana <strong>karma negativo</strong> (ciudadano) o se vuelve <strong>criminal</strong></li>
+        <li>Criminales no pueden entrar a ciudades (Guardias atacan)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="gms">
+  <h2>👑 Game Masters (GMs)</h2>
+  <p>Personal del servidor con poderes especiales. <strong>Tres rangos jerárquicos</strong>:</p>
+  <div class="grid-3">
+    <div class="card">
+      <h4>🪶 Consejero</h4>
+      <p>Rol básico. Puede teleportar, ver invisibles, mutear.</p>
+    </div>
+    <div class="card">
+      <h4>⚜️ Semidiós</h4>
+      <p>Comandos intermedios. Puede banear, encarcelar, generar items.</p>
+    </div>
+    <div class="card">
+      <h4>👑 Dios</h4>
+      <p>Acceso total. Reinicia mapas, aplica updates, manipula NPCs.</p>
+    </div>
+  </div>
+
+  <h3>Comandos de movimiento y control</h3>
+  <table>
+    <tr><th>Comando</th><th>Qué hace</th></tr>
+    <tr><td><span class="cmd">/TELEP nick mapa x y</span></td><td>Teletransporta a un jugador a coordenadas exactas</td></tr>
+    <tr><td><span class="cmd">/SUM nick</span></td><td>Trae al jugador donde está el GM</td></tr>
+    <tr><td><span class="cmd">/IRA nick</span></td><td>El GM va al jugador</td></tr>
+    <tr><td><span class="cmd">/INVISIBLE</span></td><td>El GM se vuelve invisible</td></tr>
+    <tr><td><span class="cmd">/ECHARTODOSPJ</span></td><td>Echa a todos los players del servidor</td></tr>
+    <tr><td><span class="cmd">/ECHAR nick</span></td><td>Echa al jugador del servidor</td></tr>
+    <tr><td><span class="cmd">/MASSKILL</span></td><td>Mata todos los NPCs en pantalla</td></tr>
+    <tr><td><span class="cmd">/RESUCITAR nick</span></td><td>Revive al jugador</td></tr>
+    <tr><td><span class="cmd">/MATAR nick</span></td><td>Mata al jugador</td></tr>
+    <tr><td><span class="cmd">/HEAL nick</span></td><td>Cura al jugador (vida + maná llenos)</td></tr>
+    <tr><td><span class="cmd">/CONTRO nick</span></td><td>Toma control del jugador (modo títere)</td></tr>
+  </table>
+
+  <h3>Comandos de sanción y administración</h3>
+  <table>
+    <tr><th>Comando</th><th>Qué hace</th></tr>
+    <tr><td><span class="cmd">/BAN nick@motivo</span></td><td>Banea la cuenta del personaje</td></tr>
+    <tr><td><span class="cmd">/BANIP nick|ip</span></td><td>Banea la IP del jugador</td></tr>
+    <tr><td><span class="cmd">/UNBANIP ip</span></td><td>Desbanea una IP</td></tr>
+    <tr><td><span class="cmd">/BANIPLIST</span></td><td>Muestra lista de IPs baneadas</td></tr>
+    <tr><td><span class="cmd">/CARCEL nick@motivo@minutos</span></td><td>Manda al jugador a la cárcel del juego</td></tr>
+    <tr><td><span class="cmd">/ADVERTENCIA nick@motivo</span></td><td>Registra advertencia en el prontuario</td></tr>
+    <tr><td><span class="cmd">/MUTE nick</span></td><td>Mutea al jugador en el chat</td></tr>
+    <tr><td><span class="cmd">/UNMUTE nick</span></td><td>Le devuelve la voz</td></tr>
+    <tr><td><span class="cmd">/SMSG mensaje</span></td><td>Mensaje global tipo MsgBox a todos</td></tr>
+    <tr><td><span class="cmd">/CITAR nick</span></td><td>Trae al jugador a interrogatorio</td></tr>
+    <tr><td><span class="cmd">/CREAR objeto cant</span></td><td>Crea items en el inventario (Dios)</td></tr>
+    <tr><td><span class="cmd">/RMSG mensaje</span></td><td>Mensaje del Reino al canal del clan</td></tr>
+  </table>
+  <p class="note">Lista parcial. Hay 80+ comandos según el rango. Cada fork agrega los suyos.</p>
+</section>
+
+<section id="codigo">
+  <h2>💻 El código abierto</h2>
+
+  <div class="quote">
+    "Argentum Online es uno de los pocos MMORPGs <strong>completamente open source</strong> del mundo."
+  </div>
+
+  <h3>¿Dónde está el código?</h3>
+  <p>Hoy hay <strong>cuatro ecosistemas activos</strong> en GitHub:</p>
+  <table>
+    <tr><th>Repositorio</th><th>Qué es</th><th>Lenguaje</th><th>Estado</th></tr>
+    <tr>
+      <td><a href="https://github.com/ao-org/argentum-online-server">ao-org / AO20</a></td>
+      <td>Fork oficial moderno, en Steam</td>
+      <td>VB6</td>
+      <td><span class="badge">ACTIVO</span> v5.6.38 (2026-05)</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/ao-libre/ao-server">ao-libre / ao-server</a></td>
+      <td>Fork comunitario clásico</td>
+      <td>VB6</td>
+      <td><span class="badge steel">LEGADO</span> v0.13.56 (2020)</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/ao-libre/finisterra">ao-libre / finisterra</a></td>
+      <td>Reescritura moderna en Java</td>
+      <td>Java + libGDX</td>
+      <td><span class="badge">ACTIVO</span> 134 ★</td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/ominousg/ao-web-client">ominousg / ao-web-client</a></td>
+      <td>Cliente web (es lo que corre <a href="https://aoweb.app">aoweb.app</a>)</td>
+      <td>JS + PixiJS</td>
+      <td><span class="badge">BETA</span></td>
+    </tr>
+    <tr>
+      <td><a href="https://github.com/Comunidad-Winter/Argentum-Online">Comunidad-Winter</a></td>
+      <td>Archivo histórico (versiones 0.99z → 0.13.3)</td>
+      <td>VB6</td>
+      <td><span class="badge steel">REFERENCIA</span></td>
+    </tr>
+  </table>
+
+  <h3>Stack original</h3>
+  <div class="grid-2">
+    <div class="card">
+      <h4>🖥️ Servidor</h4>
+      <ul>
+        <li><strong>Lenguaje:</strong> Visual Basic 6.0 (1998)</li>
+        <li><strong>Networking:</strong> sockets TCP/IPv4 bloqueantes</li>
+        <li><strong>Protocolo:</strong> binario (desde 0.11.6)</li>
+        <li><strong>Persistencia:</strong> archivos planos (<code>.dat</code>, <code>.ini</code>, <code>.chr</code>)</li>
+        <li><strong>Game loop:</strong> single-threaded con timers de Windows</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🎮 Cliente</h4>
+      <ul>
+        <li><strong>Lenguaje:</strong> Visual Basic 6.0</li>
+        <li><strong>Render:</strong> DirectDraw (DirectX 7)</li>
+        <li><strong>Tiles:</strong> 32×32 px sprites</li>
+        <li><strong>Audio:</strong> DirectSound + MIDI</li>
+        <li><strong>Mapas:</strong> archivos <code>.map</code> + <code>.inf</code></li>
+      </ul>
+    </div>
+  </div>
+  <p class="note">
+    💡 <strong>Curiosidad:</strong> el juego sigue funcionando en Windows modernos gracias a capas de
+    compatibilidad y a forks que actualizaron las dependencias DirectX.
+  </p>
+
+  <h3>Estructura de un servidor AO</h3>
+<pre><code>ao-server/
+├── Codigo/                  ← Código fuente VB6
+│   ├── SERVER.VBP           ← Proyecto VB6
+│   ├── modGeneral.bas       ← Lógica general
+│   ├── modCombate.bas       ← Sistema de combate
+│   ├── Protocol.bas         ← Empaquetado de mensajes
+│   ├── clsByteQueue.cls     ← Buffer binario
+│   └── ...                  ← ~150 módulos más
+├── Dat/                     ← Datos del juego
+│   ├── NPCs.dat             ← Stats de monstruos y NPCs
+│   ├── Armas.dat            ← Catálogo de armas
+│   ├── Hechizos.dat         ← Hechizos disponibles
+│   ├── Balance.dat          ← Tuning de gameplay
+│   └── ...
+├── Mundos/Alkon/            ← Mapas del mundo
+│   ├── Mapa1.map            ← Tile layer
+│   ├── Mapa1.inf            ← Triggers, NPCs, objetos
+│   └── ...
+├── Account/                 ← Cuentas de jugadores
+├── Charfile/                ← Personajes guardados (.chr)
+├── AntiCheats/              ← Sistemas anti-trampa
+└── Librerias/               ← DLLs propias y de terceros</code></pre>
+
+  <h3>Cómo se comunican cliente y servidor</h3>
+  <div class="grid-2">
+    <div>
+      <h4 style="color:var(--gold); margin-top:0;">Antes (texto)</h4>
+      <p>Hasta 0.11.5 los mensajes eran texto plano sobre TCP. Verboso y lento.</p>
+<pre style="font-size:0.78em;"><code>;TALK Hola que tal
+;MOVE NORTH
+;ATTACK 4523</code></pre>
+    </div>
+    <div>
+      <h4 style="color:var(--gold); margin-top:0;">Ahora (binario)</h4>
+      <p>Desde 0.11.6: cada mensaje empieza con un <strong>byte de OpCode</strong> y luego campos empaquetados (<code>byte</code>, <code>int16</code>, <code>string</code>).</p>
+<pre style="font-size:0.78em;"><code>[0x01][len: u16][texto]    // TALK
+[0x06][dir: u8]            // MOVE
+[0x0A][targetID: u16]      // ATTACK</code></pre>
+    </div>
+  </div>
+  <p style="margin-top:1em; text-align:center;">
+    Con el protocolo binario el servidor pudo manejar <strong>550 conexiones simultáneas</strong>
+    con ping de <strong>62ms</strong>.
+  </p>
+
+  <h3>La licencia: AGPL-3.0</h3>
+  <div class="grid-2">
+    <div>
+      <p>"GNU Affero General Public License v3" — una licencia libre con un giro:</p>
+      <ul>
+        <li>✅ Podés usar, modificar y vender el código</li>
+        <li>⚠️ Si lo ofrecés <strong>como servicio en red</strong>, los usuarios tienen derecho a <strong>recibir tu código modificado</strong></li>
+        <li>⚠️ Cualquier obra derivada también debe ser AGPL</li>
+      </ul>
+    </div>
+    <div class="card danger">
+      <h4>⚠️ Importante para proyectos derivados</h4>
+      <p>
+        Si tu servidor de AO está online y la gente se conecta,
+        <strong>tenés que publicar tu código</strong>. No podés cerrarlo como SaaS propietario.
+      </p>
+      <p style="margin-top:0.6em;">
+        Esto es lo que se llama <em>"cerrar el agujero del ASP"</em> y es la diferencia clave con la GPL clásica.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="proyecto">
+  <h2>🚀 Nuestro proyecto</h2>
+  <p>Reescritura web moderna del servidor AO. Decisiones técnicas iniciales:</p>
+  <div class="grid-2">
+    <div class="card">
+      <h4>🖥️ Backend</h4>
+      <ul>
+        <li>Node.js + TypeScript</li>
+        <li>WebSocket binario (MessagePack)</li>
+        <li>PostgreSQL + Redis</li>
+        <li>Game loop a tick fijo (10–20 Hz)</li>
+        <li>Protocolo propio (no compatible con clientes VB6)</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🎮 Frontend</h4>
+      <ul>
+        <li>PixiJS v8</li>
+        <li>TypeScript + Vite</li>
+        <li>HUD con preact/lit</li>
+        <li><strong>Mobile-first</strong></li>
+        <li>Render Canvas/WebGL</li>
+      </ul>
+    </div>
+  </div>
+  <p class="note" style="text-align:center; margin-top:1.2em;">
+    📄 Detalle completo en <code>docs/contexto-y-analisis.md</code>
+  </p>
+</section>
+
+<section id="recursos">
+  <h2>🔗 Recursos para profundizar</h2>
+  <div class="grid-3">
+    <div class="card">
+      <h4>📦 Repositorios</h4>
+      <ul>
+        <li><a href="https://github.com/ao-org">github.com/ao-org</a> — AO20 oficial</li>
+        <li><a href="https://github.com/ao-libre">github.com/ao-libre</a> — Comunidad libre + Finisterra</li>
+        <li><a href="https://github.com/ominousg/ao-web-client">ominousg/ao-web-client</a> — Cliente PixiJS</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>📖 Wikis</h4>
+      <ul>
+        <li><a href="http://wiki.comunidadargentum.com">wiki.comunidadargentum.com</a> — Manual clásico</li>
+        <li><a href="https://wiki.aoforever.cc">wiki.aoforever.cc</a> — AO Forever</li>
+        <li><a href="https://www.ao20.com.ar/wiki">ao20.com.ar/wiki</a> — AO20 oficial</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>🌐 Comparable web</h4>
+      <ul>
+        <li><a href="https://aoweb.app">aoweb.app</a> — AO Web (D. Catanzaro)</li>
+        <li><a href="https://argentumonline.org">argentumonline.org</a> — AO Libre</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="resume">
+    <h3 style="text-align:center;">🎯 Resumen</h3>
+    <ul>
+      <li>AO es un MMORPG argentino de 1999, open source desde 2003.</li>
+      <li>El código original está en VB6, mantenido por la comunidad.</li>
+      <li>Cuatro ecosistemas activos en GitHub bajo AGPL-3.0.</li>
+      <li>Protocolo binario sobre TCP, ~291 mapas, 12 clases, 5+ razas.</li>
+      <li>Comandos GM con 3 rangos de poder.</li>
+      <li>Nuestro plan: reescribirlo en stack web moderno (Node + TS + PixiJS).</li>
+    </ul>
+  </div>
+  <p>
+    Próximo paso: definir las <strong>7 decisiones abiertas</strong> y armar el roadmap.
+  </p>
+</footer>
+
+</body>
+</html>
