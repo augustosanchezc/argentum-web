@@ -32,7 +32,7 @@
 | T-012 | Borrador inicial de `docs/protocol.md` — paquetes de Fase 1 | backend-developer | M | T-006 | Documento con al menos 5 paquetes definidos: `LOGIN_REQUEST`, `LOGIN_RESPONSE`, `MOVE`, `ENTITY_UPDATE`, `MAP_DATA`. Cada uno con campos, tipos y dirección (C→S o S→C) | Must |
 | T-013 | Crear `docs/design-system.md` con paleta y tipografía | frontend-designer | M | — | Doc con paleta de colores (hex), fuente principal, tamaños de texto y principios visuales (máx. 1 página) | Must |
 | T-014 | Crear `docs/definition-of-done.md` | project-manager | S | — | Doc con criterios globales de DoD: tests requeridos, cobertura mínima, docs actualizadas | Must |
-| T-015 | Actualizar `docs/risks.md` con tabla completa de riesgos | project-manager | S | — | Archivo con los 10 riesgos del roadmap y columna de estado (abierto/mitigado) | Should |
+| T-015 | Actualizar `docs/risks.md` con tabla completa de riesgos | project-manager | S | — | Archivo con los 10 riesgos del roadmap y columna de estado (abierto/mitigado) — **HECHO** 2026-06-19: 13 riesgos registrados (R-01 a R-13), 2 cerrados, 3 mitigados, 8 abiertos. | Should |
 
 ---
 
