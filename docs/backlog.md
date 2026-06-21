@@ -15,7 +15,7 @@
 |---|---|---|---|---|---|---|
 | T-001 | Crear repositorio GitHub con estructura de monorepo | backend-developer | S | — | Repo público con carpetas `packages/server`, `packages/client`, `packages/shared`, `.gitignore` y rama `main` protegida | Must |
 | T-002 | Agregar LICENSE (AGPL-3.0) y headers de archivo | project-manager | S | T-001 | Archivo `LICENSE` presente; template de header AGPL en `docs/` | Must |
-| T-003 | Configurar `docker-compose.yml` con PostgreSQL 16 + Redis | backend-developer | S | T-001 | `docker compose up` levanta ambos servicios sin errores; `psql` y `redis-cli ping` responden | Must |
+| T-003 | Configurar `docker-compose.yml` con PostgreSQL 16 + Redis | backend-developer | S | T-001 | `docker compose up` levanta ambos servicios sin errores; `psql` y `redis-cli ping` responden — **HECHO**: ambos containers healthy, pg_isready y redis PING verdes. | Must |
 | T-004 | Crear `packages/server` con TypeScript + ESLint + Prettier | backend-developer | S | T-001 | `pnpm install && pnpm build` sin errores; `pnpm lint` sin warnings | Must |
 | T-005 | Crear `packages/client` con Vite + PixiJS v8 + TypeScript | frontend-designer | S | T-001 | `pnpm dev` abre `localhost:5173` con canvas en blanco sin errores de consola | Must |
 | T-006 | Crear `packages/shared` para tipos y constantes de protocolo | backend-developer | S | T-001 | Paquete importable desde server y client; al menos tipos `Packet`, `Vector2`, `EntityId` definidos | Must |
