@@ -309,7 +309,7 @@ El servidor difunde este paquete a todos los clientes con visibilidad de la enti
 
 ### 5.6 ENTITY\_SPAWN — `0x92` — S→C
 
-**Tipo TS: pendiente de agregar a `@ao/shared/protocol.ts` antes del Sprint 3.**
+Tipo TS: `EntitySpawn` en `@ao/shared/protocol.ts`.
 
 El servidor envia este paquete cuando una entidad entra en el rango de vision de un cliente (incluyendo al propio jugador al hacer login). Se envia despues de `MAP_DATA`.
 
@@ -339,7 +339,7 @@ El servidor envia este paquete cuando una entidad entra en el rango de vision de
 
 ### 5.7 ENTITY\_DESPAWN — `0x93` — S→C
 
-**Tipo TS: pendiente de agregar a `@ao/shared/protocol.ts` antes del Sprint 3.**
+Tipo TS: `EntityDespawn` en `@ao/shared/protocol.ts`.
 
 El servidor envia este paquete cuando una entidad sale del rango de vision de un cliente o se desconecta.
 
@@ -363,7 +363,7 @@ El servidor envia este paquete cuando una entidad sale del rango de vision de un
 
 ### 5.8 DISCONNECT — `0xFF` — C→S
 
-Tipo TS: `ClientToServerOp.Disconnect = 0xFF` en `@ao/shared/protocol.ts`. El payload concreto no tiene tipo TS aun (ver inconsistencias).
+Tipo TS: `DisconnectRequest` en `@ao/shared/protocol.ts`.
 
 Paquete opcional que el cliente envia para iniciar un cierre limpio. Permite al servidor persistir el estado del personaje de forma sincronizada antes de cerrar la sesion, en lugar de depender del evento de cierre del WebSocket.
 

@@ -56,6 +56,28 @@ export interface EntityUpdate {
   readonly direction: Direction;
 }
 
-export type ClientPacket = LoginRequest | MoveRequest;
-export type ServerPacket = LoginResponse | MapData | EntityUpdate;
+export interface EntitySpawn {
+  readonly op: ServerToClientOp.EntitySpawn;
+  readonly id: EntityId;
+  readonly position: Vector2;
+  readonly direction: Direction;
+  readonly name: string;
+}
+
+export interface EntityDespawn {
+  readonly op: ServerToClientOp.EntityDespawn;
+  readonly id: EntityId;
+}
+
+export interface DisconnectRequest {
+  readonly op: ClientToServerOp.Disconnect;
+}
+
+export type ClientPacket = LoginRequest | MoveRequest | DisconnectRequest;
+export type ServerPacket =
+  | LoginResponse
+  | MapData
+  | EntityUpdate
+  | EntitySpawn
+  | EntityDespawn;
 export type AnyPacket = ClientPacket | ServerPacket;
