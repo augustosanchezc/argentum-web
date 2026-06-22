@@ -1,8 +1,9 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import { env } from "./config/env.js";
 import { registerAuthRoutes } from "./routes/auth.js";
+import { registerCharactersRoutes } from "./routes/characters.js";
 
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({
@@ -22,6 +23,14 @@ export async function buildApp(): Promise<FastifyInstance> {
     sign: { expiresIn: `${env.jwt.ttlSeconds}s` },
   });
 
+  app.decorate("authenticate", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      await req.jwtVerify();
+    } catch {
+      await reply.code(401).send({ error: "INVALID_TOKEN" });
+    }
+  });
+
   app.get("/health", () => ({
     status: "ok",
     nodeEnv: env.nodeEnv,
@@ -29,6 +38,7 @@ export async function buildApp(): Promise<FastifyInstance> {
   }));
 
   await app.register(registerAuthRoutes, { prefix: "/auth" });
+  await app.register(registerCharactersRoutes, { prefix: "/characters" });
 
   return app;
 }
