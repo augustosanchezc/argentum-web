@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Estado del proyecto — Argentum Online Web</title>
+
+  <style>
+    :root {
+      --bg: #0a0805;
+      --bg-soft: #15110b;
+      --bg-card: #1a140d;
+      --bg-glow: rgba(212, 175, 55, 0.08);
+      --gold: #d4af37;
+      --gold-bright: #f4d56a;
+      --gold-dim: #a08428;
+      --gold-soft: rgba(212, 175, 55, 0.15);
+      --parchment: #f5e6c8;
+      --text: #e8dfc8;
+      --text-dim: #a89c80;
+      --text-faint: #6f6650;
+      --crimson: #8b1a1a;
+      --crimson-bright: #c93838;
+      --emerald: #2d8659;
+      --emerald-bright: #4cb87e;
+      --azure: #3a6ea5;
+      --azure-bright: #6b9cd5;
+      --amber: #c97b1f;
+      --amber-bright: #e89d4a;
+      --violet: #6b4a8b;
+      --steel: #4a5568;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      background-image:
+        radial-gradient(ellipse at 20% 0%, rgba(212, 175, 55, 0.08), transparent 50%),
+        radial-gradient(ellipse at 80% 100%, rgba(139, 26, 26, 0.06), transparent 50%),
+        radial-gradient(ellipse at 50% 50%, rgba(45, 134, 89, 0.03), transparent 70%);
+      color: var(--text);
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    h1, h2, h3, h4 {
+      font-family: Georgia, "Cinzel", serif;
+      color: var(--gold);
+      letter-spacing: 0.02em;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    a { color: var(--gold); }
+
+    /* ============ ANIMATIONS ============ */
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(212, 175, 55, 0.6); }
+      50% { transform: scale(1.08); box-shadow: 0 0 0 14px rgba(212, 175, 55, 0); }
+    }
+    @keyframes shimmer {
+      0% { background-position: -200% 50%; }
+      100% { background-position: 200% 50%; }
+    }
+    @keyframes drawCircle {
+      from { stroke-dashoffset: 502.65; }
+    }
+    @keyframes glow {
+      0%, 100% { filter: drop-shadow(0 0 8px var(--gold-bright)); }
+      50% { filter: drop-shadow(0 0 24px var(--gold-bright)); }
+    }
+    @keyframes fillBar {
+      from { transform: scaleX(0); }
+    }
+    @keyframes slideRight {
+      from { opacity: 0; transform: translateX(-30px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* ============ HERO ============ */
+    .hero {
+      padding: 4em 1.5em 3em;
+      text-align: center;
+      position: relative;
+      animation: fadeInUp 0.8s ease-out;
+    }
+
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 50%; transform: translateX(-50%);
+      width: 80%; max-width: 1000px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      opacity: 0.4;
+    }
+
+    .hero-title {
+      font-size: clamp(2.2em, 5vw, 4em);
+      background: linear-gradient(135deg, var(--gold-bright) 0%, var(--gold) 40%, var(--parchment) 70%, var(--gold) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: shimmer 4s linear infinite;
+      margin-bottom: 0.2em;
+      line-height: 1.1;
+    }
+
+    .hero-subtitle {
+      font-family: Georgia, serif;
+      color: var(--text-dim);
+      font-size: 1.1em;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 0.6em;
+    }
+
+    .hero-date {
+      color: var(--text-faint);
+      font-size: 0.9em;
+      margin-bottom: 2.5em;
+    }
+    .hero-date strong { color: var(--gold); }
+
+    /* ============ STAT GRID ============ */
+    .stat-grid {
+      max-width: 1100px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5em;
+      padding: 0 1em;
+    }
+
+    .stat-card {
+      background: linear-gradient(135deg, rgba(26, 20, 13, 0.9), rgba(21, 17, 11, 0.7));
+      border: 1px solid var(--gold-soft);
+      border-radius: 12px;
+      padding: 2em 1.5em;
+      backdrop-filter: blur(8px);
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .stat-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 16px 40px rgba(212, 175, 55, 0.15);
+    }
+    .stat-card::before {
+      content: "";
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    }
+
+    .stat-card-circle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5em;
+      padding: 1.5em;
+    }
+
+    .circular-progress {
+      width: 140px;
+      height: 140px;
+      flex-shrink: 0;
+      transform: rotate(-90deg);
+    }
+    .circular-progress .track {
+      fill: none;
+      stroke: rgba(212, 175, 55, 0.1);
+      stroke-width: 12;
+    }
+    .circular-progress .fill {
+      fill: none;
+      stroke: url(#goldGradient);
+      stroke-width: 12;
+      stroke-linecap: round;
+      stroke-dasharray: 502.65;
+      stroke-dashoffset: 502.65;
+      animation: drawCircle 2s ease-out forwards;
+      animation-delay: 0.3s;
+      filter: drop-shadow(0 0 8px rgba(212, 175, 55, 0.5));
+    }
+
+    .circular-text {
+      text-align: left;
+    }
+    .big-number {
+      font-family: Georgia, serif;
+      font-size: 3em;
+      font-weight: bold;
+      color: var(--gold-bright);
+      line-height: 1;
+      display: block;
+      text-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+    }
+    .big-number-suffix { font-size: 0.5em; color: var(--text-dim); }
+    .stat-label {
+      font-family: Georgia, serif;
+      color: var(--parchment);
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      font-size: 0.78em;
+      margin-top: 0.4em;
+    }
+    .stat-detail {
+      color: var(--text-faint);
+      font-size: 0.82em;
+      margin-top: 0.3em;
+    }
+
+    .stat-card-number {
+      text-align: center;
+    }
+    .stat-card-number .big-number { font-size: 3.5em; display: block; margin: 0.1em 0; }
+
+    .stat-badge {
+      display: inline-block;
+      margin-top: 0.6em;
+      padding: 0.2em 0.7em;
+      border-radius: 12px;
+      font-size: 0.72em;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .stat-badge.green { background: rgba(45, 134, 89, 0.2); color: var(--emerald-bright); border: 1px solid var(--emerald); }
+    .stat-badge.gold { background: rgba(212, 175, 55, 0.15); color: var(--gold-bright); border: 1px solid var(--gold); }
+
+    /* ============ SECTIONS ============ */
+    section {
+      max-width: 1180px;
+      margin: 4em auto;
+      padding: 0 1.5em;
+      animation: fadeInUp 0.8s ease-out;
+    }
+    section h2 {
+      font-size: 1.8em;
+      margin-bottom: 0.3em;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6em;
+    }
+    section h2 .section-num {
+      color: var(--gold-dim);
+      font-size: 0.6em;
+      letter-spacing: 0.2em;
+    }
+    section .section-sub {
+      color: var(--text-dim);
+      margin-bottom: 1.5em;
+    }
+
+    /* ============ TIMELINE BAR ============ */
+    .timeline-bar {
+      background: var(--bg-soft);
+      border: 1px solid var(--gold-soft);
+      border-radius: 12px;
+      padding: 2em 1.5em 2.5em;
+      position: relative;
+      overflow: hidden;
+    }
+    .timeline-bar::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 13% 50%, rgba(45, 134, 89, 0.15), transparent 30%);
+      pointer-events: none;
+    }
+
+    .timeline-phases {
+      display: grid;
+      grid-template-columns: 1fr 2fr 2fr 3fr 4fr;
+      gap: 4px;
+      position: relative;
+      min-width: 700px;
+    }
+
+    .tl-phase {
+      padding: 1.2em 0.8em 1em;
+      border-radius: 6px;
+      position: relative;
+      cursor: default;
+      color: rgba(255,255,255,0.95);
+      text-decoration: none;
+      transition: transform 0.2s;
+    }
+    .tl-phase:hover { transform: translateY(-2px); }
+    .tl-phase.p0 { background: linear-gradient(135deg, var(--steel), #2c3540); }
+    .tl-phase.p1 { background: linear-gradient(135deg, var(--azure), #2e547d); }
+    .tl-phase.p2 { background: linear-gradient(135deg, var(--emerald), #1f5e3e); }
+    .tl-phase.p3 { background: linear-gradient(135deg, var(--amber), #8e571a); }
+    .tl-phase.p4 { background: linear-gradient(135deg, var(--crimson), #5e1010); }
+
+    .tl-phase.done { box-shadow: 0 0 0 2px var(--emerald-bright), 0 0 20px rgba(76, 184, 126, 0.4); }
+    .tl-phase.current {
+      box-shadow: 0 0 0 2px var(--gold-bright), 0 0 24px rgba(244, 213, 106, 0.5);
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+
+    .tl-phase-label {
+      font-family: Georgia, serif;
+      font-weight: bold;
+      font-size: 0.92em;
+      margin-bottom: 0.3em;
+    }
+    .tl-phase-sub {
+      font-size: 0.78em;
+      opacity: 0.85;
+    }
+    .tl-phase-fill {
+      position: absolute;
+      bottom: 0; left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--gold-bright), var(--gold));
+      border-radius: 0 0 6px 6px;
+      transform-origin: left;
+      animation: fillBar 1.8s ease-out forwards;
+      animation-delay: 0.5s;
+    }
+    .tl-status-icon {
+      position: absolute;
+      top: 8px; right: 8px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75em;
+      font-weight: bold;
+    }
+    .tl-status-icon.done { background: var(--emerald-bright); color: #0a0805; }
+    .tl-status-icon.pending { background: rgba(255,255,255,0.15); color: rgba(255,255,255,0.6); }
+    .tl-status-icon.current { background: var(--gold-bright); color: #0a0805; }
+
+    .timeline-dates {
+      display: grid;
+      grid-template-columns: 1fr 2fr 2fr 3fr 4fr;
+      gap: 4px;
+      font-size: 0.72em;
+      color: var(--text-faint);
+      text-align: center;
+      margin-top: 0.8em;
+      min-width: 700px;
+    }
+
+    .timeline-marker {
+      position: absolute;
+      top: -10px;
+      left: 8%;
+      transform: translateX(-50%);
+      color: var(--gold-bright);
+      font-size: 0.7em;
+      font-weight: bold;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      pointer-events: none;
+      animation: fadeInUp 1s ease-out 1s both;
+    }
+    .timeline-marker::after {
+      content: "";
+      display: block;
+      width: 2px;
+      height: 86px;
+      background: linear-gradient(to bottom, var(--gold-bright), transparent);
+      margin: 0.2em auto 0;
+    }
+
+    /* ============ PHASE CARDS ============ */
+    .phases {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.2em;
+    }
+    .phase-card {
+      background: linear-gradient(135deg, rgba(26, 20, 13, 0.95), rgba(21, 17, 11, 0.75));
+      border: 1px solid var(--gold-soft);
+      border-radius: 12px;
+      padding: 1.6em 1.8em;
+      transition: transform 0.3s, box-shadow 0.3s, border-color 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .phase-card:hover {
+      transform: translateY(-3px) scale(1.005);
+      border-color: rgba(212, 175, 55, 0.4);
+    }
+    .phase-card::before {
+      content: "";
+      position: absolute;
+      left: 0; top: 0; bottom: 0;
+      width: 5px;
+    }
+    .phase-card.p0::before { background: var(--steel); }
+    .phase-card.p1::before { background: var(--azure); }
+    .phase-card.p2::before { background: var(--emerald); }
+    .phase-card.p3::before { background: var(--amber); }
+    .phase-card.p4::before { background: var(--crimson); }
+
+    .phase-card.done { box-shadow: 0 0 0 1px var(--emerald), inset 0 0 60px rgba(45, 134, 89, 0.08); }
+    .phase-card.current {
+      box-shadow: 0 0 0 1px var(--gold), 0 0 24px rgba(212, 175, 55, 0.15), inset 0 0 60px rgba(212, 175, 55, 0.04);
+    }
+
+    .phase-card-header {
+      display: flex;
+      align-items: center;
+      gap: 1em;
+      margin-bottom: 1em;
+      flex-wrap: wrap;
+    }
+    .phase-num {
+      font-family: Georgia, serif;
+      font-size: 2em;
+      font-weight: bold;
+      color: var(--gold);
+      line-height: 1;
+      min-width: 1.6em;
+    }
+    .phase-card.done .phase-num { color: var(--emerald-bright); }
+    .phase-card.current .phase-num { color: var(--gold-bright); animation: glow 2s ease-in-out infinite; }
+
+    .phase-info { flex: 1; min-width: 200px; }
+    .phase-name {
+      font-family: Georgia, serif;
+      font-size: 1.25em;
+      color: var(--parchment);
+      margin-bottom: 0.15em;
+    }
+    .phase-meta { color: var(--text-faint); font-size: 0.85em; }
+
+    .phase-status {
+      padding: 0.3em 0.9em;
+      border-radius: 16px;
+      font-family: Georgia, serif;
+      font-size: 0.75em;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+    .phase-status.done { background: rgba(45, 134, 89, 0.2); color: var(--emerald-bright); border: 1px solid var(--emerald); }
+    .phase-status.current { background: rgba(212, 175, 55, 0.15); color: var(--gold-bright); border: 1px solid var(--gold); }
+    .phase-status.pending { background: rgba(74, 85, 104, 0.2); color: var(--text-dim); border: 1px solid var(--steel); }
+
+    .progress-bar {
+      height: 12px;
+      background: rgba(212, 175, 55, 0.06);
+      border-radius: 6px;
+      overflow: hidden;
+      position: relative;
+      margin: 0.8em 0 0.5em;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transform-origin: left;
+      animation: fillBar 1.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation-delay: 0.5s;
+      position: relative;
+    }
+    .progress-bar-fill.done {
+      background: linear-gradient(90deg, var(--emerald), var(--emerald-bright));
+      box-shadow: 0 0 14px rgba(76, 184, 126, 0.5);
+    }
+    .progress-bar-fill.partial {
+      background: linear-gradient(90deg, var(--gold-dim), var(--gold-bright));
+      box-shadow: 0 0 14px rgba(212, 175, 55, 0.5);
+    }
+    .progress-bar-fill.partial::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+      background-size: 200% 100%;
+      animation: shimmer 2.5s linear infinite;
+    }
+    .progress-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      font-size: 0.82em;
+      color: var(--text-dim);
+    }
+    .progress-row strong { color: var(--gold-bright); font-family: Georgia, serif; font-size: 1.1em; }
+
+    .epic-list {
+      margin-top: 1.2em;
+      display: grid;
+      gap: 0.4em;
+    }
+    .epic {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.8em;
+      align-items: center;
+      padding: 0.6em 0.9em;
+      background: rgba(13, 10, 7, 0.5);
+      border-radius: 6px;
+      border-left: 3px solid var(--text-faint);
+      font-size: 0.88em;
+    }
+    .epic.done { border-left-color: var(--emerald-bright); }
+    .epic.current { border-left-color: var(--gold-bright); }
+    .epic-check {
+      width: 18px; height: 18px;
+      border-radius: 4px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75em;
+      font-weight: bold;
+    }
+    .epic-check.done { background: var(--emerald-bright); color: #0a0805; }
+    .epic-check.current { background: var(--gold-bright); color: #0a0805; animation: pulse 1.8s ease-in-out infinite; }
+    .epic-check.pending { background: rgba(255,255,255,0.08); color: var(--text-faint); }
+    .epic-name { color: var(--text); }
+    .epic.pending .epic-name { color: var(--text-dim); }
+    .epic-count { color: var(--text-faint); font-family: Consolas, monospace; font-size: 0.85em; }
+
+    /* ============ TRACKS ============ */
+    .tracks {
+      display: grid;
+      gap: 1em;
+    }
+    .track {
+      background: var(--bg-card);
+      border: 1px solid var(--gold-soft);
+      border-radius: 8px;
+      padding: 1em 1.3em;
+    }
+    .track-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 0.5em;
+    }
+    .track-name {
+      font-family: Georgia, serif;
+      font-size: 1em;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--parchment);
+    }
+    .track-stat {
+      color: var(--text-dim);
+      font-size: 0.82em;
+    }
+    .track-stat strong { color: var(--gold-bright); font-family: Georgia, serif; font-size: 1.1em; }
+
+    /* ============ COUNTDOWN ============ */
+    .countdown {
+      background: linear-gradient(135deg, rgba(139, 26, 26, 0.2), rgba(26, 20, 13, 0.9));
+      border: 1px solid rgba(139, 26, 26, 0.4);
+      border-radius: 12px;
+      padding: 2em;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .countdown::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      background: linear-gradient(135deg, transparent, rgba(212, 175, 55, 0.15), transparent);
+      animation: shimmer 6s linear infinite;
+      background-size: 200% 100%;
+      pointer-events: none;
+    }
+    .countdown-big {
+      font-family: Georgia, serif;
+      font-size: clamp(4em, 12vw, 7em);
+      font-weight: bold;
+      background: linear-gradient(135deg, var(--gold-bright), var(--parchment), var(--gold));
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .countdown-label {
+      font-family: Georgia, serif;
+      color: var(--parchment);
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-top: 0.5em;
+      font-size: 1.1em;
+    }
+    .countdown-target {
+      color: var(--gold);
+      margin-top: 0.5em;
+      font-size: 1em;
+    }
+
+    .scenarios {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1em;
+      margin-top: 1.5em;
+    }
+    .scenario {
+      background: rgba(13, 10, 7, 0.6);
+      border-radius: 8px;
+      padding: 1.1em 1.2em;
+      text-align: left;
+      border-top: 3px solid;
+    }
+    .scenario.optimist { border-top-color: var(--emerald-bright); }
+    .scenario.real { border-top-color: var(--gold-bright); }
+    .scenario.conservative { border-top-color: var(--amber-bright); }
+    .scenario h4 {
+      font-size: 0.78em;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--parchment);
+      margin-bottom: 0.4em;
+    }
+    .scenario .date {
+      font-family: Georgia, serif;
+      font-size: 1.4em;
+      color: var(--gold-bright);
+      margin-bottom: 0.3em;
+    }
+    .scenario .prob {
+      color: var(--text-dim);
+      font-size: 0.85em;
+    }
+
+    /* ============ ACTIVITY FEED ============ */
+    .activity {
+      position: relative;
+      padding-left: 2em;
+    }
+    .activity::before {
+      content: "";
+      position: absolute;
+      left: 0.5em;
+      top: 0.5em;
+      bottom: 0.5em;
+      width: 2px;
+      background: linear-gradient(to bottom, var(--gold), var(--gold-dim), transparent);
+    }
+    .activity-item {
+      position: relative;
+      padding: 0.6em 0 0.6em 1.5em;
+      animation: slideRight 0.6s ease-out;
+      animation-fill-mode: backwards;
+    }
+    .activity-item:nth-child(1) { animation-delay: 0.1s; }
+    .activity-item:nth-child(2) { animation-delay: 0.2s; }
+    .activity-item:nth-child(3) { animation-delay: 0.3s; }
+    .activity-item:nth-child(4) { animation-delay: 0.4s; }
+    .activity-item:nth-child(5) { animation-delay: 0.5s; }
+    .activity-item:nth-child(6) { animation-delay: 0.6s; }
+    .activity-item:nth-child(7) { animation-delay: 0.7s; }
+
+    .activity-item::before {
+      content: "";
+      position: absolute;
+      left: -0.5em;
+      top: 1em;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--bg);
+      border: 2px solid var(--gold);
+      box-shadow: 0 0 0 4px var(--bg), 0 0 12px var(--gold);
+    }
+    .activity-item.latest::before {
+      background: var(--gold-bright);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    .activity-hash {
+      display: inline-block;
+      font-family: Consolas, monospace;
+      font-size: 0.78em;
+      color: var(--gold-bright);
+      background: rgba(212, 175, 55, 0.1);
+      padding: 0.1em 0.5em;
+      border-radius: 3px;
+      margin-right: 0.6em;
+    }
+    .activity-msg {
+      color: var(--text);
+      font-size: 0.95em;
+    }
+    .activity-meta {
+      color: var(--text-faint);
+      font-size: 0.8em;
+      margin-top: 0.2em;
+    }
+
+    /* ============ AHEAD BANNER ============ */
+    .ahead-banner {
+      max-width: 1100px;
+      margin: 2em auto 0;
+      padding: 1.2em 2em;
+      background: linear-gradient(135deg, rgba(45, 134, 89, 0.2), rgba(45, 134, 89, 0.08));
+      border: 1px solid rgba(45, 134, 89, 0.4);
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      gap: 1.2em;
+      animation: fadeInUp 1s ease-out 0.4s both;
+    }
+    .ahead-icon {
+      font-family: Georgia, serif;
+      font-size: 2.5em;
+      color: var(--emerald-bright);
+      line-height: 1;
+    }
+    .ahead-text {
+      flex: 1;
+      color: var(--text);
+    }
+    .ahead-text strong {
+      color: var(--emerald-bright);
+      font-family: Georgia, serif;
+      font-size: 1.15em;
+    }
+    .ahead-text small {
+      display: block;
+      color: var(--text-dim);
+      margin-top: 0.2em;
+      font-size: 0.85em;
+    }
+
+    /* ============ FOOTER ============ */
+    footer {
+      max-width: 1180px;
+      margin: 4em auto 2em;
+      padding: 2em 1.5em;
+      border-top: 1px dashed var(--gold-soft);
+      text-align: center;
+      color: var(--text-faint);
+      font-size: 0.85em;
+    }
+    footer a { text-decoration: underline dotted var(--gold-dim); }
+
+    /* ============ RESPONSIVE ============ */
+    @media (max-width: 720px) {
+      .stat-card-circle { flex-direction: column; text-align: center; }
+      .circular-text { text-align: center; }
+      .timeline-bar { overflow-x: auto; }
+      .activity { padding-left: 1em; }
+      .activity-item::before { left: -0.7em; }
+    }
+  </style>
+</head>
+<body>
+
+  <svg width="0" height="0" style="position:absolute">
+    <defs>
+      <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" style="stop-color:#f4d56a"/>
+        <stop offset="50%" style="stop-color:#d4af37"/>
+        <stop offset="100%" style="stop-color:#a08428"/>
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <header class="hero">
+    <h1 class="hero-title">Estado del proyecto</h1>
+    <div class="hero-subtitle">Argentum Online · Web</div>
+    <div class="hero-date">Actualizado el <strong>22 de junio de 2026</strong> · Sprint 2 en curso (adelantado al plan)</div>
+
+    <div class="stat-grid">
+      <div class="stat-card stat-card-circle">
+        <svg class="circular-progress" viewBox="0 0 200 200">
+          <circle class="track" cx="100" cy="100" r="80"></circle>
+          <circle class="fill" cx="100" cy="100" r="80" style="stroke-dashoffset: 397.1;"></circle>
+        </svg>
+        <div class="circular-text">
+          <span class="big-number" data-target="21">0</span><span class="big-number-suffix">%</span>
+          <div class="stat-label">Avance al Beta</div>
+          <div class="stat-detail">16 de 77 tareas</div>
+        </div>
+      </div>
+
+      <div class="stat-card stat-card-number">
+        <div class="stat-label">Días hasta el Beta</div>
+        <span class="big-number" data-target="123">0</span>
+        <div class="stat-detail">Apertura prevista: 23 octubre 2026</div>
+        <span class="stat-badge gold">Sprint 9 → 12</span>
+      </div>
+
+      <div class="stat-card stat-card-number">
+        <div class="stat-label">Commits en main</div>
+        <span class="big-number" data-target="7">0</span>
+        <div class="stat-detail">CI verde 4 runs consecutivos</div>
+        <span class="stat-badge green">Healthy</span>
+      </div>
+    </div>
+
+    <div class="ahead-banner">
+      <span class="ahead-icon">⬆</span>
+      <div class="ahead-text">
+        <strong>15 días adelantado al plan original.</strong>
+        <small>Sprint 1 estaba planificado para Sprint 1 (2026-06-23 a 2026-07-04) y se cerró antes del comienzo. El primer endpoint de Sprint 2 (T-016) también se adelantó.</small>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <h2><span class="section-num">01</span>Línea de tiempo</h2>
+    <div class="section-sub">5 fases · 12 sprints · de hoy al Beta hay 4 meses de camino. La barra dorada en cada fase muestra qué porcentaje cumpliste de esa fase.</div>
+
+    <div class="timeline-bar">
+      <div class="timeline-phases">
+        <div class="tl-phase p0 done">
+          <div class="tl-status-icon done">✓</div>
+          <div class="tl-phase-label">Fase 0</div>
+          <div class="tl-phase-sub">Setup · Sprint 1</div>
+          <div class="tl-phase-fill" style="width: 100%;"></div>
+        </div>
+        <div class="tl-phase p1 current">
+          <div class="tl-status-icon current">▸</div>
+          <div class="tl-phase-label">Fase 1</div>
+          <div class="tl-phase-sub">Prototipo de red · S2-3</div>
+          <div class="tl-phase-fill" style="width: 5%;"></div>
+        </div>
+        <div class="tl-phase p2">
+          <div class="tl-status-icon pending">·</div>
+          <div class="tl-phase-label">Fase 2</div>
+          <div class="tl-phase-sub">Slice jugable · S4-5</div>
+        </div>
+        <div class="tl-phase p3">
+          <div class="tl-status-icon pending">·</div>
+          <div class="tl-phase-label">Fase 3</div>
+          <div class="tl-phase-sub">MVP cerrado · S6-8</div>
+        </div>
+        <div class="tl-phase p4">
+          <div class="tl-status-icon pending">·</div>
+          <div class="tl-phase-label">Fase 4</div>
+          <div class="tl-phase-sub">Beta pública · S9-12</div>
+        </div>
+      </div>
+      <div class="timeline-dates">
+        <span>23 jun</span>
+        <span>07 jul → 31 jul</span>
+        <span>03 ago → 28 ago</span>
+        <span>01 sep → 25 sep</span>
+        <span>29 sep → 23 oct</span>
+      </div>
+      <div class="timeline-marker">★ AQUÍ ESTÁS</div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="section-num">02</span>Detalle por fase</h2>
+    <div class="section-sub">Cada fase tiene épicas (grupos de tareas). Verde = cerrada · Dorado pulsante = en curso · Gris = pendiente.</div>
+
+    <div class="phases">
+
+      <div class="phase-card p0 done">
+        <div class="phase-card-header">
+          <div class="phase-num">0</div>
+          <div class="phase-info">
+            <div class="phase-name">Setup y decisiones</div>
+            <div class="phase-meta">Sprint 1 · 23 jun → 04 jul · cerrada antes del comienzo</div>
+          </div>
+          <div class="phase-status done">Cerrada</div>
+        </div>
+        <div class="progress-row">
+          <span><strong>100%</strong> completa</span>
+          <span>15 de 15 tareas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill done" style="width: 100%;"></div></div>
+        <div class="epic-list">
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-0.1 Repositorio e infraestructura base</div>
+            <div class="epic-count">8/8</div>
+          </div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-0.2 Documentación inicial y ADRs (1-3)</div>
+            <div class="epic-count">7/7</div>
+          </div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">Bonus: ADR-004 (Drizzle) + 3 interfaces TS extra</div>
+            <div class="epic-count">+4</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-card p1 current">
+        <div class="phase-card-header">
+          <div class="phase-num">1</div>
+          <div class="phase-info">
+            <div class="phase-name">Prototipo de red</div>
+            <div class="phase-meta">Sprints 2-3 · 07 jul → 31 jul · arrancada anticipada</div>
+          </div>
+          <div class="phase-status current">En curso</div>
+        </div>
+        <div class="progress-row">
+          <span><strong>5%</strong> completa</span>
+          <span>1 de 19 tareas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 5%;"></div></div>
+        <div class="epic-list">
+          <div class="epic current">
+            <div class="epic-check current">▸</div>
+            <div class="epic-name">E-1.1 Autenticación (register, login, characters, UI)</div>
+            <div class="epic-count">1/5</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">E-1.2 Conexión WebSocket + sesión + game loop</div>
+            <div class="epic-count">0/4</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">E-1.3 Mapa, sprite y movimiento autoritativo</div>
+            <div class="epic-count">0/10</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-card p2">
+        <div class="phase-card-header">
+          <div class="phase-num">2</div>
+          <div class="phase-info">
+            <div class="phase-name">Slice vertical jugable</div>
+            <div class="phase-meta">Sprints 4-5 · 03 ago → 28 ago</div>
+          </div>
+          <div class="phase-status pending">Pendiente</div>
+        </div>
+        <div class="progress-row">
+          <span><strong>0%</strong> completa</span>
+          <span>0 de 13 tareas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 0%;"></div></div>
+        <div class="epic-list">
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">E-2.1 Chat global con scroll y timestamps</div>
+            <div class="epic-count">0/3</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">E-2.2 Combate cuerpo a cuerpo + HP + respawn</div>
+            <div class="epic-count">0/5</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">E-2.3 HUD básico + controles táctiles</div>
+            <div class="epic-count">0/5</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-card p3">
+        <div class="phase-card-header">
+          <div class="phase-num">3</div>
+          <div class="phase-info">
+            <div class="phase-name">MVP cerrado</div>
+            <div class="phase-meta">Sprints 6-8 · 01 sep → 25 sep · loop completo de gameplay</div>
+          </div>
+          <div class="phase-status pending">Pendiente</div>
+        </div>
+        <div class="progress-row">
+          <span><strong>0%</strong> completa</span>
+          <span>0 de 15 tareas estimadas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 0%;"></div></div>
+        <div class="epic-list">
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">NPCs con IA básica (hostil, neutro, comerciante)</div>
+            <div class="epic-count">0/4</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Inventario, items y drops</div>
+            <div class="epic-count">0/5</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Experiencia, niveles 1-10 y tienda NPC</div>
+            <div class="epic-count">0/6</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phase-card p4">
+        <div class="phase-card-header">
+          <div class="phase-num">4</div>
+          <div class="phase-info">
+            <div class="phase-name">Beta pública</div>
+            <div class="phase-meta">Sprints 9-12 · 29 sep → 23 oct · servidor en producción</div>
+          </div>
+          <div class="phase-status pending">Pendiente</div>
+        </div>
+        <div class="progress-row">
+          <span><strong>0%</strong> completa</span>
+          <span>0 de 15 tareas estimadas</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 0%;"></div></div>
+        <div class="epic-list">
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Multi-mapa, banco, party de jugadores</div>
+            <div class="epic-count">0/5</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Comercio jugador-jugador seguro (commit/rollback)</div>
+            <div class="epic-count">0/3</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Deploy VPS + Cloudflare + Grafana + Sentry</div>
+            <div class="epic-count">0/4</div>
+          </div>
+          <div class="epic pending">
+            <div class="epic-check pending">·</div>
+            <div class="epic-name">Discord abierto + invitaciones a 100 jugadores</div>
+            <div class="epic-count">0/3</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="section-num">03</span>Progreso por área de trabajo</h2>
+    <div class="section-sub">Cómo se reparte el avance entre los distintos frentes del proyecto.</div>
+
+    <div class="tracks">
+      <div class="track">
+        <div class="track-head">
+          <span class="track-name">Backend (server, protocolo, DB)</span>
+          <span class="track-stat"><strong>23%</strong> · 7 / 30</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 23%;"></div></div>
+      </div>
+      <div class="track">
+        <div class="track-head">
+          <span class="track-name">Frontend (cliente, render, UI)</span>
+          <span class="track-stat"><strong>8%</strong> · 2 / 24</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 8%;"></div></div>
+      </div>
+      <div class="track">
+        <div class="track-head">
+          <span class="track-name">Infraestructura (Docker, CI, deploy)</span>
+          <span class="track-stat"><strong>30%</strong> · 3 / 10</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 30%;"></div></div>
+      </div>
+      <div class="track">
+        <div class="track-head">
+          <span class="track-name">Documentación (ADRs, specs, roadmap)</span>
+          <span class="track-stat"><strong>73%</strong> · 11 / 15</span>
+        </div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 73%;"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="section-num">04</span>Cuenta regresiva al Beta</h2>
+    <div class="section-sub">Fecha planificada en el roadmap. Hay tres ventanas realistas según cómo evolucione el ritmo.</div>
+
+    <div class="countdown">
+      <div class="countdown-big">123</div>
+      <div class="countdown-label">Días al Beta</div>
+      <div class="countdown-target">23 de octubre de 2026</div>
+
+      <div class="scenarios">
+        <div class="scenario optimist">
+          <h4>Optimista</h4>
+          <div class="date">finales de octubre</div>
+          <div class="prob">~40% probabilidad · mantenés ritmo actual sin imprevistos</div>
+        </div>
+        <div class="scenario real">
+          <h4>Realista</h4>
+          <div class="date">mediados de noviembre</div>
+          <div class="prob">~45% probabilidad · algún sprint con 1 semana de atraso</div>
+        </div>
+        <div class="scenario conservative">
+          <h4>Conservador</h4>
+          <div class="date">diciembre / enero 2027</div>
+          <div class="prob">~15% probabilidad · 2-3 atrasos o ajuste de scope</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="section-num">05</span>Actividad reciente</h2>
+    <div class="section-sub">Los últimos 7 commits en <code>main</code>, del más reciente al primero.</div>
+
+    <div class="activity">
+      <div class="activity-item latest">
+        <span class="activity-hash">69478e3</span>
+        <span class="activity-msg">feat(server): endpoint POST /auth/register + Drizzle (T-016, ADR-004)</span>
+        <div class="activity-meta">22 jun 2026 · Sprint 2 · CI verde 33s</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">bc7c91e</span>
+        <span class="activity-msg">feat(shared): agregar interfaces EntitySpawn, EntityDespawn, DisconnectRequest</span>
+        <div class="activity-meta">21 jun 2026 · cleanup post-Sprint 1 · CI verde 29s</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">14f40e9</span>
+        <span class="activity-msg">feat(infra): docker-compose con Postgres 16 + Redis 7 (T-003)</span>
+        <div class="activity-meta">21 jun 2026 · cierra Sprint 1 al 100% · CI verde 35s</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">0c00f06</span>
+        <span class="activity-msg">docs: spec del protocolo y registro de riesgos (T-012, T-015)</span>
+        <div class="activity-meta">20 jun 2026 · Sprint 1 · CI verde 33s</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">3308093</span>
+        <span class="activity-msg">fix(server): ignorar eslint.config.mjs en el propio lint</span>
+        <div class="activity-meta">19 jun 2026 · primer fix de CI</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">26f5973</span>
+        <span class="activity-msg">ci: workflow de typecheck, lint y build en cada push y PR</span>
+        <div class="activity-meta">19 jun 2026 · T-007</div>
+      </div>
+      <div class="activity-item">
+        <span class="activity-hash">d11ee48</span>
+        <span class="activity-msg">chore(repo): bootstrap monorepo Sprint 1</span>
+        <div class="activity-meta">19 jun 2026 · primer commit · 41 archivos / 7077 inserciones</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Generado el 22 de junio de 2026 · documento vivo · regenerar al cierre de cada sprint.<br>
+    Más detalle en <a href="roadmap.md">roadmap.md</a> · <a href="backlog.md">backlog.md</a> · <a href="risks.md">risks.md</a> · <a href="protocol.md">protocol.md</a>.<br>
+    Versión visual del roadmap: <a href="roadmap.html">roadmap.html</a> · costos en <a href="costos-e-infraestructura.md">costos-e-infraestructura.md</a>.
+  </footer>
+
+  <script>
+    // Animación de contadores numéricos
+    function animateCounter(el, target, duration = 1800) {
+      const start = 0;
+      const startTime = performance.now();
+      function tick(now) {
+        const t = Math.min(1, (now - startTime) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = Math.floor(start + (target - start) * eased).toLocaleString("es");
+        if (t < 1) requestAnimationFrame(tick);
+        else el.textContent = target.toLocaleString("es");
+      }
+      requestAnimationFrame(tick);
+    }
+
+    function startCounters() {
+      document.querySelectorAll(".big-number").forEach((el) => {
+        const target = parseInt(el.dataset.target, 10);
+        if (!Number.isNaN(target)) animateCounter(el, target);
+      });
+    }
+
+    // Arrancar cuando el documento esté visible
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", startCounters);
+    } else {
+      startCounters();
+    }
+  </script>
+
+</body>
+</html>
