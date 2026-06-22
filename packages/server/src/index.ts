@@ -1,8 +1,24 @@
-import { PROTOCOL_VERSION } from "@ao/shared";
+import { buildApp } from "./app.js";
+import { env } from "./config/env.js";
+import { pool } from "./db/index.js";
 
-function main(): void {
-  console.log(`[ao-server] arrancando — protocolo v${PROTOCOL_VERSION}`);
-  console.log("[ao-server] stub. La logica de red entra en Sprint 2 (T-021).");
+async function main(): Promise<void> {
+  const app = await buildApp();
+
+  const close = async (signal: string): Promise<void> => {
+    app.log.info({ signal }, "[ao-server] cierre solicitado");
+    await app.close();
+    await pool.end();
+    process.exit(0);
+  };
+
+  process.on("SIGINT", () => void close("SIGINT"));
+  process.on("SIGTERM", () => void close("SIGTERM"));
+
+  await app.listen({ host: env.server.host, port: env.server.port });
 }
 
-main();
+main().catch((err) => {
+  console.error("[ao-server] arranque fallido:", err);
+  process.exit(1);
+});

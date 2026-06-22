@@ -4,7 +4,13 @@ import globals from "globals";
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "eslint.config.mjs"],
+    ignores: [
+      "dist/**",
+      "node_modules/**",
+      "drizzle/**",
+      "eslint.config.mjs",
+      "drizzle.config.ts",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
