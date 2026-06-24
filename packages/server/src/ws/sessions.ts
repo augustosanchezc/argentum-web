@@ -1,3 +1,4 @@
+import type { Vector2 } from "@ao/shared";
 import type { WebSocket } from "ws";
 
 export interface Session {
@@ -6,6 +7,8 @@ export interface Session {
   readonly characterId: number;
   readonly characterName: string;
   readonly socket: WebSocket;
+  mapId: number;
+  position: Vector2;
   joinedAt: number;
   lastSeenAt: number;
 }
@@ -20,6 +23,8 @@ class SessionRegistry {
     characterId: number,
     characterName: string,
     socket: WebSocket,
+    mapId: number,
+    position: Vector2,
   ): Session {
     // Si el mismo personaje ya tenia sesion, la cerramos antes de abrir la nueva.
     // Politica: una sesion activa por personaje. La conexion anterior queda
@@ -42,6 +47,8 @@ class SessionRegistry {
       characterId,
       characterName,
       socket,
+      mapId,
+      position: { x: position.x, y: position.y },
       joinedAt: now,
       lastSeenAt: now,
     };

@@ -7,10 +7,12 @@ import {
   type EntityId,
   type LoginRequest,
   type LoginResponse,
+  type MapData,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
+import { getMap } from "../world/maps.js";
 import { decode, encode } from "./codec.js";
 import { sessions, type Session } from "./sessions.js";
 
@@ -156,7 +158,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      session = sessions.create(payload.accountId, character.id, character.name, socket);
+      // Mapa por defecto al login (1). T-033 traera la persistencia
+      // de la ultima posicion del personaje; por ahora siempre spawn.
+      const map = getMap(1);
+      if (!map) {
+        sendLoginResponse(socket, false, "MAP_NOT_FOUND");
+        socket.close(CLOSE_AUTH_FAILED, "MAP_NOT_FOUND");
+        return;
+      }
+
+      session = sessions.create(
+        payload.accountId,
+        character.id,
+        character.name,
+        socket,
+        map.id,
+        map.spawn,
+      );
 
       sendLoginResponse(socket, true, undefined, {
         id: character.id as EntityId,
@@ -164,9 +182,36 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         level: character.level,
       });
 
+      // Mapa + entidades visibles. Por ahora incluimos a TODAS las
+      // sesiones del mapa porque no hay rango de vision todavia
+      // (eso entra en T-031). En 50x50 con poca gente alcanza.
+      const entities = Array.from(sessions.all())
+        .filter((s) => s.mapId === map.id)
+        .map((s) => ({
+          id: s.characterId as EntityId,
+          position: { x: s.position.x, y: s.position.y },
+          name: s.characterName,
+        }));
+
+      const mapPacket: MapData = {
+        op: ServerToClientOp.MapData,
+        mapId: map.id,
+        width: map.width,
+        height: map.height,
+        tiles: map.tiles,
+        entities,
+      };
+      send(socket, mapPacket);
+
       req.log.info(
-        { sessionId: session.id, characterId: character.id, characterName: character.name },
-        "[ws] handshake OK",
+        {
+          sessionId: session.id,
+          characterId: character.id,
+          characterName: character.name,
+          mapId: map.id,
+          spawn: map.spawn,
+        },
+        "[ws] handshake OK + MAP_DATA enviado",
       );
     }
   });
