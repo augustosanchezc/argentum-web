@@ -4,15 +4,21 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type EntityDespawn,
   type EntityId,
+  type EntitySpawn,
+  type EntityUpdate,
   type LoginRequest,
   type LoginResponse,
   type MapData,
+  type MoveRequest,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
 import { getMap } from "../world/maps.js";
+import { attemptMove } from "../world/movement.js";
+import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import { sessions, type Session } from "./sessions.js";
 
@@ -73,6 +79,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     socket.on("close", () => {
       clearTimeout(handshakeTimer);
       if (session) {
+        const despawn: EntityDespawn = {
+          op: ServerToClientOp.EntityDespawn,
+          id: session.characterId as EntityId,
+        };
+        // Avisamos a los vecinos del mapa que el personaje se fue, ANTES
+        // de removerlo del registro (asi no se incluye a si mismo).
+        broadcastToMap(session.mapId, despawn, session.id);
         req.log.info({ sessionId: session.id }, "[ws] sesion cerrada");
         sessions.remove(session.id);
         session = null;
@@ -104,19 +117,66 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
 
       // Post-handshake: routing del opcode al modulo correspondiente.
-      // Por ahora solo soportamos Disconnect; movimiento y demas entran en T-030+.
       switch (packet.op) {
         case ClientToServerOp.Disconnect:
           socket.close(CLOSE_NORMAL, "CLIENT_DISCONNECT");
           break;
         case ClientToServerOp.Move:
-          // Stub: aun no implementamos movimiento server-side (T-030).
-          sessions.touch(session.id);
+          handleMove(session, packet);
           break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
           socket.close(CLOSE_UNKNOWN_OPCODE, "UNKNOWN_OPCODE");
       }
+    }
+
+    function handleMove(s: Session, move: MoveRequest): void {
+      const map = getMap(s.mapId);
+      if (!map) return;
+
+      const result = attemptMove({
+        position: s.position,
+        lastMoveAt: s.lastMoveAt,
+        direction: move.direction,
+        now: Date.now(),
+        map,
+        isOccupied: (pos) => {
+          for (const other of sessions.inMap(s.mapId)) {
+            if (other.id === s.id) continue;
+            if (other.position.x === pos.x && other.position.y === pos.y) return true;
+          }
+          return false;
+        },
+      });
+
+      if (!result.ok) {
+        // Rechazo: reenviamos al cliente su posicion canonica para que
+        // reconcilie su prediccion local. Misma sesion, no broadcast.
+        const correction: EntityUpdate = {
+          op: ServerToClientOp.EntityUpdate,
+          id: s.characterId as EntityId,
+          position: { x: s.position.x, y: s.position.y },
+          direction: s.direction,
+        };
+        send(s.socket, correction);
+        return;
+      }
+
+      s.position = result.newPosition;
+      s.direction = result.direction;
+      s.lastMoveAt = Date.now();
+      sessions.touch(s.id);
+
+      const update: EntityUpdate = {
+        op: ServerToClientOp.EntityUpdate,
+        id: s.characterId as EntityId,
+        position: { x: s.position.x, y: s.position.y },
+        direction: s.direction,
+      };
+      // Broadcast a TODO el mapa, incluido el que se movio.
+      // Asi el cliente puede usar el ACK del server como fuente
+      // de verdad para reconciliar su prediccion optimista.
+      broadcastToMap(s.mapId, update);
     }
 
     async function doHandshake(loginReq: LoginRequest): Promise<void> {
@@ -184,14 +244,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       // Mapa + entidades visibles. Por ahora incluimos a TODAS las
       // sesiones del mapa porque no hay rango de vision todavia
-      // (eso entra en T-031). En 50x50 con poca gente alcanza.
-      const entities = Array.from(sessions.all())
-        .filter((s) => s.mapId === map.id)
-        .map((s) => ({
-          id: s.characterId as EntityId,
-          position: { x: s.position.x, y: s.position.y },
-          name: s.characterName,
-        }));
+      // (eso entra mas adelante). En 50x50 con poca gente alcanza.
+      const entities = sessions.inMap(map.id).map((s) => ({
+        id: s.characterId as EntityId,
+        position: { x: s.position.x, y: s.position.y },
+        name: s.characterName,
+      }));
 
       const mapPacket: MapData = {
         op: ServerToClientOp.MapData,
@@ -203,6 +261,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
       send(socket, mapPacket);
 
+      // Avisamos al resto del mapa que aparecio un nuevo personaje.
+      const spawn: EntitySpawn = {
+        op: ServerToClientOp.EntitySpawn,
+        id: session.characterId as EntityId,
+        position: { x: session.position.x, y: session.position.y },
+        direction: session.direction,
+        name: session.characterName,
+      };
+      broadcastToMap(map.id, spawn, session.id);
+
       req.log.info(
         {
           sessionId: session.id,
@@ -211,7 +279,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           mapId: map.id,
           spawn: map.spawn,
         },
-        "[ws] handshake OK + MAP_DATA enviado",
+        "[ws] handshake OK + MAP_DATA + SPAWN broadcast",
       );
     }
   });

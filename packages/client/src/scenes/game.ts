@@ -1,10 +1,16 @@
 import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
 import {
+  ClientToServerOp,
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type Direction,
+  type EntityDespawn,
   type EntityId,
+  type EntitySpawn,
+  type EntityUpdate,
   type MapData,
+  type MoveRequest,
   type Vector2,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
@@ -12,6 +18,11 @@ import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 
 const TILE_SIZE = 32;
+const MOVE_COOLDOWN_MS = 200;
+// Velocidad de interpolacion visual: en cuanto tiempo el sprite recorre 1 tile.
+// Debe ser <= MOVE_COOLDOWN_MS para que el sprite llegue al destino antes
+// del siguiente paso y no se vea "atrasado".
+const TWEEN_DURATION_MS = 180;
 
 const TILE_COLORS: Record<number, number> = {
   0: 0x1d2a18, // grass — verde apagado
@@ -25,13 +36,37 @@ const TILE_HIGHLIGHT: Record<number, number> = {
   2: 0x255080,
 };
 
+const KEY_TO_DIRECTION: Record<string, Direction> = {
+  KeyW: "north",
+  ArrowUp: "north",
+  KeyS: "south",
+  ArrowDown: "south",
+  KeyA: "west",
+  ArrowLeft: "west",
+  KeyD: "east",
+  ArrowRight: "east",
+};
+
+const DELTAS: Record<Direction, Vector2> = {
+  north: { x: 0, y: -1 },
+  south: { x: 0, y: 1 },
+  east: { x: 1, y: 0 },
+  west: { x: -1, y: 0 },
+};
+
 export interface GameSceneResult {
   destroy: () => Promise<void>;
 }
 
 interface EntityVisual {
   container: Container;
-  position: Vector2;
+  position: Vector2; // tile destino (verdad logica)
+  renderX: number;   // px actual (interpolado)
+  renderY: number;
+  tweenFromX: number;
+  tweenFromY: number;
+  tweenStart: number;
+  tweenDuration: number;
 }
 
 export async function startGameScene(
@@ -72,6 +107,18 @@ export async function startGameScene(
   statusText.anchor.set(0.5);
   app.stage.addChild(statusText);
 
+  // HUD pequenio arriba a la izquierda con info de debug.
+  const hudStyle = new TextStyle({
+    fill: "#a89c80",
+    fontFamily: "Consolas, monospace",
+    fontSize: 12,
+    stroke: { color: "#0a0805", width: 2 },
+  });
+  const hud = new Text({ text: "", style: hudStyle });
+  hud.x = 12;
+  hud.y = 12;
+  app.stage.addChild(hud);
+
   function centerStatus(): void {
     statusText.x = app.screen.width / 2;
     statusText.y = app.screen.height / 2;
@@ -81,6 +128,7 @@ export async function startGameScene(
   const entityVisuals = new Map<number, EntityVisual>();
   let mapWidth = 0;
   let mapHeight = 0;
+  let mapTiles: ReadonlyArray<number> = [];
 
   function buildEntityVisual(name: string, isSelf: boolean): Container {
     const c = new Container();
@@ -117,18 +165,76 @@ export async function startGameScene(
     };
   }
 
+  function addEntity(
+    id: number,
+    pos: Vector2,
+    name: string,
+    isSelf: boolean,
+  ): EntityVisual {
+    const container = buildEntityVisual(name, isSelf);
+    const c = entityCenterPx(pos);
+    container.x = c.x;
+    container.y = c.y;
+    entitiesLayer.addChild(container);
+    const visual: EntityVisual = {
+      container,
+      position: { x: pos.x, y: pos.y },
+      renderX: c.x,
+      renderY: c.y,
+      tweenFromX: c.x,
+      tweenFromY: c.y,
+      tweenStart: 0,
+      tweenDuration: 0,
+    };
+    entityVisuals.set(id, visual);
+    return visual;
+  }
+
+  function moveEntityTo(id: number, pos: Vector2): void {
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    v.position = { x: pos.x, y: pos.y };
+    v.tweenFromX = v.renderX;
+    v.tweenFromY = v.renderY;
+    v.tweenStart = performance.now();
+    v.tweenDuration = TWEEN_DURATION_MS;
+    // El target real lo aplica el ticker frame a frame con la interpolacion.
+  }
+
+  function snapEntityTo(id: number, pos: Vector2): void {
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    const c = entityCenterPx(pos);
+    v.position = { x: pos.x, y: pos.y };
+    v.renderX = c.x;
+    v.renderY = c.y;
+    v.tweenFromX = c.x;
+    v.tweenFromY = c.y;
+    v.tweenDuration = 0;
+    v.container.x = c.x;
+    v.container.y = c.y;
+  }
+
+  function removeEntity(id: number): void {
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    entitiesLayer.removeChild(v.container);
+    v.container.destroy({ children: true });
+    entityVisuals.delete(id);
+  }
+
   function centerCameraOnSelf(): void {
     const own = entityVisuals.get(character.id);
     if (!own) return;
-    const c = entityCenterPx(own.position);
-    world.x = app.screen.width / 2 - c.x;
-    world.y = app.screen.height / 2 - c.y;
+    world.x = app.screen.width / 2 - own.renderX;
+    world.y = app.screen.height / 2 - own.renderY;
   }
 
   function renderTiles(data: MapData): void {
     tilesLayer.removeChildren();
     mapWidth = data.width;
     mapHeight = data.height;
+    mapTiles = data.tiles;
 
     // Optimizacion: agrupamos en un solo Graphics (PixiJS lo bachea bien).
     const g = new Graphics();
@@ -148,17 +254,15 @@ export async function startGameScene(
 
   function renderEntities(data: MapData): void {
     entitiesLayer.removeChildren();
+    for (const v of entityVisuals.values()) {
+      v.container.destroy({ children: true });
+    }
     entityVisuals.clear();
 
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      const visual = buildEntityVisual(ent.name, isSelf);
-      const c = entityCenterPx(ent.position);
-      visual.x = c.x;
-      visual.y = c.y;
-      entitiesLayer.addChild(visual);
-      entityVisuals.set(entId, { container: visual, position: { x: ent.position.x, y: ent.position.y } });
+      addEntity(entId, ent.position, ent.name, isSelf);
     }
   }
 
@@ -169,6 +273,145 @@ export async function startGameScene(
     centerCameraOnSelf();
   }
 
+  // Lookup local de walkability — para la prediccion optimista.
+  // Tiene que coincidir con la del server (grass = caminable).
+  function isWalkableLocal(x: number, y: number): boolean {
+    if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return false;
+    const tile = mapTiles[y * mapWidth + x];
+    return tile === 0;
+  }
+
+  // -- Movimiento --
+  let client: ReconnectingClient | null = null;
+  let lastLocalMoveAt = 0;
+  let moveSequence = 0;
+  const keysHeld = new Set<string>();
+
+  function tryStep(direction: Direction): void {
+    if (!client) return;
+    const now = performance.now();
+    if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
+    const own = entityVisuals.get(character.id);
+    if (!own) return;
+
+    const delta = DELTAS[direction];
+    const target: Vector2 = {
+      x: own.position.x + delta.x,
+      y: own.position.y + delta.y,
+    };
+    // Predicado optimista: si localmente sabemos que esta bloqueado,
+    // no mandamos paquete. Si lo dejamos pasar, el server nos rebotaria
+    // con un EntityUpdate de correccion — funciona pero gasta.
+    if (!isWalkableLocal(target.x, target.y)) return;
+
+    lastLocalMoveAt = now;
+    moveSequence += 1;
+
+    // Prediccion: movemos el sprite YA (sin esperar el ACK).
+    moveEntityTo(character.id, target);
+
+    const packet: MoveRequest = {
+      op: ClientToServerOp.Move,
+      direction,
+      sequence: moveSequence,
+    };
+    client.send(packet);
+  }
+
+  function pumpHeldKeys(): void {
+    // Prioridad: vertical antes que horizontal (consistente con AO original).
+    if (keysHeld.has("KeyW") || keysHeld.has("ArrowUp")) { tryStep("north"); return; }
+    if (keysHeld.has("KeyS") || keysHeld.has("ArrowDown")) { tryStep("south"); return; }
+    if (keysHeld.has("KeyA") || keysHeld.has("ArrowLeft")) { tryStep("west"); return; }
+    if (keysHeld.has("KeyD") || keysHeld.has("ArrowRight")) { tryStep("east"); return; }
+  }
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    const dir = KEY_TO_DIRECTION[e.code];
+    if (!dir) return;
+    e.preventDefault();
+    keysHeld.add(e.code);
+    tryStep(dir);
+  };
+  const onKeyUp = (e: KeyboardEvent): void => {
+    if (KEY_TO_DIRECTION[e.code]) {
+      keysHeld.delete(e.code);
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+
+  // -- Ticker: interpolacion + pump de teclas mantenidas --
+  const tick = (): void => {
+    const now = performance.now();
+    for (const v of entityVisuals.values()) {
+      if (v.tweenDuration > 0) {
+        const t = Math.min(1, (now - v.tweenStart) / v.tweenDuration);
+        const targetPx = entityCenterPx(v.position);
+        v.renderX = v.tweenFromX + (targetPx.x - v.tweenFromX) * t;
+        v.renderY = v.tweenFromY + (targetPx.y - v.tweenFromY) * t;
+        v.container.x = v.renderX;
+        v.container.y = v.renderY;
+        if (t >= 1) v.tweenDuration = 0;
+      }
+    }
+    pumpHeldKeys();
+    if (mapWidth > 0) centerCameraOnSelf();
+  };
+  app.ticker.add(tick);
+
+  // -- Handlers de paquetes del server --
+  function handlePacket(packet: AnyPacket): void {
+    switch (packet.op) {
+      case ServerToClientOp.MapData:
+        applyMapData(packet);
+        break;
+      case ServerToClientOp.EntityUpdate:
+        handleEntityUpdate(packet);
+        break;
+      case ServerToClientOp.EntitySpawn:
+        handleEntitySpawn(packet);
+        break;
+      case ServerToClientOp.EntityDespawn:
+        handleEntityDespawn(packet);
+        break;
+      default:
+        // LoginResponse ya lo consumio el handshake; nada mas que hacer.
+        break;
+    }
+  }
+
+  function handleEntityUpdate(p: EntityUpdate): void {
+    const id = p.id as unknown as number;
+    const existing = entityVisuals.get(id);
+    if (!existing) {
+      // Llego un update de algo que no conocemos — lo creamos.
+      // Sucede si nos perdimos el spawn (race en reconexion).
+      addEntity(id, p.position, `?${id.toString()}`, id === character.id);
+      return;
+    }
+    if (id === character.id) {
+      // ACK del server para el propio: si coincide con nuestra prediccion
+      // hacemos nada visual; si difiere, snap a la verdad del server.
+      if (existing.position.x === p.position.x && existing.position.y === p.position.y) {
+        return;
+      }
+      snapEntityTo(id, p.position);
+      return;
+    }
+    moveEntityTo(id, p.position);
+  }
+
+  function handleEntitySpawn(p: EntitySpawn): void {
+    const id = p.id as unknown as number;
+    if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
+    addEntity(id, p.position, p.name, id === character.id);
+  }
+
+  function handleEntityDespawn(p: EntityDespawn): void {
+    removeEntity(p.id as unknown as number);
+  }
+
   const onResize = (): void => {
     centerStatus();
     if (mapWidth > 0) centerCameraOnSelf();
@@ -177,7 +420,6 @@ export async function startGameScene(
 
   // Conexion WebSocket
   const token = getToken();
-  let client: ReconnectingClient | null = null;
   let authExpiredHandled = false;
 
   if (!token) {
@@ -188,15 +430,9 @@ export async function startGameScene(
     client = new ReconnectingClient({
       token,
       characterId: character.id,
-      onPacket: (packet: AnyPacket) => {
-        if (packet.op === ServerToClientOp.MapData) {
-          applyMapData(packet);
-        } else {
-          // Otros opcodes llegan en T-031+
-          console.log("[ws] packet recibido:", packet);
-        }
-      },
+      onPacket: handlePacket,
       onStatus: (status: ClientStatus) => {
+        hud.text = `v${PROTOCOL_VERSION} · ${character.name} · ${status.kind}`;
         switch (status.kind) {
           case "connecting":
             statusText.text = "Conectando al servidor...";
@@ -233,13 +469,16 @@ export async function startGameScene(
 
   console.log(`[ao-client] sesión iniciada para ${character.name} (id=${character.id})`);
 
-  // Suprimimos warning de variable no usada hasta que el render real de
-  // entidades cambie de posicion (T-031+ ENTITY_UPDATE).
+  // Variable se usa indirectamente vía mapTiles; mantenida como referencia
+  // futura cuando agregemos mini-map (T-034+).
   void mapHeight;
   void (null as EntityId | null);
 
   return {
     destroy: () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      app.ticker.remove(tick);
       client?.destroy();
       app.destroy(true, { children: true });
       return Promise.resolve();

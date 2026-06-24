@@ -1,4 +1,4 @@
-import type { Vector2 } from "@ao/shared";
+import type { Direction, Vector2 } from "@ao/shared";
 import type { WebSocket } from "ws";
 
 export interface Session {
@@ -9,6 +9,8 @@ export interface Session {
   readonly socket: WebSocket;
   mapId: number;
   position: Vector2;
+  direction: Direction;
+  lastMoveAt: number;
   joinedAt: number;
   lastSeenAt: number;
 }
@@ -49,6 +51,8 @@ class SessionRegistry {
       socket,
       mapId,
       position: { x: position.x, y: position.y },
+      direction: "south",
+      lastMoveAt: 0,
       joinedAt: now,
       lastSeenAt: now,
     };
@@ -75,6 +79,14 @@ class SessionRegistry {
 
   all(): IterableIterator<Session> {
     return this.bySessionId.values();
+  }
+
+  inMap(mapId: number): Session[] {
+    const out: Session[] = [];
+    for (const s of this.bySessionId.values()) {
+      if (s.mapId === mapId) out.push(s);
+    }
+    return out;
   }
 
   size(): number {
