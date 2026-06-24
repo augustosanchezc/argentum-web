@@ -4,6 +4,7 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type Direction,
   type EntityDespawn,
   type EntityId,
   type EntitySpawn,
@@ -12,11 +13,12 @@ import {
   type LoginResponse,
   type MapData,
   type MoveRequest,
+  type Vector2,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
-import { getMap } from "../world/maps.js";
+import { getMap, isWalkable, type MapState } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
@@ -28,6 +30,52 @@ const CLOSE_UNKNOWN_OPCODE = 4002;
 const CLOSE_INVALID_PACKET = 4003;
 const CLOSE_PROTOCOL_VERSION = 4005;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
+
+const VALID_DIRECTIONS: ReadonlySet<Direction> = new Set([
+  "north",
+  "south",
+  "east",
+  "west",
+]);
+
+function parseDirection(raw: string | null | undefined): Direction {
+  if (raw && VALID_DIRECTIONS.has(raw as Direction)) return raw as Direction;
+  return "south";
+}
+
+// Resuelve donde aparece el personaje al conectarse:
+// - Si la posicion persistida es valida (caminable) en el mapa correspondiente, ahi.
+// - Caso contrario, en el spawn del mapa por defecto.
+// No checkeamos colision con otros jugadores aqui — es raro y el cliente
+// resolvera la situacion al primer movimiento.
+function resolveSpawn(
+  persistedMapId: number,
+  persistedPos: Vector2,
+): { map: MapState; position: Vector2 } {
+  const persistedMap = getMap(persistedMapId);
+  if (
+    persistedMap &&
+    isWalkable(persistedMap, persistedPos.x, persistedPos.y)
+  ) {
+    return { map: persistedMap, position: persistedPos };
+  }
+  const fallback = getMap(1);
+  if (!fallback) throw new Error("Default map (id=1) is missing");
+  return { map: fallback, position: fallback.spawn };
+}
+
+async function persistPosition(s: Session): Promise<void> {
+  await db
+    .update(characters)
+    .set({
+      mapId: s.mapId,
+      posX: s.position.x,
+      posY: s.position.y,
+      direction: s.direction,
+      updatedAt: new Date(),
+    })
+    .where(eq(characters.id, s.characterId));
+}
 
 interface JwtPayload {
   accountId: number;
@@ -79,16 +127,32 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     socket.on("close", () => {
       clearTimeout(handshakeTimer);
       if (session) {
+        const closingSession = session;
         const despawn: EntityDespawn = {
           op: ServerToClientOp.EntityDespawn,
-          id: session.characterId as EntityId,
+          id: closingSession.characterId as EntityId,
         };
         // Avisamos a los vecinos del mapa que el personaje se fue, ANTES
         // de removerlo del registro (asi no se incluye a si mismo).
-        broadcastToMap(session.mapId, despawn, session.id);
-        req.log.info({ sessionId: session.id }, "[ws] sesion cerrada");
-        sessions.remove(session.id);
+        broadcastToMap(closingSession.mapId, despawn, closingSession.id);
+        sessions.remove(closingSession.id);
         session = null;
+
+        // Persistimos la posicion + direccion en background. No bloqueamos
+        // el cleanup del socket; si la DB falla, logueamos y seguimos.
+        void persistPosition(closingSession)
+          .then(() => {
+            req.log.info(
+              { sessionId: closingSession.id, characterId: closingSession.characterId },
+              "[ws] sesion cerrada y posicion persistida",
+            );
+          })
+          .catch((err: unknown) => {
+            req.log.error(
+              { err, characterId: closingSession.characterId },
+              "[ws] error persistiendo posicion al cerrar",
+            );
+          });
       }
     });
 
@@ -202,6 +266,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           id: characters.id,
           name: characters.name,
           level: characters.level,
+          mapId: characters.mapId,
+          posX: characters.posX,
+          posY: characters.posY,
+          direction: characters.direction,
         })
         .from(characters)
         .where(
@@ -218,14 +286,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      // Mapa por defecto al login (1). T-033 traera la persistencia
-      // de la ultima posicion del personaje; por ahora siempre spawn.
-      const map = getMap(1);
-      if (!map) {
+      let spawnInfo: { map: MapState; position: Vector2 };
+      try {
+        spawnInfo = resolveSpawn(character.mapId, {
+          x: character.posX,
+          y: character.posY,
+        });
+      } catch {
         sendLoginResponse(socket, false, "MAP_NOT_FOUND");
         socket.close(CLOSE_AUTH_FAILED, "MAP_NOT_FOUND");
         return;
       }
+      const { map, position: spawnPos } = spawnInfo;
 
       session = sessions.create(
         payload.accountId,
@@ -233,8 +305,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         character.name,
         socket,
         map.id,
-        map.spawn,
+        spawnPos,
       );
+      session.direction = parseDirection(character.direction);
 
       sendLoginResponse(socket, true, undefined, {
         id: character.id as EntityId,
@@ -243,8 +316,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       });
 
       // Mapa + entidades visibles. Por ahora incluimos a TODAS las
-      // sesiones del mapa porque no hay rango de vision todavia
-      // (eso entra mas adelante). En 50x50 con poca gente alcanza.
+      // sesiones del mapa porque no hay rango de vision todavia.
       const entities = sessions.inMap(map.id).map((s) => ({
         id: s.characterId as EntityId,
         position: { x: s.position.x, y: s.position.y },
@@ -277,7 +349,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           characterId: character.id,
           characterName: character.name,
           mapId: map.id,
-          spawn: map.spawn,
+          spawn: spawnPos,
+          persisted: { mapId: character.mapId, x: character.posX, y: character.posY },
         },
         "[ws] handshake OK + MAP_DATA + SPAWN broadcast",
       );

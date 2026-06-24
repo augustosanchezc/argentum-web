@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "node --env-file=../../.env.local node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx --env-file=../../.env.local src/db/migrate.ts",
     "db:studio": "drizzle-kit studio"
   },
