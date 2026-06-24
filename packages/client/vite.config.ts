@@ -8,6 +8,10 @@ export default defineConfig({
       "/auth": "http://localhost:3000",
       "/characters": "http://localhost:3000",
       "/health": "http://localhost:3000",
+      "/ws": {
+        target: "ws://localhost:3000",
+        ws: true,
+      },
     },
   },
   build: {

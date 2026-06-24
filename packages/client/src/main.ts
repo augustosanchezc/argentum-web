@@ -51,7 +51,10 @@ async function showCharacters(): Promise<void> {
 
 async function showGame(character: CharacterSummary): Promise<void> {
   await teardown();
-  gameInstance = await startGameScene(root!, character);
+  gameInstance = await startGameScene(root!, character, () => {
+    clearToken();
+    void showLogin();
+  });
 
   topbar = document.createElement("div");
   topbar.className = "topbar";

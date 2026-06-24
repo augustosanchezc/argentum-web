@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ao/shared": "workspace:*",
+    "msgpackr": "^1.11.2",
     "pixi.js": "^8.6.0"
   },
   "devDependencies": {

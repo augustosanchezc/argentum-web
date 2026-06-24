@@ -1,12 +1,17 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { pool } from "./db/index.js";
+import { createGameLoop } from "./ws/loop.js";
 
 async function main(): Promise<void> {
   const app = await buildApp();
 
+  const loop = createGameLoop({ info: (msg) => app.log.info(msg) });
+  loop.start();
+
   const close = async (signal: string): Promise<void> => {
     app.log.info({ signal }, "[ao-server] cierre solicitado");
+    loop.stop();
     await app.close();
     await pool.end();
     process.exit(0);

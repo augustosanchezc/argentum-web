@@ -4,6 +4,8 @@ packages:
 # Scripts de postinstall aprobados explicitamente (pnpm 11+).
 # - esbuild: verifica el binario nativo de la plataforma.
 # - bcrypt: compila el binding nativo de Node (mas rapido que bcryptjs).
+# - msgpackr-extract: binding nativo de msgpack (acelera encode/decode).
 allowBuilds:
   esbuild: true
   bcrypt: true
+  msgpackr-extract: true
