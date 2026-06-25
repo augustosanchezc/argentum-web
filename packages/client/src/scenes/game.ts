@@ -4,6 +4,9 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type ChatBroadcast,
+  type ChatError,
+  type ChatSend,
   type Direction,
   type EntityDespawn,
   type EntityId,
@@ -16,6 +19,7 @@ import {
 import type { CharacterSummary } from "../api";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
+import { mountChat, type ChatHandle } from "../ui/chat";
 
 const TILE_SIZE = 32;
 const MOVE_COOLDOWN_MS = 200;
@@ -283,6 +287,7 @@ export async function startGameScene(
 
   // -- Movimiento --
   let client: ReconnectingClient | null = null;
+  let chat: ChatHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -327,6 +332,9 @@ export async function startGameScene(
   }
 
   const onKeyDown = (e: KeyboardEvent): void => {
+    // Si el chat tiene foco, dejamos que el input se quede con todas
+    // las teclas — no movemos al personaje ni capturamos WASD.
+    if (chat?.isInputFocused()) return;
     const dir = KEY_TO_DIRECTION[e.code];
     if (!dir) return;
     e.preventDefault();
@@ -375,10 +383,29 @@ export async function startGameScene(
       case ServerToClientOp.EntityDespawn:
         handleEntityDespawn(packet);
         break;
+      case ServerToClientOp.ChatBroadcast:
+        handleChatBroadcast(packet);
+        break;
+      case ServerToClientOp.ChatError:
+        handleChatError(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
     }
+  }
+
+  function handleChatBroadcast(p: ChatBroadcast): void {
+    chat?.appendMessage({
+      fromName: p.fromName,
+      text: p.text,
+      timestamp: p.timestamp,
+      isSelf: (p.fromId as unknown as number) === character.id,
+    });
+  }
+
+  function handleChatError(p: ChatError): void {
+    chat?.showError(p.reason);
   }
 
   function handleEntityUpdate(p: EntityUpdate): void {
@@ -465,6 +492,19 @@ export async function startGameScene(
       },
     });
     void client.start();
+
+    chat = mountChat({
+      parent: root,
+      selfCharacterName: character.name,
+      onSend: (text) => {
+        if (!client) return;
+        const packet: ChatSend = {
+          op: ClientToServerOp.ChatSend,
+          text,
+        };
+        client.send(packet);
+      },
+    });
   }
 
   console.log(`[ao-client] sesión iniciada para ${character.name} (id=${character.id})`);
@@ -479,6 +519,7 @@ export async function startGameScene(
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       app.ticker.remove(tick);
+      chat?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });
       return Promise.resolve();

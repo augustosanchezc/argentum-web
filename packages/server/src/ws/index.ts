@@ -4,6 +4,9 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type ChatBroadcast,
+  type ChatError,
+  type ChatSend,
   type Direction,
   type EntityDespawn,
   type EntityId,
@@ -16,6 +19,7 @@ import {
   type Vector2,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
+import { isOnChatCooldown, validateChatText } from "../chat/index.js";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
@@ -188,6 +192,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.Move:
           handleMove(session, packet);
           break;
+        case ClientToServerOp.ChatSend:
+          handleChat(session, packet);
+          break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
           socket.close(CLOSE_UNKNOWN_OPCODE, "UNKNOWN_OPCODE");
@@ -241,6 +248,42 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Asi el cliente puede usar el ACK del server como fuente
       // de verdad para reconciliar su prediccion optimista.
       broadcastToMap(s.mapId, update);
+    }
+
+    function handleChat(s: Session, chat: ChatSend): void {
+      const now = Date.now();
+      if (isOnChatCooldown(s.lastChatAt, now)) {
+        const err: ChatError = {
+          op: ServerToClientOp.ChatError,
+          reason: "RATE_LIMITED",
+        };
+        send(s.socket, err);
+        return;
+      }
+
+      const validation = validateChatText(chat.text);
+      if (!validation.ok) {
+        const err: ChatError = {
+          op: ServerToClientOp.ChatError,
+          reason: validation.reason,
+        };
+        send(s.socket, err);
+        return;
+      }
+
+      s.lastChatAt = now;
+      sessions.touch(s.id);
+
+      const out: ChatBroadcast = {
+        op: ServerToClientOp.ChatBroadcast,
+        fromId: s.characterId as EntityId,
+        fromName: s.characterName,
+        text: validation.text,
+        timestamp: now,
+      };
+      // Por ahora chat global del mapa (sala unica por mapa). Cuando
+      // tengamos rango/canales (Fase 3+), filtrar aqui.
+      broadcastToMap(s.mapId, out);
     }
 
     async function doHandshake(loginReq: LoginRequest): Promise<void> {

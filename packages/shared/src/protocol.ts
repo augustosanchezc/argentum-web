@@ -5,6 +5,7 @@ export const PROTOCOL_VERSION = 1;
 export enum ClientToServerOp {
   LoginRequest = 0x01,
   Move = 0x10,
+  ChatSend = 0x20,
   Disconnect = 0xff,
 }
 
@@ -14,6 +15,8 @@ export enum ServerToClientOp {
   EntityUpdate = 0x91,
   EntitySpawn = 0x92,
   EntityDespawn = 0x93,
+  ChatBroadcast = 0xa0,
+  ChatError = 0xa1,
 }
 
 export interface LoginRequest {
@@ -73,11 +76,40 @@ export interface DisconnectRequest {
   readonly op: ClientToServerOp.Disconnect;
 }
 
-export type ClientPacket = LoginRequest | MoveRequest | DisconnectRequest;
+// Limites compartidos para validar tanto en cliente como en server.
+export const CHAT_TEXT_MAX_LENGTH = 200;
+
+export interface ChatSend {
+  readonly op: ClientToServerOp.ChatSend;
+  readonly text: string;
+}
+
+export interface ChatBroadcast {
+  readonly op: ServerToClientOp.ChatBroadcast;
+  readonly fromId: EntityId;
+  readonly fromName: string;
+  readonly text: string;
+  // Epoch ms del server. El cliente formatea HH:mm con su locale.
+  readonly timestamp: number;
+}
+
+export interface ChatError {
+  readonly op: ServerToClientOp.ChatError;
+  // RATE_LIMITED | EMPTY | TOO_LONG
+  readonly reason: string;
+}
+
+export type ClientPacket =
+  | LoginRequest
+  | MoveRequest
+  | ChatSend
+  | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse
   | MapData
   | EntityUpdate
   | EntitySpawn
-  | EntityDespawn;
+  | EntityDespawn
+  | ChatBroadcast
+  | ChatError;
 export type AnyPacket = ClientPacket | ServerPacket;

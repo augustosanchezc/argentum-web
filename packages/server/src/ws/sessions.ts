@@ -11,6 +11,7 @@ export interface Session {
   position: Vector2;
   direction: Direction;
   lastMoveAt: number;
+  lastChatAt: number;
   joinedAt: number;
   lastSeenAt: number;
 }
@@ -53,6 +54,7 @@ class SessionRegistry {
       position: { x: position.x, y: position.y },
       direction: "south",
       lastMoveAt: 0,
+      lastChatAt: 0,
       joinedAt: now,
       lastSeenAt: now,
     };
