@@ -42,9 +42,15 @@ export interface MoveRequest {
 export interface MapData {
   readonly op: ServerToClientOp.MapData;
   readonly mapId: number;
+  readonly name: string;
   readonly width: number;
   readonly height: number;
-  readonly tiles: ReadonlyArray<number>;
+  // Por tile, indice de gráfico (capa de suelo del AO original).
+  // El cliente lo mapea a color por rango / a tileset real cuando exista.
+  // Length = width * height, indexado por y * width + x.
+  readonly graphic: ReadonlyArray<number>;
+  // 1 = bloqueado (no caminable), 0 = caminable. Length = width * height.
+  readonly blocked: ReadonlyArray<number>;
   readonly entities: ReadonlyArray<{
     readonly id: EntityId;
     readonly position: Vector2;

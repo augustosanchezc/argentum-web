@@ -28,17 +28,30 @@ const MOVE_COOLDOWN_MS = 200;
 // del siguiente paso y no se vea "atrasado".
 const TWEEN_DURATION_MS = 180;
 
-const TILE_COLORS: Record<number, number> = {
-  0: 0x1d2a18, // grass — verde apagado
-  1: 0x3a342a, // wall — gris piedra
-  2: 0x1b3654, // water — azul profundo
-};
-
-const TILE_HIGHLIGHT: Record<number, number> = {
-  0: 0x2b3f23,
-  1: 0x4c453a,
-  2: 0x255080,
-};
+// Paleta heuristica mientras no tengamos el tileset real del AO.
+// El server envia un graphic1 (indice u32) por tile. Hasta que mapeemos
+// indice -> sprite del tileset, derivamos un color por rango. Los rangos
+// estan elegidos para que Ulla sea legible: tierra, piedra, baldosa de
+// pueblo, agua, vegetacion. Iterable cuando inspeccionemos mas mapas.
+function tileColors(graphic: number, blocked: boolean): { base: number; hi: number } {
+  // Agua y piso liquido — indices tipicos de agua del AO clasico estan
+  // en rangos bajos especificos. Por ahora marcamos blocked + un graphic
+  // alto como agua mas oscura, lo que coincide visualmente.
+  if (graphic >= 1505 && graphic <= 1520) {
+    return { base: 0x1b3654, hi: 0x255080 }; // agua
+  }
+  if (blocked) {
+    return { base: 0x2a2620, hi: 0x3d3830 }; // piedra / pared
+  }
+  // Heuristica simple: tonos verdes/marrones segun rango del graphic.
+  if (graphic >= 2000 && graphic <= 4000) {
+    return { base: 0x3b3220, hi: 0x4d432d }; // baldosa pueblo / madera
+  }
+  if (graphic >= 8000) {
+    return { base: 0x223526, hi: 0x2e4733 }; // bosque / vegetacion densa
+  }
+  return { base: 0x1d2a18, hi: 0x2b3f23 }; // tierra / pasto base
+}
 
 const KEY_TO_DIRECTION: Record<string, Direction> = {
   KeyW: "north",
@@ -132,7 +145,7 @@ export async function startGameScene(
   const entityVisuals = new Map<number, EntityVisual>();
   let mapWidth = 0;
   let mapHeight = 0;
-  let mapTiles: ReadonlyArray<number> = [];
+  let mapBlocked: ReadonlyArray<number> = [];
 
   function buildEntityVisual(name: string, isSelf: boolean): Container {
     const c = new Container();
@@ -238,15 +251,18 @@ export async function startGameScene(
     tilesLayer.removeChildren();
     mapWidth = data.width;
     mapHeight = data.height;
-    mapTiles = data.tiles;
+    mapBlocked = data.blocked;
 
-    // Optimizacion: agrupamos en un solo Graphics (PixiJS lo bachea bien).
+    // Un solo Graphics con todas las celdas — PixiJS lo bachea como un
+    // mesh y dibuja 10000 tiles sin problema. Cuando metamos el tileset
+    // real, esto pasa a Sprite + TextureAtlas.
     const g = new Graphics();
     for (let y = 0; y < data.height; y += 1) {
       for (let x = 0; x < data.width; x += 1) {
-        const tile = data.tiles[y * data.width + x] ?? 0;
-        const base = TILE_COLORS[tile] ?? TILE_COLORS[0]!;
-        const hi = TILE_HIGHLIGHT[tile] ?? base;
+        const idx = y * data.width + x;
+        const graphic = data.graphic[idx] ?? 0;
+        const blocked = (data.blocked[idx] ?? 0) === 1;
+        const { base, hi } = tileColors(graphic, blocked);
         g.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color: base });
         // Borde sutil para que se note la grilla
         g.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, 1).fill({ color: hi, alpha: 0.4 });
@@ -278,11 +294,10 @@ export async function startGameScene(
   }
 
   // Lookup local de walkability — para la prediccion optimista.
-  // Tiene que coincidir con la del server (grass = caminable).
+  // Coincide con la verdad del server (blocked[] viene en MAP_DATA).
   function isWalkableLocal(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return false;
-    const tile = mapTiles[y * mapWidth + x];
-    return tile === 0;
+    return mapBlocked[y * mapWidth + x] === 0;
   }
 
   // -- Movimiento --
@@ -509,8 +524,7 @@ export async function startGameScene(
 
   console.log(`[ao-client] sesión iniciada para ${character.name} (id=${character.id})`);
 
-  // Variable se usa indirectamente vía mapTiles; mantenida como referencia
-  // futura cuando agregemos mini-map (T-034+).
+  // Referencia futura cuando agreguemos mini-map / culling por viewport.
   void mapHeight;
   void (null as EntityId | null);
 

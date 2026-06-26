@@ -369,9 +369,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const mapPacket: MapData = {
         op: ServerToClientOp.MapData,
         mapId: map.id,
+        name: map.name,
         width: map.width,
         height: map.height,
-        tiles: map.tiles,
+        graphic: map.graphic,
+        blocked: map.blocked,
         entities,
       };
       send(socket, mapPacket);

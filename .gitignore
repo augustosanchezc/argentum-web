@@ -43,6 +43,11 @@ coverage/
 data/
 .docker-data/
 
+# Excepcion: assets de mapas del juego (de ao-libre, AGPL-3.0) — sin estos
+# el server no arranca, asi que viajan con el repo.
+!packages/server/data/
+!packages/server/data/**
+
 # Archivos temporales del proyecto
 *.tmp
 *.bak
