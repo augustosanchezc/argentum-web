@@ -4,9 +4,12 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type AttackRequest,
   type ChatBroadcast,
   type ChatError,
   type ChatSend,
+  type Damage,
+  type Death,
   type Direction,
   type EntityDespawn,
   type EntityId,
@@ -22,6 +25,12 @@ import { eq, and } from "drizzle-orm";
 import { isOnChatCooldown, validateChatText } from "../chat/index.js";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
+import {
+  ATTACK_COOLDOWN_MS,
+  isAdjacent,
+  RESPAWN_DELAY_MS,
+  rollDamage,
+} from "../world/combat.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { broadcastToMap } from "./broadcast.js";
@@ -76,6 +85,7 @@ async function persistPosition(s: Session): Promise<void> {
       posX: s.position.x,
       posY: s.position.y,
       direction: s.direction,
+      hp: s.hp,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -195,6 +205,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.ChatSend:
           handleChat(session, packet);
           break;
+        case ClientToServerOp.Attack:
+          handleAttack(session, packet);
+          break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
           socket.close(CLOSE_UNKNOWN_OPCODE, "UNKNOWN_OPCODE");
@@ -202,6 +215,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleMove(s: Session, move: MoveRequest): void {
+      // Un personaje muerto no se mueve. Le reenviamos su posicion canonica
+      // para que el cliente revierta cualquier prediccion.
+      if (s.deadUntil !== 0) {
+        const correction: EntityUpdate = {
+          op: ServerToClientOp.EntityUpdate,
+          id: s.characterId as EntityId,
+          position: { x: s.position.x, y: s.position.y },
+          direction: s.direction,
+        };
+        send(s.socket, correction);
+        return;
+      }
+
       const map = getMap(s.mapId);
       if (!map) return;
 
@@ -248,6 +274,52 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Asi el cliente puede usar el ACK del server como fuente
       // de verdad para reconciliar su prediccion optimista.
       broadcastToMap(s.mapId, update);
+    }
+
+    function handleAttack(s: Session, attack: AttackRequest): void {
+      const now = Date.now();
+      // Muerto o en cooldown: ignoramos en silencio (el cliente tambien
+      // aplica el cooldown localmente, asi que esto solo frena trampas).
+      if (s.deadUntil !== 0) return;
+      if (now - s.lastAttackAt < ATTACK_COOLDOWN_MS) return;
+
+      const targetId = attack.targetId as unknown as number;
+      if (targetId === s.characterId) return; // no autodaño
+
+      const target = sessions.getByCharacterId(targetId);
+      if (!target || target.mapId !== s.mapId) return; // objetivo inexistente
+      if (target.deadUntil !== 0) return; // ya esta muerto
+      if (!isAdjacent(s.position, target.position)) return; // fuera de rango
+
+      s.lastAttackAt = now;
+      sessions.touch(s.id);
+
+      const amount = rollDamage(s.level);
+      target.hp = Math.max(0, target.hp - amount);
+
+      const damage: Damage = {
+        op: ServerToClientOp.Damage,
+        attackerId: s.characterId as EntityId,
+        targetId: target.characterId as EntityId,
+        amount,
+        hp: target.hp,
+        maxHp: target.maxHp,
+      };
+      // Broadcast al mapa: todos actualizan la barra de HP y ven el golpe.
+      broadcastToMap(s.mapId, damage);
+
+      if (target.hp === 0) {
+        target.deadUntil = now + RESPAWN_DELAY_MS;
+        const death: Death = {
+          op: ServerToClientOp.Death,
+          id: target.characterId as EntityId,
+        };
+        broadcastToMap(target.mapId, death);
+        req.log.info(
+          { attacker: s.characterId, victim: target.characterId },
+          "[ws] muerte en combate",
+        );
+      }
     }
 
     function handleChat(s: Session, chat: ChatSend): void {
@@ -309,6 +381,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           id: characters.id,
           name: characters.name,
           level: characters.level,
+          hp: characters.hp,
+          maxHp: characters.maxHp,
           mapId: characters.mapId,
           posX: characters.posX,
           posY: characters.posY,
@@ -351,6 +425,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         spawnPos,
       );
       session.direction = parseDirection(character.direction);
+      session.level = character.level;
+      session.maxHp = character.maxHp;
+      // Si el personaje quedo guardado con HP <= 0 (desconecto muerto), lo
+      // revivimos al loguear con HP completo. Asi nunca entra "muerto eterno".
+      session.hp = character.hp > 0 ? character.hp : character.maxHp;
 
       sendLoginResponse(socket, true, undefined, {
         id: character.id as EntityId,
@@ -364,6 +443,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         id: s.characterId as EntityId,
         position: { x: s.position.x, y: s.position.y },
         name: s.characterName,
+        hp: s.hp,
+        maxHp: s.maxHp,
       }));
 
       const mapPacket: MapData = {
@@ -385,6 +466,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         position: { x: session.position.x, y: session.position.y },
         direction: session.direction,
         name: session.characterName,
+        hp: session.hp,
+        maxHp: session.maxHp,
       };
       broadcastToMap(map.id, spawn, session.id);
 

@@ -14,6 +14,13 @@ export interface Session {
   lastChatAt: number;
   joinedAt: number;
   lastSeenAt: number;
+  // Combate (E-2.2). hp/maxHp se cargan de la DB en el handshake.
+  level: number;
+  hp: number;
+  maxHp: number;
+  lastAttackAt: number;
+  // 0 = vivo. Si > 0, es el epoch ms en que el personaje debe reaparecer.
+  deadUntil: number;
 }
 
 class SessionRegistry {
@@ -57,6 +64,11 @@ class SessionRegistry {
       lastChatAt: 0,
       joinedAt: now,
       lastSeenAt: now,
+      level: 1,
+      hp: 30,
+      maxHp: 30,
+      lastAttackAt: 0,
+      deadUntil: 0,
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);
@@ -77,6 +89,10 @@ class SessionRegistry {
 
   get(sessionId: string): Session | undefined {
     return this.bySessionId.get(sessionId);
+  }
+
+  getByCharacterId(characterId: number): Session | undefined {
+    return this.byCharacterId.get(characterId);
   }
 
   all(): IterableIterator<Session> {

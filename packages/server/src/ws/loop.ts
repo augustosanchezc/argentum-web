@@ -1,3 +1,6 @@
+import { ServerToClientOp, type EntityId, type Respawn } from "@ao/shared";
+import { getMap } from "../world/maps.js";
+import { broadcastToMap } from "./broadcast.js";
 import { sessions } from "./sessions.js";
 
 const TICK_MS = 100;
@@ -9,6 +12,31 @@ export interface GameLoop {
   ticks: () => number;
 }
 
+// Procesa las reapariciones (T-042): todo personaje muerto cuyo deadUntil
+// ya venció revive en el spawn del mapa con HP al máximo, y se anuncia al
+// resto con un paquete RESPAWN.
+function processRespawns(now: number): void {
+  for (const s of sessions.all()) {
+    if (s.deadUntil === 0 || now < s.deadUntil) continue;
+
+    const map = getMap(s.mapId);
+    const spawn = map ? map.spawn : s.position;
+    s.position = { x: spawn.x, y: spawn.y };
+    s.hp = s.maxHp;
+    s.deadUntil = 0;
+    s.lastMoveAt = now;
+
+    const respawn: Respawn = {
+      op: ServerToClientOp.Respawn,
+      id: s.characterId as EntityId,
+      position: { x: s.position.x, y: s.position.y },
+      hp: s.hp,
+      maxHp: s.maxHp,
+    };
+    broadcastToMap(s.mapId, respawn);
+  }
+}
+
 export function createGameLoop(logger: { info: (msg: string) => void }): GameLoop {
   let timer: NodeJS.Timeout | null = null;
   let tickCount = 0;
@@ -16,11 +44,13 @@ export function createGameLoop(logger: { info: (msg: string) => void }): GameLoo
 
   function tick(): void {
     tickCount += 1;
-    // Stub de tick: aqui entra la logica de movimiento, combate y broadcast
-    // en T-022 completo. Por ahora solo cuenta y loggea cada 10s.
-    if (Date.now() - lastReport > 10_000) {
+    const now = Date.now();
+
+    processRespawns(now);
+
+    if (now - lastReport > 10_000) {
       logger.info(`[loop] tick ${tickCount} | sesiones activas: ${sessions.size()}`);
-      lastReport = Date.now();
+      lastReport = now;
     }
   }
 

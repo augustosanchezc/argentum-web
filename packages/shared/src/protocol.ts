@@ -6,6 +6,7 @@ export enum ClientToServerOp {
   LoginRequest = 0x01,
   Move = 0x10,
   ChatSend = 0x20,
+  Attack = 0x30,
   Disconnect = 0xff,
 }
 
@@ -17,6 +18,9 @@ export enum ServerToClientOp {
   EntityDespawn = 0x93,
   ChatBroadcast = 0xa0,
   ChatError = 0xa1,
+  Damage = 0xb0,
+  Death = 0xb1,
+  Respawn = 0xb2,
 }
 
 export interface LoginRequest {
@@ -55,6 +59,8 @@ export interface MapData {
     readonly id: EntityId;
     readonly position: Vector2;
     readonly name: string;
+    readonly hp: number;
+    readonly maxHp: number;
   }>;
 }
 
@@ -71,6 +77,8 @@ export interface EntitySpawn {
   readonly position: Vector2;
   readonly direction: Direction;
   readonly name: string;
+  readonly hp: number;
+  readonly maxHp: number;
 }
 
 export interface EntityDespawn {
@@ -105,10 +113,47 @@ export interface ChatError {
   readonly reason: string;
 }
 
+// -- Combate (Fase 2, E-2.2) --
+
+// C→S: el cliente pide atacar al objetivo apuntado (el personaje en el tile
+// que tiene en frente). El server valida rango, cooldown y que exista.
+export interface AttackRequest {
+  readonly op: ClientToServerOp.Attack;
+  readonly targetId: EntityId;
+}
+
+// S→C: resultado de un golpe. Se hace broadcast al mapa para que todos
+// actualicen la barra de HP del objetivo y muestren el número flotante.
+export interface Damage {
+  readonly op: ServerToClientOp.Damage;
+  readonly attackerId: EntityId;
+  readonly targetId: EntityId;
+  readonly amount: number;
+  // HP del objetivo tras el golpe (0..maxHp).
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
+// S→C: el objetivo murió (HP llegó a 0). Broadcast al mapa.
+export interface Death {
+  readonly op: ServerToClientOp.Death;
+  readonly id: EntityId;
+}
+
+// S→C: un personaje muerto reapareció en su punto de spawn con HP al máximo.
+export interface Respawn {
+  readonly op: ServerToClientOp.Respawn;
+  readonly id: EntityId;
+  readonly position: Vector2;
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
 export type ClientPacket =
   | LoginRequest
   | MoveRequest
   | ChatSend
+  | AttackRequest
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse
@@ -117,5 +162,8 @@ export type ServerPacket =
   | EntitySpawn
   | EntityDespawn
   | ChatBroadcast
-  | ChatError;
+  | ChatError
+  | Damage
+  | Death
+  | Respawn;
 export type AnyPacket = ClientPacket | ServerPacket;

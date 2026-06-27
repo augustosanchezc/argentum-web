@@ -79,6 +79,8 @@ La constante `PROTOCOL_VERSION = 1` vive en `packages/shared/src/protocol.ts` y 
 | `0x40–0x4F` | Inventario / items (C→S) | Fase 3 |
 | `0x80–0x8F` | Respuestas de auth/sesion (S→C) | Fase 1 |
 | `0x90–0x9F` | Updates de mundo / entidades (S→C) | Fase 1 |
+| `0xA0–0xAF` | Chat (S→C) | Fase 2 |
+| `0xB0–0xBF` | Combate (S→C) | Fase 2 |
 | `0xF0–0xFF` | Desconexion y errores | Fase 1 |
 
 Los opcodes no asignados dentro de un rango reservado NO pueden usarse hasta que la fase correspondiente los defina. Un opcode desconocido recibido por el servidor resulta en cierre 4002.
@@ -434,16 +436,69 @@ Los siguientes paquetes estan reservados en sus rangos de opcode pero no tienen 
 
 El `CHAT_MSG` del cliente llevara: `op`, `text` (string, max 255 chars), `channel` (uint8 — global, zona, privado). El del servidor incluira ademas `senderId` (EntityId) y `senderName` (string).
 
-### Fase 2 — Combate
+### Fase 2 — Combate — **IMPLEMENTADO** (E-2.2)
 
-| Paquete | Opcode | Direccion | Estado |
-|---|---|---|---|
-| `ATTACK` | `0x30` | C→S | Pendiente |
-| `DAMAGE` | `0x91` (*) | S→C | Pendiente — puede ser un subtipo de `ENTITY_UPDATE` o un paquete separado en `0x94` |
-| `DEATH` | `0x95` | S→C | Pendiente |
-| `RESPAWN` | `0x96` | S→C | Pendiente |
+Los opcodes de combate S→C quedaron en el rango propio `0xB0–0xBF` (no se
+reusó `0x9x`). Tipos TS en `@ao/shared/protocol.ts`. Specs:
 
-(*) El opcode definitivo de `DAMAGE` se decidira en el ADR correspondiente a Fase 2 para no consumir espacio del rango `0x9x` prematuramente.
+#### ATTACK — `0x30` — C→S
+
+Tipo TS: `AttackRequest`. El cliente pide golpear al personaje que tiene
+apuntado (el del tile en frente). El servidor es autoritativo: valida todo.
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `op` | uint8 | Opcode: `0x30` |
+| `targetId` | uint32 (EntityId) | Personaje objetivo |
+
+**Validaciones del servidor:**
+
+- El atacante no puede estar muerto.
+- Cooldown de ataque: `800ms` desde el último golpe exitoso (`ATTACK_COOLDOWN_MS`).
+- `targetId` no puede ser el propio atacante.
+- El objetivo debe existir, estar en el mismo mapa y estar vivo.
+- El objetivo debe ser ortogonalmente adyacente (distancia Manhattan == 1).
+- Si alguna falla, el paquete se ignora en silencio (sin respuesta de error).
+
+#### DAMAGE — `0xB0` — S→C
+
+Tipo TS: `Damage`. Resultado de un golpe. **Broadcast a todo el mapa** para
+que todos actualicen la barra de HP del objetivo y muestren el número flotante.
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `op` | uint8 | Opcode: `0xB0` |
+| `attackerId` | uint32 (EntityId) | Quién golpeó |
+| `targetId` | uint32 (EntityId) | Quién recibió el daño |
+| `amount` | uint16 | Daño aplicado (nivel 1 → 5..7) |
+| `hp` | uint16 | HP del objetivo tras el golpe (0..maxHp) |
+| `maxHp` | uint16 | HP máximo del objetivo |
+
+#### DEATH — `0xB1` — S→C
+
+Tipo TS: `Death`. El objetivo llegó a 0 HP. Broadcast al mapa. El personaje
+queda muerto `3000ms` (`RESPAWN_DELAY_MS`) antes de reaparecer.
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `op` | uint8 | Opcode: `0xB1` |
+| `id` | uint32 (EntityId) | Personaje que murió |
+
+#### RESPAWN — `0xB2` — S→C
+
+Tipo TS: `Respawn`. El game loop revive a los muertos vencidos en el spawn del
+mapa con HP completo. Broadcast al mapa.
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `op` | uint8 | Opcode: `0xB2` |
+| `id` | uint32 (EntityId) | Personaje que reaparece |
+| `position` | Vector2 | Punto de spawn del mapa |
+| `hp` | uint16 | HP tras reaparecer (== maxHp) |
+| `maxHp` | uint16 | HP máximo |
+
+> Nota: `MAP_DATA` (§5.4) y `ENTITY_SPAWN` (§5.6) ahora incluyen `hp` y `maxHp`
+> por entidad, para que el cliente dibuje las barras de HP desde el primer frame.
 
 ### Regla para nuevos paquetes
 
