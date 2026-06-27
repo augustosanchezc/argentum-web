@@ -53,6 +53,10 @@ data/
 *.bak
 .cache/
 
+# Insumo del script fetch-ulla-assets (se baja aparte, no es asset de runtime).
+# El cliente solo necesita graficos.json + los PNGs, que si viajan con el repo.
+packages/client/public/ao-assets/Graficos.ind
+
 # Claude Code (mantener agentes y memorias compartidas; ignorar transitorios)
 .claude/sessions/
 .claude/logs/

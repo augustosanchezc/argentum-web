@@ -1,4 +1,4 @@
-import { Application, Container, Graphics, Text, TextStyle } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
 import {
   ClientToServerOp,
   PROTOCOL_VERSION,
@@ -20,6 +20,7 @@ import type { CharacterSummary } from "../api";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 import { mountChat, type ChatHandle } from "../ui/chat";
+import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
 const MOVE_COOLDOWN_MS = 200;
@@ -28,11 +29,10 @@ const MOVE_COOLDOWN_MS = 200;
 // del siguiente paso y no se vea "atrasado".
 const TWEEN_DURATION_MS = 180;
 
-// Paleta heuristica mientras no tengamos el tileset real del AO.
-// El server envia un graphic1 (indice u32) por tile. Hasta que mapeemos
-// indice -> sprite del tileset, derivamos un color por rango. Los rangos
-// estan elegidos para que Ulla sea legible: tierra, piedra, baldosa de
-// pueblo, agua, vegetacion. Iterable cuando inspeccionemos mas mapas.
+// Paleta heuristica de FALLBACK. Ya renderizamos el tileset real del AO
+// (ver world/tileset.ts), pero si un tile no tiene textura — grh 0 (vacio)
+// o un PNG que no pudo bajarse — pintamos un color por rango para que el
+// mapa siga siendo legible: tierra, piedra, baldosa de pueblo, agua, vegetacion.
 function tileColors(graphic: number, blocked: boolean): { base: number; hi: number } {
   // Agua y piso liquido — indices tipicos de agua del AO clasico estan
   // en rangos bajos especificos. Por ahora marcamos blocked + un graphic
@@ -142,6 +142,13 @@ export async function startGameScene(
   }
   centerStatus();
 
+  // Tileset clásico del AO. Arrancamos la carga del índice en paralelo con
+  // la conexión; renderTiles espera a que esté listo antes de dibujar.
+  const tileset = new Tileset();
+  const tilesetIndexReady = tileset.loadIndex().catch((err: unknown) => {
+    console.warn("[ao-client] no se pudo cargar el tileset, se usa fallback de color", err);
+  });
+
   const entityVisuals = new Map<number, EntityVisual>();
   let mapWidth = 0;
   let mapHeight = 0;
@@ -247,29 +254,47 @@ export async function startGameScene(
     world.y = app.screen.height / 2 - own.renderY;
   }
 
-  function renderTiles(data: MapData): void {
+  async function renderTiles(data: MapData): Promise<void> {
     tilesLayer.removeChildren();
     mapWidth = data.width;
     mapHeight = data.height;
     mapBlocked = data.blocked;
 
-    // Un solo Graphics con todas las celdas — PixiJS lo bachea como un
-    // mesh y dibuja 10000 tiles sin problema. Cuando metamos el tileset
-    // real, esto pasa a Sprite + TextureAtlas.
-    const g = new Graphics();
+    // Esperamos el índice del tileset y precargamos los PNGs que usa este
+    // mapa. Si el índice falló (offline / 404), tileset.ready es false y
+    // caemos al fallback de color para todo el mapa.
+    await tilesetIndexReady;
+    if (tileset.ready) {
+      const ids = new Set<number>();
+      for (const g of data.graphic) {
+        if (g) ids.add(g);
+      }
+      await tileset.preload(ids);
+    }
+
+    // Fallback de color: un solo Graphics con las celdas que no tienen
+    // textura (grh 0 = vacío, o gráfico sin PNG). PixiJS lo bachea como un
+    // mesh, así que aunque sean miles de celdas se dibuja de una.
+    const fallback = new Graphics();
+    tilesLayer.addChild(fallback);
+
     for (let y = 0; y < data.height; y += 1) {
       for (let x = 0; x < data.width; x += 1) {
         const idx = y * data.width + x;
         const graphic = data.graphic[idx] ?? 0;
-        const blocked = (data.blocked[idx] ?? 0) === 1;
-        const { base, hi } = tileColors(graphic, blocked);
-        g.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color: base });
-        // Borde sutil para que se note la grilla
-        g.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, 1).fill({ color: hi, alpha: 0.4 });
-        g.rect(x * TILE_SIZE, y * TILE_SIZE, 1, TILE_SIZE).fill({ color: hi, alpha: 0.4 });
+        const tex = graphic ? tileset.get(graphic) : null;
+        if (tex) {
+          const sprite = new Sprite(tex);
+          sprite.x = x * TILE_SIZE;
+          sprite.y = y * TILE_SIZE;
+          tilesLayer.addChild(sprite);
+        } else {
+          const blocked = (data.blocked[idx] ?? 0) === 1;
+          const { base } = tileColors(graphic, blocked);
+          fallback.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color: base });
+        }
       }
     }
-    tilesLayer.addChild(g);
   }
 
   function renderEntities(data: MapData): void {
@@ -286,8 +311,8 @@ export async function startGameScene(
     }
   }
 
-  function applyMapData(data: MapData): void {
-    renderTiles(data);
+  async function applyMapData(data: MapData): Promise<void> {
+    await renderTiles(data);
     renderEntities(data);
     statusText.visible = false;
     centerCameraOnSelf();
@@ -387,7 +412,7 @@ export async function startGameScene(
   function handlePacket(packet: AnyPacket): void {
     switch (packet.op) {
       case ServerToClientOp.MapData:
-        applyMapData(packet);
+        void applyMapData(packet);
         break;
       case ServerToClientOp.EntityUpdate:
         handleEntityUpdate(packet);
