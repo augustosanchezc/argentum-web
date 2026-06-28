@@ -4,9 +4,12 @@ import {
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
+  type AttackRequest,
   type ChatBroadcast,
   type ChatError,
   type ChatSend,
+  type Damage,
+  type Death,
   type Direction,
   type EntityDespawn,
   type EntityId,
@@ -14,6 +17,7 @@ import {
   type EntityUpdate,
   type MapData,
   type MoveRequest,
+  type Respawn,
   type Vector2,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
@@ -24,6 +28,12 @@ import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
 const MOVE_COOLDOWN_MS = 200;
+// Espejo del cooldown autoritativo del server (combat.ts). El cliente lo
+// aplica localmente para no spamear paquetes ni la animación de swing.
+const ATTACK_COOLDOWN_MS = 800;
+// Duración de la animación de golpe y del número de daño flotante.
+const SWING_DURATION_MS = 160;
+const FLOATER_DURATION_MS = 800;
 // Velocidad de interpolacion visual: en cuanto tiempo el sprite recorre 1 tile.
 // Debe ser <= MOVE_COOLDOWN_MS para que el sprite llegue al destino antes
 // del siguiente paso y no se vea "atrasado".
@@ -77,6 +87,8 @@ export interface GameSceneResult {
 
 interface EntityVisual {
   container: Container;
+  body: Graphics;    // el circulo del personaje (lo atenuamos al morir)
+  hpBar: Graphics;   // barra de HP sobre la cabeza (la redibujamos)
   position: Vector2; // tile destino (verdad logica)
   renderX: number;   // px actual (interpolado)
   renderY: number;
@@ -84,6 +96,21 @@ interface EntityVisual {
   tweenFromY: number;
   tweenStart: number;
   tweenDuration: number;
+  isSelf: boolean;
+  hp: number;
+  maxHp: number;
+  dead: boolean;
+  // Animacion de golpe: lunge en la direccion swingDx/swingDy.
+  swingStart: number; // 0 = sin swing
+  swingDx: number;
+  swingDy: number;
+}
+
+// Numero de daño que sube y se desvanece sobre una entidad.
+interface Floater {
+  text: Text;
+  startY: number;
+  start: number;
 }
 
 export async function startGameScene(
@@ -136,11 +163,91 @@ export async function startGameScene(
   hud.y = 12;
   app.stage.addChild(hud);
 
+  // -- HUD de combate: barra de HP propia, abajo a la izquierda --
+  const HP_BAR_W = 220;
+  const HP_BAR_H = 18;
+  const hpBarBg = new Graphics();
+  const hpBarFg = new Graphics();
+  const hpBarText = new Text({
+    text: "",
+    style: new TextStyle({
+      fill: "#f5e6c8",
+      fontFamily: "Consolas, monospace",
+      fontSize: 12,
+      fontWeight: "bold",
+      stroke: { color: "#0a0805", width: 3 },
+    }),
+  });
+  hpBarText.anchor.set(0.5);
+  app.stage.addChild(hpBarBg, hpBarFg, hpBarText);
+
+  // -- Overlay de muerte: gris translucido sobre toda la pantalla --
+  const deathOverlay = new Graphics();
+  const deathText = new Text({
+    text: "Has muerto",
+    style: new TextStyle({
+      fill: "#e8dfc8",
+      fontFamily: "Georgia, serif",
+      fontSize: 40,
+      fontWeight: "bold",
+      align: "center",
+      stroke: { color: "#0a0805", width: 5 },
+    }),
+  });
+  deathText.anchor.set(0.5);
+  deathOverlay.visible = false;
+  deathText.visible = false;
+  app.stage.addChild(deathOverlay, deathText);
+
+  function layoutCombatHud(): void {
+    const x = 16;
+    const y = app.screen.height - HP_BAR_H - 16;
+    hpBarBg.x = x;
+    hpBarBg.y = y;
+    hpBarFg.x = x;
+    hpBarFg.y = y;
+    hpBarText.x = x + HP_BAR_W / 2;
+    hpBarText.y = y + HP_BAR_H / 2;
+
+    deathOverlay.clear();
+    deathOverlay
+      .rect(0, 0, app.screen.width, app.screen.height)
+      .fill({ color: 0x12100b, alpha: 0.55 });
+    deathText.x = app.screen.width / 2;
+    deathText.y = app.screen.height / 2;
+  }
+
+  function updateSelfHud(): void {
+    const own = entityVisuals.get(character.id);
+    if (!own) return;
+    const frac = own.maxHp > 0 ? Math.max(0, Math.min(1, own.hp / own.maxHp)) : 0;
+    hpBarBg.clear();
+    hpBarBg.rect(0, 0, HP_BAR_W, HP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
+    hpBarBg.rect(0, 0, HP_BAR_W, HP_BAR_H).stroke({ width: 1, color: 0x4d432d });
+    hpBarFg.clear();
+    const color = frac > 0.5 ? 0x4cb87e : frac > 0.25 ? 0xd4af37 : 0xc93838;
+    if (frac > 0) {
+      hpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, HP_BAR_H - 2).fill({ color });
+    }
+    hpBarText.text = `HP ${own.hp.toString()} / ${own.maxHp.toString()}`;
+  }
+
+  function showDeathOverlay(): void {
+    deathOverlay.visible = true;
+    deathText.visible = true;
+  }
+
+  function hideDeathOverlay(): void {
+    deathOverlay.visible = false;
+    deathText.visible = false;
+  }
+
   function centerStatus(): void {
     statusText.x = app.screen.width / 2;
     statusText.y = app.screen.height / 2;
   }
   centerStatus();
+  layoutCombatHud();
 
   // Tileset clásico del AO. Arrancamos la carga del índice en paralelo con
   // la conexión; renderTiles espera a que esté listo antes de dibujar.
@@ -154,15 +261,37 @@ export async function startGameScene(
   let mapHeight = 0;
   let mapBlocked: ReadonlyArray<number> = [];
 
-  function buildEntityVisual(name: string, isSelf: boolean): Container {
+  // Dibuja la barra de HP de una entidad (coordenadas locales al container).
+  function drawHpBar(g: Graphics, hp: number, maxHp: number): void {
+    const w = 28;
+    const h = 4;
+    const x = -w / 2;
+    const y = -30;
+    const frac = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    g.clear();
+    g.rect(x - 1, y - 1, w + 2, h + 2).fill({ color: 0x0a0805, alpha: 0.75 });
+    // Color por tramos: verde, ambar, rojo.
+    const color = frac > 0.5 ? 0x4cb87e : frac > 0.25 ? 0xd4af37 : 0xc93838;
+    if (frac > 0) {
+      g.rect(x, y, w * frac, h).fill({ color });
+    }
+  }
+
+  function buildEntityVisual(
+    name: string,
+    isSelf: boolean,
+    hp: number,
+    maxHp: number,
+  ): { container: Container; body: Graphics; hpBar: Graphics } {
     const c = new Container();
-    const g = new Graphics();
+    const body = new Graphics();
     const fillColor = isSelf ? 0xd4af37 : 0x6b9cd5;
     const strokeColor = isSelf ? 0xf4d56a : 0x9bc6f1;
-    g.circle(0, 0, 12)
+    body
+      .circle(0, 0, 12)
       .fill({ color: fillColor })
       .stroke({ width: 2, color: strokeColor });
-    c.addChild(g);
+    c.addChild(body);
 
     const label = new Text({
       text: name,
@@ -179,7 +308,11 @@ export async function startGameScene(
     label.y = -16;
     c.addChild(label);
 
-    return c;
+    const hpBar = new Graphics();
+    drawHpBar(hpBar, hp, maxHp);
+    c.addChild(hpBar);
+
+    return { container: c, body, hpBar };
   }
 
   function entityCenterPx(pos: Vector2): { x: number; y: number } {
@@ -194,14 +327,28 @@ export async function startGameScene(
     pos: Vector2,
     name: string,
     isSelf: boolean,
+    hp: number,
+    maxHp: number,
   ): EntityVisual {
-    const container = buildEntityVisual(name, isSelf);
+    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp);
     const c = entityCenterPx(pos);
     container.x = c.x;
     container.y = c.y;
+    const dead = hp <= 0;
+    if (dead) body.alpha = 0.35;
+    // Los demas personajes son clickeables para atacarlos (ademas de Ctrl).
+    if (!isSelf) {
+      container.eventMode = "static";
+      container.cursor = "crosshair";
+      container.on("pointertap", () => {
+        clickAttack(id);
+      });
+    }
     entitiesLayer.addChild(container);
     const visual: EntityVisual = {
       container,
+      body,
+      hpBar,
       position: { x: pos.x, y: pos.y },
       renderX: c.x,
       renderY: c.y,
@@ -209,6 +356,13 @@ export async function startGameScene(
       tweenFromY: c.y,
       tweenStart: 0,
       tweenDuration: 0,
+      isSelf,
+      hp,
+      maxHp,
+      dead,
+      swingStart: 0,
+      swingDx: 0,
+      swingDy: 0,
     };
     entityVisuals.set(id, visual);
     return visual;
@@ -307,8 +461,9 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp);
     }
+    updateSelfHud();
   }
 
   async function applyMapData(data: MapData): Promise<void> {
@@ -325,19 +480,26 @@ export async function startGameScene(
     return mapBlocked[y * mapWidth + x] === 0;
   }
 
-  // -- Movimiento --
+  // -- Movimiento y combate --
   let client: ReconnectingClient | null = null;
   let chat: ChatHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
+  // Direccion a la que mira el personaje (define a quien golpea el ataque).
+  let selfFacing: Direction = "south";
+  let lastLocalAttackAt = 0;
+  const floaters: Floater[] = [];
 
   function tryStep(direction: Direction): void {
     if (!client) return;
+    // El facing se actualiza siempre que se intenta mover, aunque haya
+    // cooldown o pared en frente — asi el ataque apunta a donde miramos.
+    selfFacing = direction;
     const now = performance.now();
     if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
     const own = entityVisuals.get(character.id);
-    if (!own) return;
+    if (!own || own.dead) return;
 
     const delta = DELTAS[direction];
     const target: Vector2 = {
@@ -363,6 +525,86 @@ export async function startGameScene(
     client.send(packet);
   }
 
+  function playSwing(v: EntityVisual, dir: Direction): void {
+    const delta = DELTAS[dir];
+    v.swingStart = performance.now();
+    v.swingDx = delta.x;
+    v.swingDy = delta.y;
+  }
+
+  function tryAttack(): void {
+    if (!client) return;
+    const now = performance.now();
+    if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
+    const own = entityVisuals.get(character.id);
+    if (!own || own.dead) return;
+
+    lastLocalAttackAt = now;
+    // Feedback inmediato: el swing siempre se anima, haya o no objetivo.
+    playSwing(own, selfFacing);
+
+    // Buscamos un objetivo vivo en el tile que tenemos en frente.
+    const delta = DELTAS[selfFacing];
+    const tx = own.position.x + delta.x;
+    const ty = own.position.y + delta.y;
+    let targetId: number | null = null;
+    for (const [id, v] of entityVisuals) {
+      if (id === character.id || v.dead) continue;
+      if (v.position.x === tx && v.position.y === ty) {
+        targetId = id;
+        break;
+      }
+    }
+    if (targetId === null) return;
+
+    const packet: AttackRequest = {
+      op: ClientToServerOp.Attack,
+      targetId: targetId as unknown as EntityId,
+    };
+    client.send(packet);
+  }
+
+  // Ataque por clic: solo si el objetivo es adyacente. Giramos hacia el.
+  function clickAttack(targetId: number): void {
+    if (!client) return;
+    const now = performance.now();
+    if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
+    const own = entityVisuals.get(character.id);
+    const target = entityVisuals.get(targetId);
+    if (!own || own.dead || !target || target.dead) return;
+    const dx = target.position.x - own.position.x;
+    const dy = target.position.y - own.position.y;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return; // no adyacente
+
+    selfFacing = dx === 1 ? "east" : dx === -1 ? "west" : dy === 1 ? "south" : "north";
+    lastLocalAttackAt = now;
+    playSwing(own, selfFacing);
+
+    const packet: AttackRequest = {
+      op: ClientToServerOp.Attack,
+      targetId: targetId as unknown as EntityId,
+    };
+    client.send(packet);
+  }
+
+  function spawnFloater(x: number, y: number, label: string, color: string): void {
+    const text = new Text({
+      text: label,
+      style: new TextStyle({
+        fill: color,
+        fontFamily: "Consolas, monospace",
+        fontSize: 16,
+        fontWeight: "bold",
+        stroke: { color: "#0a0805", width: 3 },
+      }),
+    });
+    text.anchor.set(0.5, 1);
+    text.x = x;
+    text.y = y - 18;
+    entitiesLayer.addChild(text);
+    floaters.push({ text, startY: text.y, start: performance.now() });
+  }
+
   function pumpHeldKeys(): void {
     // Prioridad: vertical antes que horizontal (consistente con AO original).
     if (keysHeld.has("KeyW") || keysHeld.has("ArrowUp")) { tryStep("north"); return; }
@@ -375,6 +617,12 @@ export async function startGameScene(
     // Si el chat tiene foco, dejamos que el input se quede con todas
     // las teclas — no movemos al personaje ni capturamos WASD.
     if (chat?.isInputFocused()) return;
+    // Ataque: Ctrl golpea al personaje que tenemos en frente.
+    if (e.code === "ControlLeft" || e.code === "ControlRight") {
+      e.preventDefault();
+      tryAttack();
+      return;
+    }
     const dir = KEY_TO_DIRECTION[e.code];
     if (!dir) return;
     e.preventDefault();
@@ -398,10 +646,38 @@ export async function startGameScene(
         const targetPx = entityCenterPx(v.position);
         v.renderX = v.tweenFromX + (targetPx.x - v.tweenFromX) * t;
         v.renderY = v.tweenFromY + (targetPx.y - v.tweenFromY) * t;
-        v.container.x = v.renderX;
-        v.container.y = v.renderY;
         if (t >= 1) v.tweenDuration = 0;
       }
+      // Swing de ataque: lunge breve en la direccion del golpe, sumado
+      // al render interpolado. Se aplica cada frame.
+      let ox = 0;
+      let oy = 0;
+      if (v.swingStart > 0) {
+        const st = (now - v.swingStart) / SWING_DURATION_MS;
+        if (st >= 1) {
+          v.swingStart = 0;
+        } else {
+          const k = Math.sin(st * Math.PI) * 8;
+          ox = v.swingDx * k;
+          oy = v.swingDy * k;
+        }
+      }
+      v.container.x = v.renderX + ox;
+      v.container.y = v.renderY + oy;
+    }
+    // Numeros de daño flotantes: suben y se desvanecen, luego se destruyen.
+    for (let i = floaters.length - 1; i >= 0; i -= 1) {
+      const f = floaters[i];
+      if (!f) continue;
+      const t = (now - f.start) / FLOATER_DURATION_MS;
+      if (t >= 1) {
+        entitiesLayer.removeChild(f.text);
+        f.text.destroy();
+        floaters.splice(i, 1);
+        continue;
+      }
+      f.text.y = f.startY - 24 * t;
+      f.text.alpha = 1 - t;
     }
     pumpHeldKeys();
     if (mapWidth > 0) centerCameraOnSelf();
@@ -429,6 +705,15 @@ export async function startGameScene(
       case ServerToClientOp.ChatError:
         handleChatError(packet);
         break;
+      case ServerToClientOp.Damage:
+        handleDamage(packet);
+        break;
+      case ServerToClientOp.Death:
+        handleDeath(packet);
+        break;
+      case ServerToClientOp.Respawn:
+        handleRespawn(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
@@ -448,13 +733,79 @@ export async function startGameScene(
     chat?.showError(p.reason);
   }
 
+  function handleDamage(p: Damage): void {
+    const targetId = p.targetId as unknown as number;
+    const attackerId = p.attackerId as unknown as number;
+    const target = entityVisuals.get(targetId);
+    const targetIsSelf = targetId === character.id;
+    const attackerIsSelf = attackerId === character.id;
+
+    if (target) {
+      target.hp = p.hp;
+      target.maxHp = p.maxHp;
+      drawHpBar(target.hpBar, target.hp, target.maxHp);
+      // Numero de daño sobre el objetivo: rojo si lo recibo yo, verde si
+      // lo inflijo yo, neutro si es entre terceros.
+      const color = targetIsSelf ? "#ff5555" : attackerIsSelf ? "#7cfc8a" : "#e8dfc8";
+      spawnFloater(target.renderX, target.renderY, `-${p.amount.toString()}`, color);
+    }
+
+    // Swing del atacante (el propio ya lo animo localmente al enviar).
+    if (!attackerIsSelf && target) {
+      const attacker = entityVisuals.get(attackerId);
+      if (attacker) {
+        const dx = Math.sign(target.position.x - attacker.position.x);
+        const dy = Math.sign(target.position.y - attacker.position.y);
+        const dir: Direction =
+          dx === 1 ? "east" : dx === -1 ? "west" : dy === -1 ? "north" : "south";
+        playSwing(attacker, dir);
+      }
+    }
+
+    if (targetIsSelf) updateSelfHud();
+  }
+
+  function handleDeath(p: Death): void {
+    const id = p.id as unknown as number;
+    const v = entityVisuals.get(id);
+    if (v) {
+      v.dead = true;
+      v.hp = 0;
+      v.body.alpha = 0.35;
+      drawHpBar(v.hpBar, 0, v.maxHp);
+    }
+    if (id === character.id) {
+      showDeathOverlay();
+      updateSelfHud();
+    }
+  }
+
+  function handleRespawn(p: Respawn): void {
+    const id = p.id as unknown as number;
+    const v = entityVisuals.get(id);
+    if (v) {
+      v.dead = false;
+      v.hp = p.hp;
+      v.maxHp = p.maxHp;
+      v.body.alpha = 1;
+      drawHpBar(v.hpBar, v.hp, v.maxHp);
+      snapEntityTo(id, p.position);
+    }
+    if (id === character.id) {
+      hideDeathOverlay();
+      updateSelfHud();
+      centerCameraOnSelf();
+    }
+  }
+
   function handleEntityUpdate(p: EntityUpdate): void {
     const id = p.id as unknown as number;
     const existing = entityVisuals.get(id);
     if (!existing) {
       // Llego un update de algo que no conocemos — lo creamos.
-      // Sucede si nos perdimos el spawn (race en reconexion).
-      addEntity(id, p.position, `?${id.toString()}`, id === character.id);
+      // Sucede si nos perdimos el spawn (race en reconexion). No tenemos
+      // su HP real todavia; lo mostramos lleno hasta el proximo DAMAGE.
+      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1);
       return;
     }
     if (id === character.id) {
@@ -472,7 +823,7 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp);
   }
 
   function handleEntityDespawn(p: EntityDespawn): void {
@@ -481,6 +832,7 @@ export async function startGameScene(
 
   const onResize = (): void => {
     centerStatus();
+    layoutCombatHud();
     if (mapWidth > 0) centerCameraOnSelf();
   };
   app.renderer.on("resize", onResize);
