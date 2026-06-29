@@ -357,7 +357,7 @@
     .timeline-marker {
       position: absolute;
       top: -10px;
-      left: 8%;
+      left: 70%;
       transform: translateX(-50%);
       color: var(--gold-bright);
       font-size: 0.7em;
@@ -770,32 +770,32 @@
   <header class="hero">
     <h1 class="hero-title">Estado del proyecto</h1>
     <div class="hero-subtitle">Argentum Online · Web</div>
-    <div class="hero-date">Actualizado el <strong>22 de junio de 2026</strong> · Sprint 2 en curso (adelantado al plan)</div>
+    <div class="hero-date">Actualizado el <strong>29 de junio de 2026</strong> · Fase 3 (MVP) en curso · Fases 1 y 2 cerradas anticipadamente</div>
 
     <div class="stat-grid">
       <div class="stat-card stat-card-circle">
         <svg class="circular-progress" viewBox="0 0 200 200">
           <circle class="track" cx="100" cy="100" r="80"></circle>
-          <circle class="fill" cx="100" cy="100" r="80" style="stroke-dashoffset: 397.1;"></circle>
+          <circle class="fill" cx="100" cy="100" r="80" style="stroke-dashoffset: 196.0;"></circle>
         </svg>
         <div class="circular-text">
-          <span class="big-number" data-target="21">0</span><span class="big-number-suffix">%</span>
+          <span class="big-number" data-target="61">0</span><span class="big-number-suffix">%</span>
           <div class="stat-label">Avance al Beta</div>
-          <div class="stat-detail">16 de 77 tareas</div>
+          <div class="stat-detail">47 de 77 tareas</div>
         </div>
       </div>
 
       <div class="stat-card stat-card-number">
         <div class="stat-label">Días hasta el Beta</div>
-        <span class="big-number" data-target="123">0</span>
+        <span class="big-number" data-target="116">0</span>
         <div class="stat-detail">Apertura prevista: 23 octubre 2026</div>
         <span class="stat-badge gold">Sprint 9 → 12</span>
       </div>
 
       <div class="stat-card stat-card-number">
         <div class="stat-label">Commits en main</div>
-        <span class="big-number" data-target="7">0</span>
-        <div class="stat-detail">CI verde 4 runs consecutivos</div>
+        <span class="big-number" data-target="22">0</span>
+        <div class="stat-detail">Fases 0, 1 y 2 cerradas · load test P95 ~5ms</div>
         <span class="stat-badge green">Healthy</span>
       </div>
     </div>
@@ -803,8 +803,8 @@
     <div class="ahead-banner">
       <span class="ahead-icon">⬆</span>
       <div class="ahead-text">
-        <strong>15 días adelantado al plan original.</strong>
-        <small>Sprint 1 estaba planificado para Sprint 1 (2026-06-23 a 2026-07-04) y se cerró antes del comienzo. El primer endpoint de Sprint 2 (T-016) también se adelantó.</small>
+        <strong>Muy adelantado al plan original.</strong>
+        <small>Las Fases 0, 1 y 2 (planificadas hasta el 28 de agosto) ya están cerradas. El cliente renderiza el mapa real de Ullathorpe con el tileset del AO, hay combate cuerpo a cuerpo con HP/muerte/respawn, chat con filtro, lista de online y controles táctiles. Load test con 20 sesiones: P95 ~5ms, sin crashes.</small>
       </div>
     </div>
   </header>
@@ -821,21 +821,23 @@
           <div class="tl-phase-sub">Setup · Sprint 1</div>
           <div class="tl-phase-fill" style="width: 100%;"></div>
         </div>
-        <div class="tl-phase p1 current">
-          <div class="tl-status-icon current">▸</div>
+        <div class="tl-phase p1 done">
+          <div class="tl-status-icon done">✓</div>
           <div class="tl-phase-label">Fase 1</div>
           <div class="tl-phase-sub">Prototipo de red · S2-3</div>
-          <div class="tl-phase-fill" style="width: 5%;"></div>
+          <div class="tl-phase-fill" style="width: 100%;"></div>
         </div>
-        <div class="tl-phase p2">
-          <div class="tl-status-icon pending">·</div>
+        <div class="tl-phase p2 done">
+          <div class="tl-status-icon done">✓</div>
           <div class="tl-phase-label">Fase 2</div>
           <div class="tl-phase-sub">Slice jugable · S4-5</div>
+          <div class="tl-phase-fill" style="width: 100%;"></div>
         </div>
-        <div class="tl-phase p3">
-          <div class="tl-status-icon pending">·</div>
+        <div class="tl-phase p3 current">
+          <div class="tl-status-icon current">▸</div>
           <div class="tl-phase-label">Fase 3</div>
           <div class="tl-phase-sub">MVP cerrado · S6-8</div>
+          <div class="tl-phase-fill" style="width: 0%;"></div>
         </div>
         <div class="tl-phase p4">
           <div class="tl-status-icon pending">·</div>
@@ -893,80 +895,80 @@
         </div>
       </div>
 
-      <div class="phase-card p1 current">
+      <div class="phase-card p1 done">
         <div class="phase-card-header">
           <div class="phase-num">1</div>
           <div class="phase-info">
             <div class="phase-name">Prototipo de red</div>
-            <div class="phase-meta">Sprints 2-3 · 07 jul → 31 jul · arrancada anticipada</div>
+            <div class="phase-meta">Sprints 2-3 · 07 jul → 31 jul · cerrada anticipadamente</div>
           </div>
-          <div class="phase-status current">En curso</div>
+          <div class="phase-status done">Cerrada</div>
         </div>
         <div class="progress-row">
-          <span><strong>5%</strong> completa</span>
-          <span>1 de 19 tareas</span>
+          <span><strong>100%</strong> completa</span>
+          <span>19 de 19 tareas</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 5%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill" style="width: 100%;"></div></div>
         <div class="epic-list">
-          <div class="epic current">
-            <div class="epic-check current">▸</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
             <div class="epic-name">E-1.1 Autenticación (register, login, characters, UI)</div>
-            <div class="epic-count">1/5</div>
+            <div class="epic-count">5/5</div>
           </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
             <div class="epic-name">E-1.2 Conexión WebSocket + sesión + game loop</div>
-            <div class="epic-count">0/4</div>
+            <div class="epic-count">4/4</div>
           </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">E-1.3 Mapa, sprite y movimiento autoritativo</div>
-            <div class="epic-count">0/10</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-1.3 Mapa real de Ullathorpe, tileset AO y movimiento autoritativo</div>
+            <div class="epic-count">10/10</div>
           </div>
         </div>
       </div>
 
-      <div class="phase-card p2">
+      <div class="phase-card p2 done">
         <div class="phase-card-header">
           <div class="phase-num">2</div>
           <div class="phase-info">
             <div class="phase-name">Slice vertical jugable</div>
-            <div class="phase-meta">Sprints 4-5 · 03 ago → 28 ago</div>
+            <div class="phase-meta">Sprints 4-5 · 03 ago → 28 ago · cerrada anticipadamente</div>
           </div>
-          <div class="phase-status pending">Pendiente</div>
+          <div class="phase-status done">Cerrada</div>
         </div>
         <div class="progress-row">
-          <span><strong>0%</strong> completa</span>
-          <span>0 de 13 tareas</span>
+          <span><strong>100%</strong> completa</span>
+          <span>13 de 13 tareas</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 0%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill" style="width: 100%;"></div></div>
         <div class="epic-list">
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">E-2.1 Chat global con scroll y timestamps</div>
-            <div class="epic-count">0/3</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-2.1 Chat global con scroll, timestamps y filtro de contenido</div>
+            <div class="epic-count">4/4</div>
           </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">E-2.2 Combate cuerpo a cuerpo + HP + respawn</div>
-            <div class="epic-count">0/5</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-2.2 Combate cuerpo a cuerpo + HP + muerte/respawn</div>
+            <div class="epic-count">8/8</div>
           </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">E-2.3 HUD básico + controles táctiles</div>
-            <div class="epic-count">0/5</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">E-2.3 HUD (HP, lista online), controles táctiles, logging, load test</div>
+            <div class="epic-count">4/4</div>
           </div>
         </div>
       </div>
 
-      <div class="phase-card p3">
+      <div class="phase-card p3 current">
         <div class="phase-card-header">
           <div class="phase-num">3</div>
           <div class="phase-info">
             <div class="phase-name">MVP cerrado</div>
             <div class="phase-meta">Sprints 6-8 · 01 sep → 25 sep · loop completo de gameplay</div>
           </div>
-          <div class="phase-status pending">Pendiente</div>
+          <div class="phase-status current">En curso</div>
         </div>
         <div class="progress-row">
           <span><strong>0%</strong> completa</span>

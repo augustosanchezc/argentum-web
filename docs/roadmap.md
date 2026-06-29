@@ -4,6 +4,13 @@
 > Ancla de tiempo: Sprint 1 comienza la semana del 2026-06-23.
 > Duración de sprint: 2 semanas.
 
+> **Estado al 2026-06-29 (TG-01):** Fases 0, 1 y 2 **cerradas** anticipadamente.
+> Hecho: auth + personajes, WebSocket binario con game loop a 10 Hz, mapa real
+> de Ullathorpe renderizado con el tileset del AO, movimiento autoritativo,
+> chat global con filtro de contenido, combate cuerpo a cuerpo (HP, daño,
+> muerte y respawn), lista de jugadores online, controles táctiles y load test
+> (20 sesiones, P95 ~5 ms, sin crashes). **En curso: Fase 3 — MVP cerrado.**
+
 ---
 
 ## 1. Decisiones asumidas
