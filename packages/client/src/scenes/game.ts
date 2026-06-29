@@ -25,6 +25,7 @@ import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 import { mountChat, type ChatHandle } from "../ui/chat";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
+import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
 import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
@@ -80,6 +81,15 @@ const DELTAS: Record<Direction, Vector2> = {
   south: { x: 0, y: 1 },
   east: { x: 1, y: 0 },
   west: { x: -1, y: 0 },
+};
+
+// Codigo de tecla equivalente por direccion — los controles tactiles
+// reutilizan el mismo mecanismo de "tecla mantenida" que el teclado.
+const DIR_TO_CODE: Record<Direction, string> = {
+  north: "ArrowUp",
+  south: "ArrowDown",
+  west: "ArrowLeft",
+  east: "ArrowRight",
 };
 
 export interface GameSceneResult {
@@ -498,6 +508,7 @@ export async function startGameScene(
   let client: ReconnectingClient | null = null;
   let chat: ChatHandle | null = null;
   let playerList: PlayerListHandle | null = null;
+  let touchControls: TouchControlsHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -905,6 +916,19 @@ export async function startGameScene(
 
     playerList = mountPlayerList(root);
 
+    touchControls = mountTouchControls(root, {
+      onDirDown: (dir) => {
+        keysHeld.add(DIR_TO_CODE[dir]);
+        tryStep(dir);
+      },
+      onDirUp: (dir) => {
+        keysHeld.delete(DIR_TO_CODE[dir]);
+      },
+      onAttack: () => {
+        tryAttack();
+      },
+    });
+
     chat = mountChat({
       parent: root,
       selfCharacterName: character.name,
@@ -932,6 +956,7 @@ export async function startGameScene(
       app.ticker.remove(tick);
       chat?.destroy();
       playerList?.destroy();
+      touchControls?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });
       return Promise.resolve();
