@@ -307,6 +307,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
       // Broadcast al mapa: todos actualizan la barra de HP y ven el golpe.
       broadcastToMap(s.mapId, damage);
+      req.log.debug(
+        { attacker: s.characterId, target: target.characterId, amount, targetHp: target.hp },
+        "[ws] golpe",
+      );
 
       if (target.hp === 0) {
         target.deadUntil = now + RESPAWN_DELAY_MS;

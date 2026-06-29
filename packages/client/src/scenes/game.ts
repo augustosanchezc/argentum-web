@@ -24,6 +24,7 @@ import type { CharacterSummary } from "../api";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 import { mountChat, type ChatHandle } from "../ui/chat";
+import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
@@ -401,6 +402,18 @@ export async function startGameScene(
     entityVisuals.delete(id);
   }
 
+  // Recolecta los nombres de las entidades conocidas y refresca el panel
+  // de jugadores online. El nombre se lee del label del container.
+  function refreshPlayerList(): void {
+    if (!playerList) return;
+    const names: string[] = [];
+    for (const [id, v] of entityVisuals) {
+      const label = v.container.children.find((c) => c instanceof Text) as Text | undefined;
+      names.push(label ? label.text : `#${id.toString()}`);
+    }
+    playerList.setPlayers(names);
+  }
+
   function centerCameraOnSelf(): void {
     const own = entityVisuals.get(character.id);
     if (!own) return;
@@ -469,6 +482,7 @@ export async function startGameScene(
   async function applyMapData(data: MapData): Promise<void> {
     await renderTiles(data);
     renderEntities(data);
+    refreshPlayerList();
     statusText.visible = false;
     centerCameraOnSelf();
   }
@@ -483,6 +497,7 @@ export async function startGameScene(
   // -- Movimiento y combate --
   let client: ReconnectingClient | null = null;
   let chat: ChatHandle | null = null;
+  let playerList: PlayerListHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -806,6 +821,7 @@ export async function startGameScene(
       // Sucede si nos perdimos el spawn (race en reconexion). No tenemos
       // su HP real todavia; lo mostramos lleno hasta el proximo DAMAGE.
       addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1);
+      refreshPlayerList();
       return;
     }
     if (id === character.id) {
@@ -824,10 +840,12 @@ export async function startGameScene(
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
     addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp);
+    refreshPlayerList();
   }
 
   function handleEntityDespawn(p: EntityDespawn): void {
     removeEntity(p.id as unknown as number);
+    refreshPlayerList();
   }
 
   const onResize = (): void => {
@@ -885,6 +903,8 @@ export async function startGameScene(
     });
     void client.start();
 
+    playerList = mountPlayerList(root);
+
     chat = mountChat({
       parent: root,
       selfCharacterName: character.name,
@@ -911,6 +931,7 @@ export async function startGameScene(
       window.removeEventListener("keyup", onKeyUp);
       app.ticker.remove(tick);
       chat?.destroy();
+      playerList?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });
       return Promise.resolve();

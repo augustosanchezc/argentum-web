@@ -88,6 +88,7 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
       RATE_LIMITED: "Más lento, esperá un segundo.",
       EMPTY: "El mensaje está vacío.",
       TOO_LONG: `El mensaje supera ${CHAT_TEXT_MAX_LENGTH.toString()} caracteres.`,
+      BLOCKED: "Ese mensaje contiene lenguaje no permitido.",
     };
     row.textContent = map[reason] ?? `Error: ${reason}`;
     messagesEl.appendChild(row);

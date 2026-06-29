@@ -109,7 +109,7 @@ export interface ChatBroadcast {
 
 export interface ChatError {
   readonly op: ServerToClientOp.ChatError;
-  // RATE_LIMITED | EMPTY | TOO_LONG
+  // RATE_LIMITED | EMPTY | TOO_LONG | BLOCKED
   readonly reason: string;
 }
 

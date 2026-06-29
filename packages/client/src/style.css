@@ -468,3 +468,43 @@ h3 {
 .ao-chat__input::placeholder {
   color: var(--text-faint);
 }
+
+/* Panel de jugadores online (T-047) */
+.ao-players {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  width: 180px;
+  max-height: 50vh;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: rgba(10, 8, 5, 0.55);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 4px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  z-index: 100;
+  pointer-events: auto;
+}
+.ao-players__title {
+  color: var(--gold-bright);
+  font-weight: 600;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+  padding-bottom: 4px;
+}
+.ao-players__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ao-players__item {
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
