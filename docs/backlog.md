@@ -126,6 +126,17 @@ Las siguientes épicas se desglosan en tareas al inicio del Sprint 6. Se listan 
 | E-3.9 | Prueba de carga con 50 conexiones (k6) | backend-developer | Must |
 | E-3.10 | `docs/architecture.md` actualizado post-MVP | backend-developer | Must |
 
+### Desglose de tareas (Sprint 6 — abierto 2026-06-29)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-051 | Registro de NPCs en server + envío como entidades | E-3.1 | M | T-041 | NPCs definidos por tipo y spawner; se envían al cliente como entidades con `kind: "npc"`, graphic, hp/maxHp | Must |
+| T-052 | IA básica de NPC hostil (aggro, persecución, ataque) | E-3.1 | M | T-051, T-022 | En el game loop, un NPC hostil detecta al jugador en rango, se le acerca tile a tile y lo ataca al estar adyacente (cooldown propio) | Must |
+| T-053 | Combate jugador→NPC + muerte y respawn del NPC | E-3.1 | M | T-051, T-041 | El jugador puede atacar NPCs; al morir el NPC emite DEATH, dropea XP y reaparece en su spawner tras un delay | Must |
+| T-054 | Render de NPCs en el cliente | E-3.1, E-3.6 | S | T-053, T-032 | Los NPCs se ven con un marcador/sprite distinto al de jugadores, con nombre y barra de HP | Must |
+| T-055 | Experiencia, niveles y subida de stats (server) | E-3.5 | M | T-053 | Columnas xp/level; matar NPC da XP; al alcanzar el umbral sube de nivel, aumenta maxHp y cura; se envía StatsUpdate | Must |
+| T-056 | HUD de XP y nivel en el cliente | E-3.5 | S | T-055 | El HUD muestra nivel y barra de XP; se actualiza al ganar XP y al subir de nivel | Must |
+
 ---
 
 ## Épicas de Fase 4 — Beta pública (detalle en Sprint 12)

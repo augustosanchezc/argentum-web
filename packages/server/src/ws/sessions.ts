@@ -16,6 +16,7 @@ export interface Session {
   lastSeenAt: number;
   // Combate (E-2.2). hp/maxHp se cargan de la DB en el handshake.
   level: number;
+  xp: number;
   hp: number;
   maxHp: number;
   lastAttackAt: number;
@@ -65,6 +66,7 @@ class SessionRegistry {
       joinedAt: now,
       lastSeenAt: now,
       level: 1,
+      xp: 0,
       hp: 30,
       maxHp: 30,
       lastAttackAt: 0,

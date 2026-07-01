@@ -1,4 +1,10 @@
-import type { CharacterSummary, Direction, EntityId, Vector2 } from "./entities.js";
+import type {
+  CharacterSummary,
+  Direction,
+  EntityId,
+  EntityKind,
+  Vector2,
+} from "./entities.js";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -21,6 +27,7 @@ export enum ServerToClientOp {
   Damage = 0xb0,
   Death = 0xb1,
   Respawn = 0xb2,
+  StatsUpdate = 0xb3,
 }
 
 export interface LoginRequest {
@@ -61,6 +68,9 @@ export interface MapData {
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
+    readonly kind: EntityKind;
+    // Gráfico/sprite del AO para NPCs (0 para jugadores, que usan el sprite base).
+    readonly graphic: number;
   }>;
 }
 
@@ -79,6 +89,8 @@ export interface EntitySpawn {
   readonly name: string;
   readonly hp: number;
   readonly maxHp: number;
+  readonly kind: EntityKind;
+  readonly graphic: number;
 }
 
 export interface EntityDespawn {
@@ -149,6 +161,18 @@ export interface Respawn {
   readonly maxHp: number;
 }
 
+// S→C: stats del propio personaje cambiaron (ganó XP, subió de nivel, se curó).
+// Solo se envía al jugador dueño del personaje (no es broadcast).
+export interface StatsUpdate {
+  readonly op: ServerToClientOp.StatsUpdate;
+  readonly level: number;
+  readonly xp: number;
+  // XP total acumulada necesaria para alcanzar el siguiente nivel.
+  readonly xpForNextLevel: number;
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
 export type ClientPacket =
   | LoginRequest
   | MoveRequest
@@ -165,5 +189,6 @@ export type ServerPacket =
   | ChatError
   | Damage
   | Death
-  | Respawn;
+  | Respawn
+  | StatsUpdate;
 export type AnyPacket = ClientPacket | ServerPacket;

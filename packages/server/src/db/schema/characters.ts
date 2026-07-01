@@ -19,6 +19,8 @@ export const characters = pgTable(
       .references(() => accounts.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 32 }).notNull(),
     level: integer("level").notNull().default(1),
+    // Experiencia acumulada total (E-3.5).
+    xp: integer("xp").notNull().default(0),
     // Stats de combate (E-2.2). Valores por defecto de nivel 1.
     hp: integer("hp").notNull().default(30),
     maxHp: integer("max_hp").notNull().default(30),

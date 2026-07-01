@@ -500,6 +500,39 @@ mapa con HP completo. Broadcast al mapa.
 > Nota: `MAP_DATA` (§5.4) y `ENTITY_SPAWN` (§5.6) ahora incluyen `hp` y `maxHp`
 > por entidad, para que el cliente dibuje las barras de HP desde el primer frame.
 
+### Fase 3 — NPCs y progresión — **IMPLEMENTADO** (E-3.1, E-3.5)
+
+Entidades NPC. Cada entidad de `MAP_DATA` y `ENTITY_SPAWN` lleva ahora:
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `kind` | string | `"player"` o `"npc"` |
+| `graphic` | uint32 | Sprite AO del NPC (0 para jugadores; placeholder por ahora) |
+
+Los IDs de NPC viven en `>= 1.000.000` (`NPC_ID_BASE`) para no colisionar con
+los IDs de personaje. Los NPCs reutilizan los paquetes existentes:
+
+- **Movimiento/agro**: el servidor emite `ENTITY_UPDATE` (§5.5) al mover un NPC.
+- **Combate**: `ATTACK` (`0x30`) acepta un `targetId` de NPC; el servidor valida
+  rango/cooldown igual que contra jugadores. `DAMAGE` (`0xB0`) se emite con
+  `attackerId`/`targetId` que pueden ser NPC o jugador (el NPC contraataca).
+- **Muerte/respawn**: `DEATH` (`0xB1`) al morir el NPC; el game loop lo revive en
+  su spawner tras `respawnMs` y emite `RESPAWN` (`0xB2`).
+
+#### STATS_UPDATE — `0xB3` — S→C
+
+Tipo TS: `StatsUpdate`. Se envía **solo al dueño** del personaje cuando cambian
+sus stats (ganó XP, subió de nivel, se curó al subir). No es broadcast.
+
+| Campo | Tipo | Descripcion |
+|---|---|---|
+| `op` | uint8 | Opcode: `0xB3` |
+| `level` | uint8 | Nivel actual (1..10) |
+| `xp` | uint32 | XP acumulada dentro del nivel actual |
+| `xpForNextLevel` | uint32 | XP total que requiere el nivel actual (0 si es nivel máximo) |
+| `hp` | uint16 | HP actual |
+| `maxHp` | uint16 | HP máximo (deriva del nivel) |
+
 ### Regla para nuevos paquetes
 
 Todo paquete nuevo debe seguir este flujo antes de ser implementado:

@@ -1,10 +1,14 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { pool } from "./db/index.js";
+import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
 
 async function main(): Promise<void> {
   const app = await buildApp();
+
+  // Crea las instancias de NPC del mundo antes de arrancar el loop.
+  npcs.init();
 
   const loop = createGameLoop({ info: (msg) => app.log.info(msg) });
   loop.start();

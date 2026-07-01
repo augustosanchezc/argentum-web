@@ -7,6 +7,10 @@ export interface Vector2 {
 
 export type Direction = "north" | "south" | "east" | "west";
 
+// Distingue entidades controladas por jugadores de las controladas por el
+// servidor (NPCs). El cliente las renderiza distinto.
+export type EntityKind = "player" | "npc";
+
 export interface CharacterSummary {
   readonly id: EntityId;
   readonly name: string;

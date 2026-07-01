@@ -19,6 +19,7 @@ import {
   type LoginResponse,
   type MapData,
   type MoveRequest,
+  type StatsUpdate,
   type Vector2,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
@@ -33,6 +34,8 @@ import {
 } from "../world/combat.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
+import { isNpcId, npcs } from "../world/npcs.js";
+import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import { sessions, type Session } from "./sessions.js";
@@ -85,7 +88,10 @@ async function persistPosition(s: Session): Promise<void> {
       posX: s.position.x,
       posY: s.position.y,
       direction: s.direction,
+      level: s.level,
+      xp: s.xp,
       hp: s.hp,
+      maxHp: s.maxHp,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -117,6 +123,20 @@ function sendLoginResponse(
     ...(character !== undefined && { character }),
   };
   send(socket, resp);
+}
+
+// Envia al jugador su nivel, progreso de XP y HP actuales. Solo al dueño.
+function sendStatsUpdate(s: Session): void {
+  const prog = levelProgress(s.level, s.xp);
+  const pkt: StatsUpdate = {
+    op: ServerToClientOp.StatsUpdate,
+    level: prog.level,
+    xp: prog.xpIntoLevel,
+    xpForNextLevel: prog.xpForNextLevel,
+    hp: s.hp,
+    maxHp: s.maxHp,
+  };
+  send(s.socket, pkt);
 }
 
 // eslint-disable-next-line @typescript-eslint/require-await
@@ -242,6 +262,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
             if (other.id === s.id) continue;
             if (other.position.x === pos.x && other.position.y === pos.y) return true;
           }
+          for (const n of npcs.inMap(s.mapId)) {
+            if (n.deadUntil === 0 && n.position.x === pos.x && n.position.y === pos.y) {
+              return true;
+            }
+          }
           return false;
         },
       });
@@ -286,6 +311,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const targetId = attack.targetId as unknown as number;
       if (targetId === s.characterId) return; // no autodaño
 
+      // Objetivo NPC vs objetivo jugador.
+      if (isNpcId(targetId)) {
+        attackNpc(s, targetId, now);
+        return;
+      }
+
       const target = sessions.getByCharacterId(targetId);
       if (!target || target.mapId !== s.mapId) return; // objetivo inexistente
       if (target.deadUntil !== 0) return; // ya esta muerto
@@ -322,6 +353,55 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         req.log.info(
           { attacker: s.characterId, victim: target.characterId },
           "[ws] muerte en combate",
+        );
+      }
+    }
+
+    function attackNpc(s: Session, npcId: number, now: number): void {
+      const npc = npcs.get(npcId);
+      if (!npc || npc.mapId !== s.mapId || npc.deadUntil !== 0) return;
+      if (!isAdjacent(s.position, npc.position)) return; // fuera de rango
+
+      s.lastAttackAt = now;
+      sessions.touch(s.id);
+
+      const amount = rollDamage(s.level);
+      npc.hp = Math.max(0, npc.hp - amount);
+
+      const damage: Damage = {
+        op: ServerToClientOp.Damage,
+        attackerId: s.characterId as EntityId,
+        targetId: npc.id as EntityId,
+        amount,
+        hp: npc.hp,
+        maxHp: npc.type.maxHp,
+      };
+      broadcastToMap(s.mapId, damage);
+
+      if (npc.hp === 0) {
+        npc.deadUntil = now + npc.type.respawnMs;
+        npc.targetCharacterId = null;
+        const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId };
+        broadcastToMap(npc.mapId, death);
+
+        // XP al que dio el golpe final; sube de nivel si corresponde.
+        const gain = applyXpGain(s.level, s.xp, npc.type.xpReward);
+        s.xp = gain.totalXp;
+        if (gain.leveledUp) {
+          s.level = gain.level;
+          s.maxHp = maxHpForLevel(s.level);
+          s.hp = s.maxHp; // curación completa al subir de nivel
+        }
+        sendStatsUpdate(s);
+        req.log.info(
+          {
+            attacker: s.characterId,
+            npc: npc.id,
+            xpReward: npc.type.xpReward,
+            leveledUp: gain.leveledUp,
+            level: s.level,
+          },
+          "[ws] NPC eliminado",
         );
       }
     }
@@ -385,6 +465,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           id: characters.id,
           name: characters.name,
           level: characters.level,
+          xp: characters.xp,
           hp: characters.hp,
           maxHp: characters.maxHp,
           mapId: characters.mapId,
@@ -430,10 +511,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       );
       session.direction = parseDirection(character.direction);
       session.level = character.level;
-      session.maxHp = character.maxHp;
+      session.xp = character.xp;
+      // maxHp se deriva del nivel (fuente de verdad) para evitar drift.
+      session.maxHp = maxHpForLevel(character.level);
       // Si el personaje quedo guardado con HP <= 0 (desconecto muerto), lo
       // revivimos al loguear con HP completo. Asi nunca entra "muerto eterno".
-      session.hp = character.hp > 0 ? character.hp : character.maxHp;
+      session.hp =
+        character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
 
       sendLoginResponse(socket, true, undefined, {
         id: character.id as EntityId,
@@ -443,13 +527,25 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       // Mapa + entidades visibles. Por ahora incluimos a TODAS las
       // sesiones del mapa porque no hay rango de vision todavia.
-      const entities = sessions.inMap(map.id).map((s) => ({
+      const playerEntities = sessions.inMap(map.id).map((s) => ({
         id: s.characterId as EntityId,
         position: { x: s.position.x, y: s.position.y },
         name: s.characterName,
         hp: s.hp,
         maxHp: s.maxHp,
+        kind: "player" as const,
+        graphic: 0,
       }));
+      const npcEntities = npcs.inMap(map.id).map((n) => ({
+        id: n.id as EntityId,
+        position: { x: n.position.x, y: n.position.y },
+        name: n.type.name,
+        hp: n.hp,
+        maxHp: n.type.maxHp,
+        kind: "npc" as const,
+        graphic: n.type.graphic,
+      }));
+      const entities = [...playerEntities, ...npcEntities];
 
       const mapPacket: MapData = {
         op: ServerToClientOp.MapData,
@@ -472,8 +568,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         name: session.characterName,
         hp: session.hp,
         maxHp: session.maxHp,
+        kind: "player",
+        graphic: 0,
       };
       broadcastToMap(map.id, spawn, session.id);
+
+      // Stats iniciales (nivel, XP, HP) para el HUD del jugador.
+      sendStatsUpdate(session);
 
       req.log.info(
         {

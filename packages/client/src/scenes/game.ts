@@ -13,11 +13,13 @@ import {
   type Direction,
   type EntityDespawn,
   type EntityId,
+  type EntityKind,
   type EntitySpawn,
   type EntityUpdate,
   type MapData,
   type MoveRequest,
   type Respawn,
+  type StatsUpdate,
   type Vector2,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
@@ -108,6 +110,7 @@ interface EntityVisual {
   tweenStart: number;
   tweenDuration: number;
   isSelf: boolean;
+  kind: EntityKind;
   hp: number;
   maxHp: number;
   dead: boolean;
@@ -192,6 +195,22 @@ export async function startGameScene(
   hpBarText.anchor.set(0.5);
   app.stage.addChild(hpBarBg, hpBarFg, hpBarText);
 
+  // Barra de XP + nivel, justo encima de la de HP.
+  const XP_BAR_H = 8;
+  const xpBarBg = new Graphics();
+  const xpBarFg = new Graphics();
+  const levelText = new Text({
+    text: "Nivel 1",
+    style: new TextStyle({
+      fill: "#f4d56a",
+      fontFamily: "Consolas, monospace",
+      fontSize: 12,
+      fontWeight: "bold",
+      stroke: { color: "#0a0805", width: 3 },
+    }),
+  });
+  app.stage.addChild(xpBarBg, xpBarFg, levelText);
+
   // -- Overlay de muerte: gris translucido sobre toda la pantalla --
   const deathOverlay = new Graphics();
   const deathText = new Text({
@@ -220,6 +239,14 @@ export async function startGameScene(
     hpBarText.x = x + HP_BAR_W / 2;
     hpBarText.y = y + HP_BAR_H / 2;
 
+    const xpY = y - XP_BAR_H - 4;
+    xpBarBg.x = x;
+    xpBarBg.y = xpY;
+    xpBarFg.x = x;
+    xpBarFg.y = xpY;
+    levelText.x = x + HP_BAR_W + 10;
+    levelText.y = xpY - 4;
+
     deathOverlay.clear();
     deathOverlay
       .rect(0, 0, app.screen.width, app.screen.height)
@@ -243,6 +270,18 @@ export async function startGameScene(
     hpBarText.text = `HP ${own.hp.toString()} / ${own.maxHp.toString()}`;
   }
 
+  function updateXpHud(level: number, xpInto: number, xpForNext: number): void {
+    levelText.text = `Nivel ${level.toString()}`;
+    xpBarBg.clear();
+    xpBarBg.rect(0, 0, HP_BAR_W, XP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
+    xpBarBg.rect(0, 0, HP_BAR_W, XP_BAR_H).stroke({ width: 1, color: 0x4d432d });
+    xpBarFg.clear();
+    const frac = xpForNext > 0 ? Math.max(0, Math.min(1, xpInto / xpForNext)) : 1;
+    if (frac > 0) {
+      xpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, XP_BAR_H - 2).fill({ color: 0x6b8cff });
+    }
+  }
+
   function showDeathOverlay(): void {
     deathOverlay.visible = true;
     deathText.visible = true;
@@ -259,6 +298,7 @@ export async function startGameScene(
   }
   centerStatus();
   layoutCombatHud();
+  updateXpHud(1, 0, 1);
 
   // Tileset clásico del AO. Arrancamos la carga del índice en paralelo con
   // la conexión; renderTiles espera a que esté listo antes de dibujar.
@@ -293,21 +333,32 @@ export async function startGameScene(
     isSelf: boolean,
     hp: number,
     maxHp: number,
+    kind: EntityKind,
   ): { container: Container; body: Graphics; hpBar: Graphics } {
     const c = new Container();
     const body = new Graphics();
-    const fillColor = isSelf ? 0xd4af37 : 0x6b9cd5;
-    const strokeColor = isSelf ? 0xf4d56a : 0x9bc6f1;
-    body
-      .circle(0, 0, 12)
-      .fill({ color: fillColor })
-      .stroke({ width: 2, color: strokeColor });
+    // Color por tipo: propio (oro), otro jugador (azul), NPC (rojo terroso).
+    const isNpc = kind === "npc";
+    const fillColor = isNpc ? 0x8c3b2e : isSelf ? 0xd4af37 : 0x6b9cd5;
+    const strokeColor = isNpc ? 0xc9603f : isSelf ? 0xf4d56a : 0x9bc6f1;
+    if (isNpc) {
+      // Rombo para distinguir a simple vista de los jugadores (círculos).
+      body
+        .poly([0, -12, 12, 0, 0, 12, -12, 0])
+        .fill({ color: fillColor })
+        .stroke({ width: 2, color: strokeColor });
+    } else {
+      body
+        .circle(0, 0, 12)
+        .fill({ color: fillColor })
+        .stroke({ width: 2, color: strokeColor });
+    }
     c.addChild(body);
 
     const label = new Text({
       text: name,
       style: new TextStyle({
-        fill: isSelf ? "#f5e6c8" : "#e8dfc8",
+        fill: isNpc ? "#e8b3a3" : isSelf ? "#f5e6c8" : "#e8dfc8",
         fontFamily: "Georgia, serif",
         fontSize: 12,
         fontWeight: "bold",
@@ -340,8 +391,9 @@ export async function startGameScene(
     isSelf: boolean,
     hp: number,
     maxHp: number,
+    kind: EntityKind,
   ): EntityVisual {
-    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp);
+    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp, kind);
     const c = entityCenterPx(pos);
     container.x = c.x;
     container.y = c.y;
@@ -368,6 +420,7 @@ export async function startGameScene(
       tweenStart: 0,
       tweenDuration: 0,
       isSelf,
+      kind,
       hp,
       maxHp,
       dead,
@@ -418,6 +471,7 @@ export async function startGameScene(
     if (!playerList) return;
     const names: string[] = [];
     for (const [id, v] of entityVisuals) {
+      if (v.kind !== "player") continue; // los NPCs no van en la lista de online
       const label = v.container.children.find((c) => c instanceof Text) as Text | undefined;
       names.push(label ? label.text : `#${id.toString()}`);
     }
@@ -484,7 +538,7 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind);
     }
     updateSelfHud();
   }
@@ -740,6 +794,9 @@ export async function startGameScene(
       case ServerToClientOp.Respawn:
         handleRespawn(packet);
         break;
+      case ServerToClientOp.StatsUpdate:
+        handleStatsUpdate(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
@@ -806,6 +863,18 @@ export async function startGameScene(
     }
   }
 
+  function handleStatsUpdate(p: StatsUpdate): void {
+    // Sincroniza HP propio (p. ej. curación al subir de nivel) y la barra de XP.
+    const own = entityVisuals.get(character.id);
+    if (own) {
+      own.hp = p.hp;
+      own.maxHp = p.maxHp;
+      drawHpBar(own.hpBar, own.hp, own.maxHp);
+      updateSelfHud();
+    }
+    updateXpHud(p.level, p.xp, p.xpForNextLevel);
+  }
+
   function handleRespawn(p: Respawn): void {
     const id = p.id as unknown as number;
     const v = entityVisuals.get(id);
@@ -831,7 +900,7 @@ export async function startGameScene(
       // Llego un update de algo que no conocemos — lo creamos.
       // Sucede si nos perdimos el spawn (race en reconexion). No tenemos
       // su HP real todavia; lo mostramos lleno hasta el proximo DAMAGE.
-      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1);
+      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1, "player");
       refreshPlayerList();
       return;
     }
@@ -850,7 +919,7 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind);
     refreshPlayerList();
   }
 
