@@ -5,6 +5,7 @@ import type {
   EntityKind,
   Vector2,
 } from "./entities.js";
+import type { InventorySlot } from "./items.js";
 
 export const PROTOCOL_VERSION = 1;
 
@@ -13,6 +14,11 @@ export enum ClientToServerOp {
   Move = 0x10,
   ChatSend = 0x20,
   Attack = 0x30,
+  Pickup = 0x40,
+  UseItem = 0x41,
+  Interact = 0x42,
+  ShopBuy = 0x43,
+  ShopSell = 0x44,
   Disconnect = 0xff,
 }
 
@@ -22,12 +28,16 @@ export enum ServerToClientOp {
   EntityUpdate = 0x91,
   EntitySpawn = 0x92,
   EntityDespawn = 0x93,
+  GroundItemSpawn = 0x94,
+  GroundItemDespawn = 0x95,
   ChatBroadcast = 0xa0,
   ChatError = 0xa1,
   Damage = 0xb0,
   Death = 0xb1,
   Respawn = 0xb2,
   StatsUpdate = 0xb3,
+  InventoryUpdate = 0xc0,
+  ShopOpen = 0xc1,
 }
 
 export interface LoginRequest {
@@ -71,6 +81,13 @@ export interface MapData {
     readonly kind: EntityKind;
     // Gráfico/sprite del AO para NPCs (0 para jugadores, que usan el sprite base).
     readonly graphic: number;
+  }>;
+  // Items tirados en el suelo del mapa (E-3.2).
+  readonly groundItems: ReadonlyArray<{
+    readonly id: EntityId;
+    readonly position: Vector2;
+    readonly item: number;
+    readonly qty: number;
   }>;
 }
 
@@ -173,11 +190,76 @@ export interface StatsUpdate {
   readonly maxHp: number;
 }
 
+// -- Items, inventario y tienda (Fase 3, E-3.2/3.3/3.4) --
+
+// C→S: recoger el item que está en el tile del propio personaje.
+export interface PickupRequest {
+  readonly op: ClientToServerOp.Pickup;
+}
+
+// C→S: usar/equipar un item del inventario (poción cura; arma/armadura se equipan).
+export interface UseItemRequest {
+  readonly op: ClientToServerOp.UseItem;
+  readonly item: number;
+}
+
+// C→S: interactuar con un NPC (abrir la tienda de un comerciante).
+export interface InteractRequest {
+  readonly op: ClientToServerOp.Interact;
+  readonly targetId: EntityId;
+}
+
+// C→S: comprar / vender un item en la tienda abierta.
+export interface ShopBuyRequest {
+  readonly op: ClientToServerOp.ShopBuy;
+  readonly item: number;
+}
+export interface ShopSellRequest {
+  readonly op: ClientToServerOp.ShopSell;
+  readonly item: number;
+}
+
+// S→C: apareció un item en el suelo.
+export interface GroundItemSpawn {
+  readonly op: ServerToClientOp.GroundItemSpawn;
+  readonly id: EntityId;
+  readonly position: Vector2;
+  readonly item: number;
+  readonly qty: number;
+}
+
+// S→C: se levantó / desapareció un item del suelo.
+export interface GroundItemDespawn {
+  readonly op: ServerToClientOp.GroundItemDespawn;
+  readonly id: EntityId;
+}
+
+// S→C: estado completo del inventario del jugador (se reenvía en cada cambio).
+export interface InventoryUpdate {
+  readonly op: ServerToClientOp.InventoryUpdate;
+  readonly gold: number;
+  readonly slots: ReadonlyArray<InventorySlot>;
+  readonly equippedWeapon: number | null;
+  readonly equippedArmor: number | null;
+}
+
+// S→C: abrir la ventana de tienda con la oferta del comerciante.
+export interface ShopOpen {
+  readonly op: ServerToClientOp.ShopOpen;
+  readonly merchantId: EntityId;
+  readonly offers: ReadonlyArray<{ readonly item: number; readonly price: number }>;
+}
+
 export type ClientPacket =
   | LoginRequest
   | MoveRequest
   | ChatSend
   | AttackRequest
+  | PickupRequest
+  | UseItemRequest
+  | InteractRequest
+  | ShopBuyRequest
+  | ShopSellRequest
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse
@@ -190,5 +272,9 @@ export type ServerPacket =
   | Damage
   | Death
   | Respawn
-  | StatsUpdate;
+  | StatsUpdate
+  | GroundItemSpawn
+  | GroundItemDespawn
+  | InventoryUpdate
+  | ShopOpen;
 export type AnyPacket = ClientPacket | ServerPacket;

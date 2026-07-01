@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
 import {
   ClientToServerOp,
+  getItem,
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
@@ -16,17 +17,26 @@ import {
   type EntityKind,
   type EntitySpawn,
   type EntityUpdate,
+  type InteractRequest,
+  type InventoryUpdate,
   type MapData,
   type MoveRequest,
+  type PickupRequest,
   type Respawn,
+  type ShopBuyRequest,
+  type ShopOpen,
+  type ShopSellRequest,
   type StatsUpdate,
+  type UseItemRequest,
   type Vector2,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 import { mountChat, type ChatHandle } from "../ui/chat";
+import { mountInventory, type InventoryHandle } from "../ui/inventory";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
+import { mountShop, type ShopHandle } from "../ui/shop";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
 import { Tileset } from "../world/tileset";
 
@@ -148,8 +158,10 @@ export async function startGameScene(
   app.stage.addChild(world);
 
   const tilesLayer = new Container();
+  const groundLayer = new Container();
   const entitiesLayer = new Container();
   world.addChild(tilesLayer);
+  world.addChild(groundLayer);
   world.addChild(entitiesLayer);
 
   // Overlay de estado durante el handshake. Vive en el stage, no en el world,
@@ -308,6 +320,7 @@ export async function startGameScene(
   });
 
   const entityVisuals = new Map<number, EntityVisual>();
+  const groundItemVisuals = new Map<number, Container>();
   let mapWidth = 0;
   let mapHeight = 0;
   let mapBlocked: ReadonlyArray<number> = [];
@@ -339,10 +352,25 @@ export async function startGameScene(
     const body = new Graphics();
     // Color por tipo: propio (oro), otro jugador (azul), NPC (rojo terroso).
     const isNpc = kind === "npc";
-    const fillColor = isNpc ? 0x8c3b2e : isSelf ? 0xd4af37 : 0x6b9cd5;
-    const strokeColor = isNpc ? 0xc9603f : isSelf ? 0xf4d56a : 0x9bc6f1;
-    if (isNpc) {
+    const isMerchant = kind === "merchant";
+    const isDiamond = isNpc || isMerchant;
+    const fillColor = isMerchant
+      ? 0x2d7d5a
+      : isNpc
+        ? 0x8c3b2e
+        : isSelf
+          ? 0xd4af37
+          : 0x6b9cd5;
+    const strokeColor = isMerchant
+      ? 0x4cb87e
+      : isNpc
+        ? 0xc9603f
+        : isSelf
+          ? 0xf4d56a
+          : 0x9bc6f1;
+    if (isDiamond) {
       // Rombo para distinguir a simple vista de los jugadores (círculos).
+      // Verde = comerciante, rojo = NPC hostil.
       body
         .poly([0, -12, 12, 0, 0, 12, -12, 0])
         .fill({ color: fillColor })
@@ -358,7 +386,7 @@ export async function startGameScene(
     const label = new Text({
       text: name,
       style: new TextStyle({
-        fill: isNpc ? "#e8b3a3" : isSelf ? "#f5e6c8" : "#e8dfc8",
+        fill: isMerchant ? "#a7e0c4" : isNpc ? "#e8b3a3" : isSelf ? "#f5e6c8" : "#e8dfc8",
         fontFamily: "Georgia, serif",
         fontSize: 12,
         fontWeight: "bold",
@@ -465,6 +493,48 @@ export async function startGameScene(
     entityVisuals.delete(id);
   }
 
+  function addGroundItemVisual(id: number, pos: Vector2, item: number): void {
+    if (groundItemVisuals.has(id)) return;
+    const def = getItem(item);
+    const c = new Container();
+    const g = new Graphics();
+    g.rect(-6, -6, 12, 12)
+      .fill({ color: 0xd4af37 })
+      .stroke({ width: 1, color: 0xf4d56a });
+    c.addChild(g);
+    const label = new Text({
+      text: def ? def.name : `#${item.toString()}`,
+      style: new TextStyle({
+        fill: "#f4d56a",
+        fontFamily: "Consolas, monospace",
+        fontSize: 10,
+        stroke: { color: "#0a0805", width: 2 },
+      }),
+    });
+    label.anchor.set(0.5, 1);
+    label.y = -8;
+    c.addChild(label);
+    const px = entityCenterPx(pos);
+    c.x = px.x;
+    c.y = px.y;
+    groundLayer.addChild(c);
+    groundItemVisuals.set(id, c);
+  }
+
+  function removeGroundItemVisual(id: number): void {
+    const c = groundItemVisuals.get(id);
+    if (!c) return;
+    groundLayer.removeChild(c);
+    c.destroy({ children: true });
+    groundItemVisuals.delete(id);
+  }
+
+  function clearGroundItems(): void {
+    for (const c of groundItemVisuals.values()) c.destroy({ children: true });
+    groundItemVisuals.clear();
+    groundLayer.removeChildren();
+  }
+
   // Recolecta los nombres de las entidades conocidas y refresca el panel
   // de jugadores online. El nombre se lee del label del container.
   function refreshPlayerList(): void {
@@ -546,6 +616,10 @@ export async function startGameScene(
   async function applyMapData(data: MapData): Promise<void> {
     await renderTiles(data);
     renderEntities(data);
+    clearGroundItems();
+    for (const gi of data.groundItems) {
+      addGroundItemVisual(gi.id as unknown as number, gi.position, gi.item);
+    }
     refreshPlayerList();
     statusText.visible = false;
     centerCameraOnSelf();
@@ -563,6 +637,8 @@ export async function startGameScene(
   let chat: ChatHandle | null = null;
   let playerList: PlayerListHandle | null = null;
   let touchControls: TouchControlsHandle | null = null;
+  let inventory: InventoryHandle | null = null;
+  let shop: ShopHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -644,14 +720,26 @@ export async function startGameScene(
     client.send(packet);
   }
 
-  // Ataque por clic: solo si el objetivo es adyacente. Giramos hacia el.
+  // Clic sobre una entidad: si es comerciante, abrimos la tienda; si no,
+  // atacamos (solo si es adyacente). Giramos hacia el objetivo.
   function clickAttack(targetId: number): void {
     if (!client) return;
+    const target = entityVisuals.get(targetId);
+    if (!target) return;
+
+    if (target.kind === "merchant") {
+      const interact: InteractRequest = {
+        op: ClientToServerOp.Interact,
+        targetId: targetId as unknown as EntityId,
+      };
+      client.send(interact);
+      return;
+    }
+
     const now = performance.now();
     if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
     const own = entityVisuals.get(character.id);
-    const target = entityVisuals.get(targetId);
-    if (!own || own.dead || !target || target.dead) return;
+    if (!own || own.dead || target.dead) return;
     const dx = target.position.x - own.position.x;
     const dy = target.position.y - own.position.y;
     if (Math.abs(dx) + Math.abs(dy) !== 1) return; // no adyacente
@@ -701,6 +789,18 @@ export async function startGameScene(
     if (e.code === "ControlLeft" || e.code === "ControlRight") {
       e.preventDefault();
       tryAttack();
+      return;
+    }
+    // G: agarrar item del suelo. I: abrir/cerrar inventario.
+    if (e.code === "KeyG") {
+      e.preventDefault();
+      const pickup: PickupRequest = { op: ClientToServerOp.Pickup };
+      client?.send(pickup);
+      return;
+    }
+    if (e.code === "KeyI") {
+      e.preventDefault();
+      inventory?.toggle();
       return;
     }
     const dir = KEY_TO_DIRECTION[e.code];
@@ -797,6 +897,18 @@ export async function startGameScene(
       case ServerToClientOp.StatsUpdate:
         handleStatsUpdate(packet);
         break;
+      case ServerToClientOp.GroundItemSpawn:
+        addGroundItemVisual(packet.id as unknown as number, packet.position, packet.item);
+        break;
+      case ServerToClientOp.GroundItemDespawn:
+        removeGroundItemVisual(packet.id as unknown as number);
+        break;
+      case ServerToClientOp.InventoryUpdate:
+        handleInventoryUpdate(packet);
+        break;
+      case ServerToClientOp.ShopOpen:
+        handleShopOpen(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
@@ -861,6 +973,19 @@ export async function startGameScene(
       showDeathOverlay();
       updateSelfHud();
     }
+  }
+
+  function handleInventoryUpdate(p: InventoryUpdate): void {
+    inventory?.setData({
+      gold: p.gold,
+      slots: p.slots,
+      equippedWeapon: p.equippedWeapon,
+      equippedArmor: p.equippedArmor,
+    });
+  }
+
+  function handleShopOpen(p: ShopOpen): void {
+    shop?.open(p.offers);
   }
 
   function handleStatsUpdate(p: StatsUpdate): void {
@@ -985,6 +1110,24 @@ export async function startGameScene(
 
     playerList = mountPlayerList(root);
 
+    inventory = mountInventory(root, {
+      onUse: (item) => {
+        const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item };
+        client?.send(pkt);
+      },
+      onSell: (item) => {
+        const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item };
+        client?.send(pkt);
+      },
+    });
+
+    shop = mountShop(root, {
+      onBuy: (item) => {
+        const pkt: ShopBuyRequest = { op: ClientToServerOp.ShopBuy, item };
+        client?.send(pkt);
+      },
+    });
+
     touchControls = mountTouchControls(root, {
       onDirDown: (dir) => {
         keysHeld.add(DIR_TO_CODE[dir]);
@@ -1025,6 +1168,8 @@ export async function startGameScene(
       app.ticker.remove(tick);
       chat?.destroy();
       playerList?.destroy();
+      inventory?.destroy();
+      shop?.destroy();
       touchControls?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });

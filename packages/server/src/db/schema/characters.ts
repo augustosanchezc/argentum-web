@@ -3,11 +3,13 @@ import {
   serial,
   varchar,
   integer,
+  jsonb,
   timestamp,
   uniqueIndex,
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { InventorySlot } from "@ao/shared";
 import { accounts } from "./accounts";
 
 export const characters = pgTable(
@@ -24,6 +26,14 @@ export const characters = pgTable(
     // Stats de combate (E-2.2). Valores por defecto de nivel 1.
     hp: integer("hp").notNull().default(30),
     maxHp: integer("max_hp").notNull().default(30),
+    // Economía e inventario (E-3.2/3.4). Oro inicial para probar la tienda.
+    gold: integer("gold").notNull().default(100),
+    inventory: jsonb("inventory")
+      .$type<InventorySlot[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    equippedWeapon: integer("equipped_weapon"),
+    equippedArmor: integer("equipped_armor"),
     mapId: integer("map_id").notNull().default(1),
     posX: integer("pos_x").notNull().default(25),
     posY: integer("pos_y").notNull().default(25),

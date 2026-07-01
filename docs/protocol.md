@@ -533,6 +533,29 @@ sus stats (ganó XP, subió de nivel, se curó al subir). No es broadcast.
 | `hp` | uint16 | HP actual |
 | `maxHp` | uint16 | HP máximo (deriva del nivel) |
 
+### Fase 3 — Items, inventario y tienda — **IMPLEMENTADO** (E-3.2/3.3/3.4)
+
+Catálogo de items en `@ao/shared/items.ts` (id, tipo, precio, stats). Los NPCs
+comerciantes tienen `kind: "merchant"`. Los items en el suelo viajan en
+`MAP_DATA.groundItems` y en `GROUND_ITEM_SPAWN/DESPAWN`; sus IDs viven en
+`>= 2.000.000`.
+
+| Paquete | Opcode | Dir | Campos |
+|---|---|---|---|
+| `PICKUP` | `0x40` | C→S | (sin campos) — recoge el item del tile propio |
+| `USE_ITEM` | `0x41` | C→S | `item` — usa poción / equipa arma o armadura |
+| `INTERACT` | `0x42` | C→S | `targetId` — abre la tienda de un comerciante (rango ≤ 3) |
+| `SHOP_BUY` | `0x43` | C→S | `item` — compra si hay oro y un comerciante cerca |
+| `SHOP_SELL` | `0x44` | C→S | `item` — vende a mitad de precio |
+| `GROUND_ITEM_SPAWN` | `0x94` | S→C | `id`, `position`, `item`, `qty` |
+| `GROUND_ITEM_DESPAWN` | `0x95` | S→C | `id` |
+| `INVENTORY_UPDATE` | `0xC0` | S→C | `gold`, `slots[]`, `equippedWeapon`, `equippedArmor` (solo al dueño) |
+| `SHOP_OPEN` | `0xC1` | S→C | `merchantId`, `offers[] {item, price}` |
+
+Efectos: el arma equipada suma daño; la armadura reduce el daño recibido (mín 1);
+la poción cura. Al morir, un NPC suelta oro (directo al matador) e items al suelo
+según su *drop table*.
+
 ### Regla para nuevos paquetes
 
 Todo paquete nuevo debe seguir este flujo antes de ser implementado:

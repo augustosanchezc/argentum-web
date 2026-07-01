@@ -9,17 +9,26 @@ import {
   type ChatError,
   type ChatSend,
   type Damage,
+  getItem,
   type Death,
   type Direction,
   type EntityDespawn,
   type EntityId,
   type EntitySpawn,
   type EntityUpdate,
+  type GroundItemDespawn,
+  type GroundItemSpawn,
+  type InteractRequest,
+  type InventoryUpdate,
   type LoginRequest,
   type LoginResponse,
   type MapData,
   type MoveRequest,
+  type ShopBuyRequest,
+  type ShopOpen,
+  type ShopSellRequest,
   type StatsUpdate,
+  type UseItemRequest,
   type Vector2,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
@@ -32,9 +41,17 @@ import {
   RESPAWN_DELAY_MS,
   rollDamage,
 } from "../world/combat.js";
+import { groundItems } from "../world/ground-items.js";
+import {
+  addItem,
+  armorDefenseFor,
+  countItem,
+  removeItem,
+  weaponBonusFor,
+} from "../world/inventory.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
-import { isNpcId, npcs } from "../world/npcs.js";
+import { isNpcId, npcs, rollNpcGold } from "../world/npcs.js";
 import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
@@ -92,6 +109,10 @@ async function persistPosition(s: Session): Promise<void> {
       xp: s.xp,
       hp: s.hp,
       maxHp: s.maxHp,
+      gold: s.gold,
+      inventory: s.inventory,
+      equippedWeapon: s.equippedWeapon,
+      equippedArmor: s.equippedArmor,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -135,6 +156,31 @@ function sendStatsUpdate(s: Session): void {
     xpForNextLevel: prog.xpForNextLevel,
     hp: s.hp,
     maxHp: s.maxHp,
+  };
+  send(s.socket, pkt);
+}
+
+// Recalcula los bonos derivados del equipo. Si un item equipado ya no está
+// en el inventario, lo des-equipa.
+function recomputeEquipment(s: Session): void {
+  if (s.equippedWeapon !== null && countItem(s.inventory, s.equippedWeapon) === 0) {
+    s.equippedWeapon = null;
+  }
+  if (s.equippedArmor !== null && countItem(s.inventory, s.equippedArmor) === 0) {
+    s.equippedArmor = null;
+  }
+  s.weaponBonus = weaponBonusFor(s.equippedWeapon);
+  s.armorDefense = armorDefenseFor(s.equippedArmor);
+}
+
+function sendInventoryUpdate(s: Session): void {
+  recomputeEquipment(s);
+  const pkt: InventoryUpdate = {
+    op: ServerToClientOp.InventoryUpdate,
+    gold: s.gold,
+    slots: s.inventory,
+    equippedWeapon: s.equippedWeapon,
+    equippedArmor: s.equippedArmor,
   };
   send(s.socket, pkt);
 }
@@ -227,6 +273,21 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.Attack:
           handleAttack(session, packet);
+          break;
+        case ClientToServerOp.Pickup:
+          handlePickup(session);
+          break;
+        case ClientToServerOp.UseItem:
+          handleUseItem(session, packet);
+          break;
+        case ClientToServerOp.Interact:
+          handleInteract(session, packet);
+          break;
+        case ClientToServerOp.ShopBuy:
+          handleShopBuy(session, packet);
+          break;
+        case ClientToServerOp.ShopSell:
+          handleShopSell(session, packet);
           break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
@@ -325,7 +386,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       s.lastAttackAt = now;
       sessions.touch(s.id);
 
-      const amount = rollDamage(s.level);
+      // Arma del atacante suma daño; armadura del objetivo lo reduce (mín 1).
+      const amount = Math.max(1, rollDamage(s.level) + s.weaponBonus - target.armorDefense);
       target.hp = Math.max(0, target.hp - amount);
 
       const damage: Damage = {
@@ -360,12 +422,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function attackNpc(s: Session, npcId: number, now: number): void {
       const npc = npcs.get(npcId);
       if (!npc || npc.mapId !== s.mapId || npc.deadUntil !== 0) return;
+      if (npc.type.merchant) return; // a los comerciantes no se los ataca
       if (!isAdjacent(s.position, npc.position)) return; // fuera de rango
 
       s.lastAttackAt = now;
       sessions.touch(s.id);
 
-      const amount = rollDamage(s.level);
+      const amount = rollDamage(s.level) + s.weaponBonus;
       npc.hp = Math.max(0, npc.hp - amount);
 
       const damage: Damage = {
@@ -384,6 +447,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId };
         broadcastToMap(npc.mapId, death);
 
+        // Loot: oro directo al matador + items al suelo (según drop table).
+        const gold = rollNpcGold(npc.type);
+        if (gold > 0) s.gold += gold;
+        for (const drop of npc.type.drops) {
+          if (Math.random() < drop.chance) {
+            const g = groundItems.spawn(npc.mapId, npc.position, drop.item, 1);
+            const spawnPkt: GroundItemSpawn = {
+              op: ServerToClientOp.GroundItemSpawn,
+              id: g.id as EntityId,
+              position: { x: g.position.x, y: g.position.y },
+              item: g.item,
+              qty: g.qty,
+            };
+            broadcastToMap(npc.mapId, spawnPkt);
+          }
+        }
+
         // XP al que dio el golpe final; sube de nivel si corresponde.
         const gain = applyXpGain(s.level, s.xp, npc.type.xpReward);
         s.xp = gain.totalXp;
@@ -393,17 +473,107 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           s.hp = s.maxHp; // curación completa al subir de nivel
         }
         sendStatsUpdate(s);
+        sendInventoryUpdate(s); // cambió el oro
         req.log.info(
           {
             attacker: s.characterId,
             npc: npc.id,
             xpReward: npc.type.xpReward,
+            gold,
             leveledUp: gain.leveledUp,
             level: s.level,
           },
           "[ws] NPC eliminado",
         );
       }
+    }
+
+    function handlePickup(s: Session): void {
+      if (s.deadUntil !== 0) return;
+      const g = groundItems.atTile(s.mapId, s.position);
+      if (!g) return;
+      groundItems.remove(g.id);
+      s.inventory = addItem(s.inventory, g.item, g.qty);
+      const despawn: GroundItemDespawn = {
+        op: ServerToClientOp.GroundItemDespawn,
+        id: g.id as EntityId,
+      };
+      broadcastToMap(s.mapId, despawn);
+      sendInventoryUpdate(s);
+    }
+
+    function handleUseItem(s: Session, pkt: UseItemRequest): void {
+      const def = getItem(pkt.item);
+      if (!def) return;
+      if (countItem(s.inventory, pkt.item) === 0) return;
+
+      if (def.type === "potion") {
+        if (s.deadUntil !== 0) return;
+        const healed = Math.min(s.maxHp, s.hp + (def.heal ?? 0));
+        if (healed === s.hp) return; // ya está al máximo, no gastar la poción
+        s.hp = healed;
+        const removed = removeItem(s.inventory, pkt.item, 1);
+        if (removed) s.inventory = removed;
+        sendStatsUpdate(s); // actualiza HP en el HUD del dueño
+        sendInventoryUpdate(s);
+      } else if (def.type === "weapon") {
+        s.equippedWeapon = pkt.item;
+        sendInventoryUpdate(s); // recomputa el bono de arma
+      } else if (def.type === "armor") {
+        s.equippedArmor = pkt.item;
+        sendInventoryUpdate(s);
+      }
+    }
+
+    // True si hay un comerciante del mapa a <= 3 tiles del jugador.
+    function nearMerchant(s: Session): boolean {
+      for (const n of npcs.inMap(s.mapId)) {
+        if (!n.type.merchant) continue;
+        const dx = Math.abs(n.position.x - s.position.x);
+        const dy = Math.abs(n.position.y - s.position.y);
+        if (Math.max(dx, dy) <= 3) return true;
+      }
+      return false;
+    }
+
+    function handleInteract(s: Session, pkt: InteractRequest): void {
+      const targetId = pkt.targetId as unknown as number;
+      if (!isNpcId(targetId)) return;
+      const npc = npcs.get(targetId);
+      if (!npc || npc.mapId !== s.mapId || !npc.type.merchant) return;
+      const dx = Math.abs(npc.position.x - s.position.x);
+      const dy = Math.abs(npc.position.y - s.position.y);
+      if (Math.max(dx, dy) > 3) return;
+
+      const offers = npc.type.shopOffers.map((it) => {
+        const def = getItem(it);
+        return { item: it, price: def ? def.value : 0 };
+      });
+      const shop: ShopOpen = {
+        op: ServerToClientOp.ShopOpen,
+        merchantId: npc.id as EntityId,
+        offers,
+      };
+      send(s.socket, shop);
+    }
+
+    function handleShopBuy(s: Session, pkt: ShopBuyRequest): void {
+      const def = getItem(pkt.item);
+      if (!def || !nearMerchant(s)) return;
+      if (s.gold < def.value) return;
+      s.gold -= def.value;
+      s.inventory = addItem(s.inventory, def.id, 1);
+      sendInventoryUpdate(s);
+    }
+
+    function handleShopSell(s: Session, pkt: ShopSellRequest): void {
+      const def = getItem(pkt.item);
+      if (!def || !nearMerchant(s)) return;
+      const removed = removeItem(s.inventory, def.id, 1);
+      if (!removed) return;
+      s.inventory = removed;
+      s.gold += Math.floor(def.value / 2); // se vende a mitad de precio
+      sendInventoryUpdate(s);
     }
 
     function handleChat(s: Session, chat: ChatSend): void {
@@ -468,6 +638,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           xp: characters.xp,
           hp: characters.hp,
           maxHp: characters.maxHp,
+          gold: characters.gold,
+          inventory: characters.inventory,
+          equippedWeapon: characters.equippedWeapon,
+          equippedArmor: characters.equippedArmor,
           mapId: characters.mapId,
           posX: characters.posX,
           posY: characters.posY,
@@ -518,6 +692,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // revivimos al loguear con HP completo. Asi nunca entra "muerto eterno".
       session.hp =
         character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
+      session.gold = character.gold;
+      session.inventory = character.inventory.map((s) => ({ ...s }));
+      session.equippedWeapon = character.equippedWeapon;
+      session.equippedArmor = character.equippedArmor;
+      recomputeEquipment(session);
 
       sendLoginResponse(socket, true, undefined, {
         id: character.id as EntityId,
@@ -542,10 +721,17 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         name: n.type.name,
         hp: n.hp,
         maxHp: n.type.maxHp,
-        kind: "npc" as const,
+        kind: n.type.merchant ? ("merchant" as const) : ("npc" as const),
         graphic: n.type.graphic,
       }));
       const entities = [...playerEntities, ...npcEntities];
+
+      const groundItemEntities = groundItems.inMap(map.id).map((g) => ({
+        id: g.id as EntityId,
+        position: { x: g.position.x, y: g.position.y },
+        item: g.item,
+        qty: g.qty,
+      }));
 
       const mapPacket: MapData = {
         op: ServerToClientOp.MapData,
@@ -556,6 +742,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         graphic: map.graphic,
         blocked: map.blocked,
         entities,
+        groundItems: groundItemEntities,
       };
       send(socket, mapPacket);
 
@@ -573,8 +760,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
       broadcastToMap(map.id, spawn, session.id);
 
-      // Stats iniciales (nivel, XP, HP) para el HUD del jugador.
+      // Stats e inventario iniciales para el HUD del jugador.
       sendStatsUpdate(session);
+      sendInventoryUpdate(session);
 
       req.log.info(
         {

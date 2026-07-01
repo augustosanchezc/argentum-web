@@ -9,6 +9,12 @@ export function isNpcId(id: number): boolean {
   return id >= NPC_ID_BASE;
 }
 
+// Un drop posible al morir el NPC: item del catálogo + probabilidad [0..1].
+export interface NpcDrop {
+  readonly item: number;
+  readonly chance: number;
+}
+
 // Definición de un tipo de NPC (plantilla compartida por todas sus instancias).
 export interface NpcType {
   readonly key: string;
@@ -22,6 +28,13 @@ export interface NpcType {
   readonly moveCooldownMs: number;
   readonly xpReward: number;
   readonly respawnMs: number;
+  readonly hostile: boolean;
+  readonly merchant: boolean;
+  readonly goldMin: number;
+  readonly goldMax: number;
+  readonly drops: readonly NpcDrop[];
+  // Items que ofrece si es comerciante (ids del catálogo).
+  readonly shopOffers: readonly number[];
 }
 
 const NPC_TYPES: Record<string, NpcType> = {
@@ -37,6 +50,12 @@ const NPC_TYPES: Record<string, NpcType> = {
     moveCooldownMs: 500,
     xpReward: 8,
     respawnMs: 8_000,
+    hostile: true,
+    merchant: false,
+    goldMin: 2,
+    goldMax: 6,
+    drops: [{ item: 1, chance: 0.5 }], // poción menor
+    shopOffers: [],
   },
   lobo: {
     key: "lobo",
@@ -50,6 +69,34 @@ const NPC_TYPES: Record<string, NpcType> = {
     moveCooldownMs: 420,
     xpReward: 20,
     respawnMs: 12_000,
+    hostile: true,
+    merchant: false,
+    goldMin: 5,
+    goldMax: 12,
+    drops: [
+      { item: 1, chance: 0.4 }, // poción
+      { item: 2, chance: 0.25 }, // daga
+    ],
+    shopOffers: [],
+  },
+  mercader: {
+    key: "mercader",
+    name: "Mercader",
+    graphic: 0,
+    maxHp: 50,
+    damageMin: 0,
+    damageMax: 0,
+    attackCooldownMs: 0,
+    aggroRadius: 0,
+    moveCooldownMs: 0,
+    xpReward: 0,
+    respawnMs: 0,
+    hostile: false,
+    merchant: true,
+    goldMin: 0,
+    goldMax: 0,
+    drops: [],
+    shopOffers: [1, 2, 3, 4, 5],
   },
 };
 
@@ -83,6 +130,7 @@ const SPAWN_DEFS: Record<number, NpcSpawnDef[]> = {
     { typeKey: "rata", at: { x: 30, y: 30 } },
     { typeKey: "lobo", at: { x: 20, y: 22 } },
     { typeKey: "lobo", at: { x: 32, y: 26 } },
+    { typeKey: "mercader", at: { x: 26, y: 25 } }, // comerciante junto al spawn
   ],
 };
 
@@ -157,4 +205,11 @@ export const npcs = new NpcRegistry();
 export function rollNpcDamage(type: NpcType, rng: () => number = Math.random): number {
   const span = type.damageMax - type.damageMin + 1;
   return type.damageMin + Math.floor(rng() * span);
+}
+
+// Oro que suelta un NPC al morir, en su rango [goldMin, goldMax].
+export function rollNpcGold(type: NpcType, rng: () => number = Math.random): number {
+  if (type.goldMax <= 0) return 0;
+  const span = type.goldMax - type.goldMin + 1;
+  return type.goldMin + Math.floor(rng() * span);
 }

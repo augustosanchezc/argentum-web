@@ -1,4 +1,4 @@
-import type { Direction, Vector2 } from "@ao/shared";
+import type { Direction, InventorySlot, Vector2 } from "@ao/shared";
 import type { WebSocket } from "ws";
 
 export interface Session {
@@ -22,6 +22,14 @@ export interface Session {
   lastAttackAt: number;
   // 0 = vivo. Si > 0, es el epoch ms en que el personaje debe reaparecer.
   deadUntil: number;
+  // Economía e inventario (E-3.2/3.4).
+  gold: number;
+  inventory: InventorySlot[];
+  equippedWeapon: number | null;
+  equippedArmor: number | null;
+  // Derivados del equipo (se recalculan al equipar/loguear).
+  weaponBonus: number;
+  armorDefense: number;
 }
 
 class SessionRegistry {
@@ -71,6 +79,12 @@ class SessionRegistry {
       maxHp: 30,
       lastAttackAt: 0,
       deadUntil: 0,
+      gold: 0,
+      inventory: [],
+      equippedWeapon: null,
+      equippedArmor: null,
+      weaponBonus: 0,
+      armorDefense: 0,
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);

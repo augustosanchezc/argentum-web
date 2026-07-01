@@ -112,7 +112,8 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   const dirs = stepDirsToward(npc.position, target.position);
   if (dirs[0]) npc.direction = dirs[0];
 
-  const amount = rollNpcDamage(npc.type);
+  // La armadura equipada del objetivo reduce el daño (mínimo 1).
+  const amount = Math.max(1, rollNpcDamage(npc.type) - target.armorDefense);
   target.hp = Math.max(0, target.hp - amount);
 
   const damage: Damage = {
@@ -177,6 +178,9 @@ function processNpcs(now: number): void {
       broadcastToMap(npc.mapId, respawn);
       continue;
     }
+
+    // Los NPCs no hostiles (comerciantes) no persiguen ni atacan.
+    if (!npc.type.hostile) continue;
 
     // IA hostil: perseguir y atacar al jugador más cercano en rango.
     const target = nearestTarget(npc);

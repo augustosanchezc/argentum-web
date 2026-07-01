@@ -557,3 +557,84 @@ h3 {
   font-size: 30px;
   color: var(--crimson-bright);
 }
+
+/* Inventario (E-3.2/3.7) y tienda (E-3.4) */
+.ao-inv {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  width: 260px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(10, 8, 5, 0.82);
+  border: 1px solid var(--gold-soft);
+  border-radius: 4px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  z-index: 110;
+  display: none;
+}
+.ao-inv--open { display: block; }
+.ao-inv__title {
+  color: var(--gold-bright);
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 4px;
+}
+.ao-inv__gold { color: var(--gold); }
+.ao-inv__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ao-inv__empty { color: var(--text-faint); }
+.ao-inv__item { display: flex; align-items: center; gap: 6px; }
+.ao-inv__name { flex: 1; }
+.ao-inv__hint { margin-top: 8px; color: var(--text-faint); font-size: 11px; }
+
+.ao-shop {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: rgba(10, 8, 5, 0.94);
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+  z-index: 130;
+  display: none;
+}
+.ao-shop--open { display: block; }
+.ao-shop__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.ao-shop__title { color: var(--gold-bright); font-weight: 700; font-size: 16px; }
+.ao-shop__close {
+  background: transparent; border: none; color: var(--text-dim);
+  font-size: 18px; cursor: pointer;
+}
+.ao-shop__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ao-shop__item { display: flex; align-items: center; gap: 8px; }
+.ao-shop__name { flex: 1; }
+.ao-shop__hint { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
+
+.ao-inv__btn, .ao-shop__btn {
+  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+  color: var(--bg);
+  border: none;
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ao-inv__btn--sell {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--gold-soft);
+}
