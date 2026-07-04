@@ -12,12 +12,14 @@ import {
   type Damage,
   type Death,
   type Direction,
+  type DropItemRequest,
   type EntityDespawn,
   type EntityId,
   type EntityKind,
   type EntitySpawn,
   type EntityUpdate,
   type InteractRequest,
+  type InventoryReorderRequest,
   type InventoryUpdate,
   type MapData,
   type MoveRequest,
@@ -110,7 +112,7 @@ export interface GameSceneResult {
 
 interface EntityVisual {
   container: Container;
-  body: Graphics;    // el circulo del personaje (lo atenuamos al morir)
+  body: Graphics;    // figura humana (la redibujamos al cambiar direccion / morir)
   hpBar: Graphics;   // barra de HP sobre la cabeza (la redibujamos)
   position: Vector2; // tile destino (verdad logica)
   renderX: number;   // px actual (interpolado)
@@ -124,6 +126,7 @@ interface EntityVisual {
   hp: number;
   maxHp: number;
   dead: boolean;
+  facing: Direction;
   // Animacion de golpe: lunge en la direccion swingDx/swingDy.
   swingStart: number; // 0 = sin swing
   swingDx: number;
@@ -341,52 +344,98 @@ export async function startGameScene(
     }
   }
 
-  function buildEntityVisual(
-    name: string,
+  // Dibuja la figura humana orientada en `facing`. Se llama al crear y cada
+  // vez que cambia la direccion. NPCs comerciantes / hostiles usan la misma
+  // silueta con paletas distintas para que a simple vista se distinga oro
+  // (self) / azul (otro jugador) / verde (comerciante) / rojo (NPC hostil).
+  function drawEntityBody(
+    body: Graphics,
     isSelf: boolean,
-    hp: number,
-    maxHp: number,
     kind: EntityKind,
-  ): { container: Container; body: Graphics; hpBar: Graphics } {
-    const c = new Container();
-    const body = new Graphics();
-    // Color por tipo: propio (oro), otro jugador (azul), NPC (rojo terroso).
+    facing: Direction,
+  ): void {
     const isNpc = kind === "npc";
     const isMerchant = kind === "merchant";
-    const isDiamond = isNpc || isMerchant;
-    const fillColor = isMerchant
+    const bodyColor = isMerchant
       ? 0x2d7d5a
       : isNpc
         ? 0x8c3b2e
         : isSelf
-          ? 0xd4af37
-          : 0x6b9cd5;
-    const strokeColor = isMerchant
+          ? 0xa8862c
+          : 0x4a6d8f;
+    const bodyStroke = isMerchant
       ? 0x4cb87e
       : isNpc
         ? 0xc9603f
         : isSelf
           ? 0xf4d56a
           : 0x9bc6f1;
-    if (isDiamond) {
-      // Rombo para distinguir a simple vista de los jugadores (círculos).
-      // Verde = comerciante, rojo = NPC hostil.
+    // Tono "piel" para la cabeza — un poco de contraste con el torso.
+    const headColor = isNpc ? 0xd4a68c : 0xe5c9a8;
+
+    body.clear();
+
+    // Sombra ovalada en el suelo (siempre visible, marca la posicion base).
+    body.ellipse(0, 10, 9, 3).fill({ color: 0x000000, alpha: 0.35 });
+
+    // Torso (siluetas ligeramente distintas segun facing para dar 3/4 view).
+    if (facing === "east" || facing === "west") {
+      // De perfil: torso mas angosto.
       body
-        .poly([0, -12, 12, 0, 0, 12, -12, 0])
-        .fill({ color: fillColor })
-        .stroke({ width: 2, color: strokeColor });
+        .roundRect(-5, -4, 10, 14, 2)
+        .fill({ color: bodyColor })
+        .stroke({ width: 1.5, color: bodyStroke });
     } else {
+      // De frente / espalda: torso ancho.
       body
-        .circle(0, 0, 12)
-        .fill({ color: fillColor })
-        .stroke({ width: 2, color: strokeColor });
+        .roundRect(-7, -4, 14, 14, 3)
+        .fill({ color: bodyColor })
+        .stroke({ width: 1.5, color: bodyStroke });
     }
+
+    // Cabeza — un poco desplazada en la direccion facing (efecto de mirar).
+    const headOffsetX = facing === "east" ? 1 : facing === "west" ? -1 : 0;
+    const headY = -9;
+    body
+      .circle(headOffsetX, headY, 5)
+      .fill({ color: headColor })
+      .stroke({ width: 1.5, color: bodyStroke });
+
+    // Indicador direccional — punto "cara" que muestra el frente.
+    // De espaldas (north) queda oculto detras de la cabeza, dando el
+    // efecto de estar dandonos la espalda.
+    if (facing === "south") {
+      body.circle(headOffsetX, headY + 1, 1.2).fill({ color: 0x1a1208 });
+    } else if (facing === "east") {
+      body.circle(headOffsetX + 2, headY, 1.2).fill({ color: 0x1a1208 });
+    } else if (facing === "west") {
+      body.circle(headOffsetX - 2, headY, 1.2).fill({ color: 0x1a1208 });
+    }
+    // north: sin punto — vemos la nuca.
+  }
+
+  function buildEntityVisual(
+    name: string,
+    isSelf: boolean,
+    hp: number,
+    maxHp: number,
+    kind: EntityKind,
+    facing: Direction,
+  ): { container: Container; body: Graphics; hpBar: Graphics } {
+    const c = new Container();
+    const body = new Graphics();
+    drawEntityBody(body, isSelf, kind, facing);
     c.addChild(body);
 
+    const labelFill =
+      kind === "merchant" ? "#a7e0c4"
+      : kind === "npc" ? "#e8b3a3"
+      : isSelf ? "#f5e6c8"
+      : "#e8dfc8";
     const label = new Text({
       text: name,
       style: new TextStyle({
-        fill: isMerchant ? "#a7e0c4" : isNpc ? "#e8b3a3" : isSelf ? "#f5e6c8" : "#e8dfc8",
+        fill: labelFill,
         fontFamily: "Georgia, serif",
         fontSize: 12,
         fontWeight: "bold",
@@ -420,8 +469,9 @@ export async function startGameScene(
     hp: number,
     maxHp: number,
     kind: EntityKind,
+    facing: Direction,
   ): EntityVisual {
-    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp, kind);
+    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp, kind, facing);
     const c = entityCenterPx(pos);
     container.x = c.x;
     container.y = c.y;
@@ -452,12 +502,22 @@ export async function startGameScene(
       hp,
       maxHp,
       dead,
+      facing,
       swingStart: 0,
       swingDx: 0,
       swingDy: 0,
     };
     entityVisuals.set(id, visual);
     return visual;
+  }
+
+  // Cambia la direccion en la que mira la entidad y redibuja el body.
+  // No-op si el facing no cambio, para evitar el redraw en cada tick.
+  function setEntityFacing(v: EntityVisual, facing: Direction): void {
+    if (v.facing === facing) return;
+    v.facing = facing;
+    drawEntityBody(v.body, v.isSelf, v.kind, facing);
+    if (v.dead) v.body.alpha = 0.35;
   }
 
   function moveEntityTo(id: number, pos: Vector2): void {
@@ -608,7 +668,7 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction);
     }
     updateSelfHud();
   }
@@ -652,6 +712,8 @@ export async function startGameScene(
     // El facing se actualiza siempre que se intenta mover, aunque haya
     // cooldown o pared en frente — asi el ataque apunta a donde miramos.
     selfFacing = direction;
+    const ownForFacing = entityVisuals.get(character.id);
+    if (ownForFacing) setEntityFacing(ownForFacing, direction);
     const now = performance.now();
     if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
     const own = entityVisuals.get(character.id);
@@ -1025,10 +1087,12 @@ export async function startGameScene(
       // Llego un update de algo que no conocemos — lo creamos.
       // Sucede si nos perdimos el spawn (race en reconexion). No tenemos
       // su HP real todavia; lo mostramos lleno hasta el proximo DAMAGE.
-      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1, "player");
+      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1, "player", p.direction);
       refreshPlayerList();
       return;
     }
+    // Actualizar direccion tanto para self como para otros.
+    setEntityFacing(existing, p.direction);
     if (id === character.id) {
       // ACK del server para el propio: si coincide con nuestra prediccion
       // hacemos nada visual; si difiere, snap a la verdad del server.
@@ -1044,7 +1108,7 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction);
     refreshPlayerList();
   }
 
@@ -1117,6 +1181,22 @@ export async function startGameScene(
       },
       onSell: (item) => {
         const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item };
+        client?.send(pkt);
+      },
+      onReorder: (from, to) => {
+        const pkt: InventoryReorderRequest = {
+          op: ClientToServerOp.InventoryReorder,
+          from,
+          to,
+        };
+        client?.send(pkt);
+      },
+      onDrop: (slot, qty) => {
+        const pkt: DropItemRequest = {
+          op: ClientToServerOp.DropItem,
+          slot,
+          qty,
+        };
         client?.send(pkt);
       },
     });

@@ -9,9 +9,9 @@ import {
   type ChatError,
   type ChatSend,
   type Damage,
-  getItem,
   type Death,
   type Direction,
+  type DropItemRequest,
   type EntityDespawn,
   type EntityId,
   type EntitySpawn,
@@ -19,6 +19,7 @@ import {
   type GroundItemDespawn,
   type GroundItemSpawn,
   type InteractRequest,
+  type InventoryReorderRequest,
   type InventoryUpdate,
   type LoginRequest,
   type LoginResponse,
@@ -30,6 +31,7 @@ import {
   type StatsUpdate,
   type UseItemRequest,
   type Vector2,
+  getItem,
 } from "@ao/shared";
 import { eq, and } from "drizzle-orm";
 import { isOnChatCooldown, validateChatText } from "../chat/index.js";
@@ -46,7 +48,9 @@ import {
   addItem,
   armorDefenseFor,
   countItem,
+  removeFromSlot,
   removeItem,
+  reorderSlots,
   weaponBonusFor,
 } from "../world/inventory.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
@@ -289,6 +293,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.ShopSell:
           handleShopSell(session, packet);
           break;
+        case ClientToServerOp.DropItem:
+          handleDropItem(session, packet);
+          break;
+        case ClientToServerOp.InventoryReorder:
+          handleReorder(session, packet);
+          break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
           socket.close(CLOSE_UNKNOWN_OPCODE, "UNKNOWN_OPCODE");
@@ -502,6 +512,37 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       sendInventoryUpdate(s);
     }
 
+    function handleDropItem(s: Session, pkt: DropItemRequest): void {
+      if (s.deadUntil !== 0) return;
+      const removed = removeFromSlot(s.inventory, pkt.slot, pkt.qty);
+      if (!removed) return;
+      // Al soltar un item equipado, dejamos de tenerlo puesto.
+      if (s.equippedWeapon === removed.item && countItem(removed.slots, removed.item) === 0) {
+        s.equippedWeapon = null;
+      }
+      if (s.equippedArmor === removed.item && countItem(removed.slots, removed.item) === 0) {
+        s.equippedArmor = null;
+      }
+      s.inventory = removed.slots;
+      const g = groundItems.spawn(s.mapId, s.position, removed.item, removed.qty);
+      const spawn: GroundItemSpawn = {
+        op: ServerToClientOp.GroundItemSpawn,
+        id: g.id as EntityId,
+        position: { x: g.position.x, y: g.position.y },
+        item: g.item,
+        qty: g.qty,
+      };
+      broadcastToMap(s.mapId, spawn);
+      sendInventoryUpdate(s);
+    }
+
+    function handleReorder(s: Session, pkt: InventoryReorderRequest): void {
+      const next = reorderSlots(s.inventory, pkt.from, pkt.to);
+      if (!next) return;
+      s.inventory = next;
+      sendInventoryUpdate(s);
+    }
+
     function handleUseItem(s: Session, pkt: UseItemRequest): void {
       const def = getItem(pkt.item);
       if (!def) return;
@@ -709,6 +750,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const playerEntities = sessions.inMap(map.id).map((s) => ({
         id: s.characterId as EntityId,
         position: { x: s.position.x, y: s.position.y },
+        direction: s.direction,
         name: s.characterName,
         hp: s.hp,
         maxHp: s.maxHp,
@@ -718,6 +760,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const npcEntities = npcs.inMap(map.id).map((n) => ({
         id: n.id as EntityId,
         position: { x: n.position.x, y: n.position.y },
+        direction: n.direction,
         name: n.type.name,
         hp: n.hp,
         maxHp: n.type.maxHp,

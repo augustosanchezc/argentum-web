@@ -4,17 +4,16 @@
 > Ancla de tiempo: Sprint 1 comienza la semana del 2026-06-23.
 > Duración de sprint: 2 semanas.
 
-> **Estado al 2026-07-01 (TG-01):** Fases 0, 1 y 2 **cerradas**; Fase 3 (MVP) al
-> **80%** con el loop de gameplay cerrado. Hecho: auth + personajes, WebSocket
-> binario con game loop a 10 Hz, mapa real de Ullathorpe con el tileset del AO,
-> movimiento autoritativo, chat con filtro, combate cuerpo a cuerpo (HP, muerte,
-> respawn), lista de online, controles táctiles, load test (20 sesiones, P95
-> ~5 ms), **NPCs hostiles con IA + comerciante, experiencia y niveles 1-10,
-> items, inventario, drops y tienda (comprar/vender/equipar)**.
+> **Estado al 2026-07-04:** Fases 0, 1, 2 y **3 cerradas**. Todo el MVP está
+> jugable: auth + personajes, WebSocket binario con game loop a 10 Hz, mapa
+> real de Ullathorpe con el tileset del AO, movimiento autoritativo, chat con
+> filtro, combate cuerpo a cuerpo (HP, muerte, respawn), lista de online,
+> controles táctiles, load test, NPCs hostiles con IA + comerciante,
+> experiencia y niveles 1-10, items, **inventario drag-and-drop, drops al
+> suelo por drag, tienda de NPC y siluetas de personaje con dirección**.
 >
-> **Pendiente de Fase 3:** ADR-004 (diseño de items), inventario con
-> drag-and-drop (hoy click-based), prueba de carga con 50 conexiones y
-> `docs/architecture.md`.
+> **Próximo hito:** Fase 4 (Beta pública) — multi-mapa, banco, party,
+> comercio jugador-jugador, deploy a VPS con observabilidad.
 
 ---
 

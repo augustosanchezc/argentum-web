@@ -19,6 +19,8 @@ export enum ClientToServerOp {
   Interact = 0x42,
   ShopBuy = 0x43,
   ShopSell = 0x44,
+  DropItem = 0x45,
+  InventoryReorder = 0x46,
   Disconnect = 0xff,
 }
 
@@ -75,6 +77,7 @@ export interface MapData {
   readonly entities: ReadonlyArray<{
     readonly id: EntityId;
     readonly position: Vector2;
+    readonly direction: Direction;
     readonly name: string;
     readonly hp: number;
     readonly maxHp: number;
@@ -219,6 +222,24 @@ export interface ShopSellRequest {
   readonly item: number;
 }
 
+// C→S: tirar un item del inventario al tile actual del jugador.
+// qty se ignora para no-apilables (siempre 1); para pociones/oro se toma
+// como cantidad a soltar (clamp al total disponible).
+export interface DropItemRequest {
+  readonly op: ClientToServerOp.DropItem;
+  readonly slot: number;
+  readonly qty: number;
+}
+
+// C→S: reordenar el inventario intercambiando dos slots.
+// from/to son índices dentro del array de slots que ve el cliente. Si
+// alguno está vacío o fuera de rango, el server ignora el paquete.
+export interface InventoryReorderRequest {
+  readonly op: ClientToServerOp.InventoryReorder;
+  readonly from: number;
+  readonly to: number;
+}
+
 // S→C: apareció un item en el suelo.
 export interface GroundItemSpawn {
   readonly op: ServerToClientOp.GroundItemSpawn;
@@ -260,6 +281,8 @@ export type ClientPacket =
   | InteractRequest
   | ShopBuyRequest
   | ShopSellRequest
+  | DropItemRequest
+  | InventoryReorderRequest
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse

@@ -563,9 +563,7 @@ h3 {
   position: fixed;
   top: 12px;
   left: 12px;
-  width: 260px;
-  max-height: 60vh;
-  overflow-y: auto;
+  width: 236px;
   padding: 10px 12px;
   background: rgba(10, 8, 5, 0.82);
   border: 1px solid var(--gold-soft);
@@ -582,15 +580,76 @@ h3 {
   font-weight: 600;
   display: flex;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   border-bottom: 1px solid var(--gold-soft);
   padding-bottom: 4px;
 }
 .ao-inv__gold { color: var(--gold); }
-.ao-inv__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.ao-inv__empty { color: var(--text-faint); }
-.ao-inv__item { display: flex; align-items: center; gap: 6px; }
-.ao-inv__name { flex: 1; }
+.ao-inv__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 48px);
+  grid-auto-rows: 48px;
+  gap: 4px;
+  justify-content: center;
+}
+.ao-inv__cell {
+  position: relative;
+  background: rgba(212, 175, 55, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  user-select: none;
+  transition: transform 0.08s ease, border-color 0.1s ease;
+}
+.ao-inv__cell--filled {
+  background: var(--item-color, rgba(212, 175, 55, 0.2));
+  border-color: rgba(212, 175, 55, 0.3);
+  cursor: grab;
+}
+.ao-inv__cell--filled:hover { border-color: var(--gold); transform: translateY(-1px); }
+.ao-inv__cell--equipped {
+  outline: 2px solid var(--gold-bright);
+  outline-offset: -2px;
+}
+.ao-inv__cell--dragging { opacity: 0.4; }
+.ao-inv__cell--drop-target {
+  border-color: var(--gold-bright);
+  background: rgba(212, 175, 55, 0.35);
+}
+.ao-inv__cell-name {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--parchment);
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
+  letter-spacing: 0.05em;
+}
+.ao-inv__cell-qty {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 10px;
+  color: var(--gold-bright);
+  font-weight: 700;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+.ao-inv__trash {
+  margin-top: 8px;
+  padding: 6px;
+  border: 1px dashed rgba(201, 56, 56, 0.35);
+  border-radius: 3px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: 11px;
+  transition: background 0.1s ease, border-color 0.1s ease, color 0.1s ease;
+}
+.ao-inv__trash--hover {
+  background: rgba(201, 56, 56, 0.15);
+  border-color: var(--crimson-bright);
+  color: var(--crimson-bright);
+}
 .ao-inv__hint { margin-top: 8px; color: var(--text-faint); font-size: 11px; }
 
 .ao-shop {

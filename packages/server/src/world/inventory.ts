@@ -43,6 +43,46 @@ export function removeItem(
   return out;
 }
 
+// Quita qty desde un slot específico (por índice) y devuelve el nuevo
+// inventario + el item / cantidad efectivamente retirados. Si el slot
+// no existe o la cantidad es inválida, devuelve null.
+export function removeFromSlot(
+  slots: readonly InventorySlot[],
+  slotIdx: number,
+  qty: number,
+): { slots: InventorySlot[]; item: number; qty: number } | null {
+  if (slotIdx < 0 || slotIdx >= slots.length) return null;
+  const src = slots[slotIdx];
+  if (qty <= 0 || qty > src.qty) return null;
+  const out: InventorySlot[] = [];
+  for (let i = 0; i < slots.length; i += 1) {
+    if (i === slotIdx) {
+      const left = src.qty - qty;
+      if (left > 0) out.push({ item: src.item, qty: left });
+    } else {
+      out.push({ ...slots[i] });
+    }
+  }
+  return { slots: out, item: src.item, qty };
+}
+
+// Intercambia dos slots del inventario. Si algún índice está fuera de rango,
+// devuelve null. Si from === to, es no-op (devuelve una copia). Los slots
+// vacíos son válidos (índices que no existen aún en el array son inválidos).
+export function reorderSlots(
+  slots: readonly InventorySlot[],
+  from: number,
+  to: number,
+): InventorySlot[] | null {
+  if (from < 0 || to < 0 || from >= slots.length || to >= slots.length) return null;
+  if (from === to) return slots.map((s) => ({ ...s }));
+  const out = slots.map((s) => ({ ...s }));
+  const tmp = out[from];
+  out[from] = out[to];
+  out[to] = tmp;
+  return out;
+}
+
 // Bono de daño del arma equipada (0 si no hay o no es arma).
 export function weaponBonusFor(equippedWeapon: number | null): number {
   if (equippedWeapon === null) return 0;

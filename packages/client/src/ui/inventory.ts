@@ -1,7 +1,13 @@
 import { getItem, type InventorySlot } from "@ao/shared";
 
-// Panel de inventario (E-3.7, versión click-based). Se abre/cierra con la
-// tecla I. Muestra oro y los items; cada uno se puede usar/equipar o vender.
+// Panel de inventario (E-3.7). Grilla drag-and-drop 4x5.
+//   - Click derecho o botón "Vender": vender al comerciante (si hay tienda abierta).
+//   - Doble click: usar / equipar.
+//   - Drag → otro slot: reordenar (server autoritativo).
+//   - Drag → zona "Tirar": soltar al piso, encima del personaje.
+// Se abre/cierra con la tecla I.
+
+const SLOT_COUNT = 20;
 
 export interface InventoryData {
   gold: number;
@@ -13,6 +19,8 @@ export interface InventoryData {
 export interface InventoryCallbacks {
   onUse(item: number): void;
   onSell(item: number): void;
+  onReorder(from: number, to: number): void;
+  onDrop(slot: number, qty: number): void;
 }
 
 export interface InventoryHandle {
@@ -20,6 +28,16 @@ export interface InventoryHandle {
   toggle(): void;
   isOpen(): boolean;
   destroy(): void;
+}
+
+function itemColor(item: number): string {
+  // Sin sprites de items todavía: color por type + hash del id para
+  // distinguir dagas de espadas etc. Suficiente hasta E-4.
+  const def = getItem(item);
+  if (!def) return "#333";
+  const hue = (def.id * 47) % 360;
+  const l = def.type === "potion" ? 55 : def.type === "weapon" ? 40 : 35;
+  return `hsl(${hue.toString()}, 55%, ${l.toString()}%)`;
 }
 
 export function mountInventory(
@@ -30,60 +48,122 @@ export function mountInventory(
   wrap.className = "ao-inv";
   wrap.innerHTML = `
     <div class="ao-inv__title">Inventario <span class="ao-inv__gold">0 oro</span></div>
-    <ul class="ao-inv__list"></ul>
-    <div class="ao-inv__hint">I para abrir/cerrar · G para agarrar del suelo</div>
+    <div class="ao-inv__grid" role="grid"></div>
+    <div class="ao-inv__trash" data-role="trash">Arrastrá acá para tirar al suelo</div>
+    <div class="ao-inv__hint">I abrir/cerrar · G recoger · doble click usar/equipar · click derecho vender</div>
   `;
   parent.appendChild(wrap);
 
   const goldEl = wrap.querySelector<HTMLSpanElement>(".ao-inv__gold")!;
-  const listEl = wrap.querySelector<HTMLUListElement>(".ao-inv__list")!;
+  const gridEl = wrap.querySelector<HTMLDivElement>(".ao-inv__grid")!;
+  const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
+
   let open = false;
   let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null };
+  let draggingFrom: number | null = null;
+
+  function isEquipped(item: number): boolean {
+    return last.equippedWeapon === item || last.equippedArmor === item;
+  }
 
   function render(): void {
     goldEl.textContent = `${last.gold.toString()} oro`;
-    listEl.replaceChildren();
-    if (last.slots.length === 0) {
-      const li = document.createElement("li");
-      li.className = "ao-inv__empty";
-      li.textContent = "(vacío)";
-      listEl.appendChild(li);
-      return;
-    }
-    for (const slot of last.slots) {
-      const def = getItem(slot.item);
-      if (!def) continue;
-      const equipped =
-        (def.type === "weapon" && last.equippedWeapon === def.id) ||
-        (def.type === "armor" && last.equippedArmor === def.id);
+    gridEl.replaceChildren();
+    for (let i = 0; i < SLOT_COUNT; i += 1) {
+      const cell = document.createElement("div");
+      cell.className = "ao-inv__cell";
+      cell.dataset.slot = i.toString();
 
-      const li = document.createElement("li");
-      li.className = "ao-inv__item";
+      const slot = i < last.slots.length ? last.slots[i] : null;
+      if (slot) {
+        const def = getItem(slot.item);
+        if (def) {
+          cell.classList.add("ao-inv__cell--filled");
+          if (isEquipped(def.id)) cell.classList.add("ao-inv__cell--equipped");
+          cell.style.setProperty("--item-color", itemColor(def.id));
+          cell.title = `${def.name}${slot.qty > 1 ? ` x${slot.qty.toString()}` : ""}${isEquipped(def.id) ? " (equipada)" : ""}`;
+          cell.draggable = true;
 
-      const name = document.createElement("span");
-      name.className = "ao-inv__name";
-      name.textContent = `${def.name}${slot.qty > 1 ? ` x${slot.qty.toString()}` : ""}${equipped ? " (equipada)" : ""}`;
-      li.appendChild(name);
+          const label = document.createElement("span");
+          label.className = "ao-inv__cell-name";
+          label.textContent = def.name.slice(0, 3).toUpperCase();
+          cell.appendChild(label);
 
-      const useBtn = document.createElement("button");
-      useBtn.className = "ao-inv__btn";
-      useBtn.textContent = def.type === "potion" ? "Usar" : "Equipar";
-      useBtn.addEventListener("click", () => {
-        cb.onUse(def.id);
+          if (slot.qty > 1) {
+            const qty = document.createElement("span");
+            qty.className = "ao-inv__cell-qty";
+            qty.textContent = slot.qty.toString();
+            cell.appendChild(qty);
+          }
+
+          // Doble click: usar/equipar (mismo efecto que el botón "Usar" viejo).
+          cell.addEventListener("dblclick", () => {
+            cb.onUse(def.id);
+          });
+          // Click derecho: vender (mantiene compat con la venta del viejo).
+          cell.addEventListener("contextmenu", (ev) => {
+            ev.preventDefault();
+            cb.onSell(def.id);
+          });
+          // Drag start guarda el slot origen.
+          cell.addEventListener("dragstart", (ev) => {
+            draggingFrom = i;
+            cell.classList.add("ao-inv__cell--dragging");
+            ev.dataTransfer?.setData("text/plain", i.toString());
+            if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
+          });
+          cell.addEventListener("dragend", () => {
+            draggingFrom = null;
+            cell.classList.remove("ao-inv__cell--dragging");
+          });
+        }
+      }
+
+      // Drop target: cualquier cell recibe drops (para reordenar).
+      cell.addEventListener("dragover", (ev) => {
+        if (draggingFrom !== null) {
+          ev.preventDefault();
+          if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+          cell.classList.add("ao-inv__cell--drop-target");
+        }
       });
-      li.appendChild(useBtn);
-
-      const sellBtn = document.createElement("button");
-      sellBtn.className = "ao-inv__btn ao-inv__btn--sell";
-      sellBtn.textContent = `Vender ${Math.floor(def.value / 2).toString()}`;
-      sellBtn.addEventListener("click", () => {
-        cb.onSell(def.id);
+      cell.addEventListener("dragleave", () => {
+        cell.classList.remove("ao-inv__cell--drop-target");
       });
-      li.appendChild(sellBtn);
+      cell.addEventListener("drop", (ev) => {
+        ev.preventDefault();
+        cell.classList.remove("ao-inv__cell--drop-target");
+        if (draggingFrom === null) return;
+        if (draggingFrom === i) return;
+        // El server valida rangos y slots vacios de acuerdo a su verdad.
+        cb.onReorder(draggingFrom, i);
+      });
 
-      listEl.appendChild(li);
+      gridEl.appendChild(cell);
     }
   }
+
+  // Trash zone: drop de un item lo tira al suelo del jugador.
+  trashEl.addEventListener("dragover", (ev) => {
+    if (draggingFrom !== null) {
+      ev.preventDefault();
+      if (ev.dataTransfer) ev.dataTransfer.dropEffect = "move";
+      trashEl.classList.add("ao-inv__trash--hover");
+    }
+  });
+  trashEl.addEventListener("dragleave", () => {
+    trashEl.classList.remove("ao-inv__trash--hover");
+  });
+  trashEl.addEventListener("drop", (ev) => {
+    ev.preventDefault();
+    trashEl.classList.remove("ao-inv__trash--hover");
+    if (draggingFrom === null) return;
+    const slot = last.slots[draggingFrom];
+    if (!slot) return;
+    // Tiramos toda la pila al piso (para pociones/oro apilables se puede
+    // afinar mas adelante con un dialogo de cantidad; para MVP tirar todo).
+    cb.onDrop(draggingFrom, slot.qty);
+  });
 
   function setOpen(v: boolean): void {
     open = v;
