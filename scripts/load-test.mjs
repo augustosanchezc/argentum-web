@@ -1,16 +1,20 @@
-// Prueba de carga del servidor de juego (T-050).
+// Prueba de carga del servidor de juego (T-050/T-085).
 //
 // Abre N sesiones WebSocket simultaneas, cada una con su propia cuenta y
 // personaje, y durante DURATION_S simula juego real: pasos de movimiento y
 // ataques al vecino. Mide la latencia move -> ENTITY_UPDATE (ACK del server)
 // y reporta P50/P95/max. Falla si P95 >= 200ms o si hubo crashes/desconexiones.
 //
+// T-085: default de 200 sesiones, rastreo multi-mapa (el bot detecta cuando
+// cruza un portal y actualiza su mapId; el reporte final incluye distribución
+// de mapas y conteo de transiciones).
+//
 // Por que Node y no k6: el protocolo es binario MessagePack y reutilizamos el
 // MISMO codec (msgpackr) y los mismos opcodes que produccion. k6 no resuelve
 // dependencias npm ni nuestro @ao/shared, asi que mediria un protocolo falso.
 //
 // Uso (con el server corriendo en localhost:3000):
-//   node scripts/load-test.mjs            # 20 sesiones, 120s
+//   node scripts/load-test.mjs              # 200 sesiones, 120s
 //   CLIENTS=50 DURATION_S=60 node scripts/load-test.mjs
 //
 // Requiere haber instalado deps (usa ws + msgpackr del workspace del server).
@@ -41,7 +45,7 @@ const WebSocket = loadWs();
 
 const BASE = process.env.BASE_URL ?? "http://localhost:3000";
 const WS_URL = process.env.WS_URL ?? "ws://localhost:3000/ws";
-const CLIENTS = Number(process.env.CLIENTS ?? "20");
+const CLIENTS = Number(process.env.CLIENTS ?? "200");
 const DURATION_S = Number(process.env.DURATION_S ?? "120");
 const MOVE_INTERVAL_MS = 220; // un pelo por encima del cooldown del server
 const ATTACK_INTERVAL_MS = 850;
@@ -95,13 +99,17 @@ class Bot {
     this.player = player;
     this.ws = null;
     this.position = null;
+    this.mapId = 1; // mapa inicial
     this.pendingMoveAt = 0; // timestamp del ultimo move sin ACK
     this.latencies = [];
+    this.mapTransitions = 0; // cuantas veces cruzo un portal
+    this.mapsVisited = new Set([1]); // set de mapIds visitados
     this.alive = true;
     this.errors = 0;
   }
   connect() {
     return new Promise((resolve, reject) => {
+      let resolved = false;
       const ws = new WebSocket(WS_URL);
       this.ws = ws;
       ws.binaryType = "nodebuffer";
@@ -118,7 +126,13 @@ class Bot {
         if (p.op === S.MapData) {
           const self = p.entities.find((e) => e.id === this.player.characterId);
           if (self) this.position = { ...self.position };
-          resolve();
+          // Detectar transición de mapa: MapData recibido después del login.
+          if (resolved && p.mapId !== undefined && p.mapId !== this.mapId) {
+            this.mapTransitions += 1;
+            this.mapsVisited.add(p.mapId);
+          }
+          if (p.mapId !== undefined) this.mapId = p.mapId;
+          if (!resolved) { resolved = true; resolve(); }
         } else if (p.op === S.EntityUpdate && p.id === this.player.characterId) {
           this.position = { ...p.position };
           if (this.pendingMoveAt > 0) {
@@ -182,17 +196,33 @@ async function main() {
   const allLatencies = bots.flatMap((b) => b.latencies).sort((a, b) => a - b);
   const totalErrors = bots.reduce((s, b) => s + b.errors, 0);
   const aliveAtEnd = bots.filter((b) => b.alive).length;
+  const totalTransitions = bots.reduce((s, b) => s + b.mapTransitions, 0);
   const p50 = percentile(allLatencies, 50);
   const p95 = percentile(allLatencies, 95);
   const max = allLatencies[allLatencies.length - 1] ?? 0;
 
+  // Distribución de mapas actuales.
+  const mapDist = {};
+  for (const b of bots) {
+    mapDist[b.mapId] = (mapDist[b.mapId] ?? 0) + 1;
+  }
+  const mapDistStr = Object.entries(mapDist)
+    .sort(([, a], [, b]) => b - a)
+    .map(([mapId, count]) => `mapa${mapId}:${count}`)
+    .join("  ");
+
+  // Mapas únicos visitados por al menos un bot.
+  const allMapsVisited = new Set(bots.flatMap((b) => [...b.mapsVisited]));
+
   console.log("\n=== Resultado load test ===");
-  console.log(`sesiones:        ${CLIENTS} (vivas al final: ${aliveAtEnd})`);
+  console.log(`sesiones:          ${CLIENTS} (vivas al final: ${aliveAtEnd})`);
   console.log(`muestras move→ACK: ${allLatencies.length}`);
-  console.log(`latencia P50:    ${p50.toFixed(1)} ms`);
-  console.log(`latencia P95:    ${p95.toFixed(1)} ms  (presupuesto < ${P95_BUDGET_MS}ms)`);
-  console.log(`latencia max:    ${max.toFixed(1)} ms`);
-  console.log(`errores socket:  ${totalErrors}`);
+  console.log(`latencia P50:      ${p50.toFixed(1)} ms`);
+  console.log(`latencia P95:      ${p95.toFixed(1)} ms  (presupuesto < ${P95_BUDGET_MS}ms)`);
+  console.log(`latencia max:      ${max.toFixed(1)} ms`);
+  console.log(`errores socket:    ${totalErrors}`);
+  console.log(`transiciones mapa: ${totalTransitions} (mapas únicos visitados: ${allMapsVisited.size})`);
+  console.log(`distribución mapa: ${mapDistStr}`);
 
   const ok = p95 < P95_BUDGET_MS && aliveAtEnd === CLIENTS && totalErrors === 0;
   console.log(`\n${ok ? "PASS" : "FAIL"} — ${ok ? "dentro de presupuesto, sin crashes" : "ver metricas arriba"}`);
