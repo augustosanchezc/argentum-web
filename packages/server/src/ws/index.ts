@@ -596,6 +596,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!target || target.mapId !== s.mapId) return; // objetivo inexistente
       if (target.deadUntil !== 0) return; // ya esta muerto
       if (!isAdjacent(s.position, target.position)) return; // fuera de rango
+      // Friendly fire off: no se puede atacar a miembros de la misma party.
+      if (s.partyId !== null && s.partyId === target.partyId) return;
 
       s.lastAttackAt = now;
       sessions.touch(s.id);
@@ -680,24 +682,37 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           }
         }
 
-        // XP al que dio el golpe final; sube de nivel si corresponde.
-        const gain = applyXpGain(s.level, s.xp, npc.type.xpReward);
-        s.xp = gain.totalXp;
-        if (gain.leveledUp) {
-          s.level = gain.level;
-          s.maxHp = maxHpForLevel(s.level);
-          s.hp = s.maxHp; // curación completa al subir de nivel
+        // XP: si el atacante está en party, se reparte entre los miembros del
+        // mismo mapa. Cada miembro recibe xpReward / N (con N = tamaño del grupo).
+        // En solitario el comportamiento es el mismo de antes.
+        const party = partyRegistry.getByCharacter(s.characterId);
+        const xpReceivers: Session[] = party
+          ? Array.from(party.members.keys())
+              .map((id) => sessions.getByCharacterId(id))
+              .filter((ms): ms is Session => !!ms && ms.mapId === s.mapId && ms.deadUntil === 0)
+          : [s];
+        const xpShare = Math.max(1, Math.floor(npc.type.xpReward / xpReceivers.length));
+        for (const recv of xpReceivers) {
+          const gain = applyXpGain(recv.level, recv.xp, xpShare);
+          recv.xp = gain.totalXp;
+          if (gain.leveledUp) {
+            recv.level = gain.level;
+            recv.maxHp = maxHpForLevel(recv.level);
+            recv.hp = recv.maxHp;
+            if (party) partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
+          }
+          sendStatsUpdate(recv);
         }
-        sendStatsUpdate(s);
+        if (party) broadcastPartyUpdate(party.id);
         sendInventoryUpdate(s); // cambió el oro
         req.log.info(
           {
             attacker: s.characterId,
             npc: npc.id,
             xpReward: npc.type.xpReward,
+            xpShare,
+            partySize: xpReceivers.length,
             gold,
-            leveledUp: gain.leveledUp,
-            level: s.level,
           },
           "[ws] NPC eliminado",
         );

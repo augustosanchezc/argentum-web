@@ -43,6 +43,18 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
                  placeholder="Al menos 8 caracteres" autocomplete="${isLogin ? "current-password" : "new-password"}" />
         </div>
 
+        ${!isLogin ? `
+        <div class="form-row form-row--consent">
+          <label class="consent-label">
+            <input type="checkbox" id="auth-consent" required />
+            Acepto los
+            <a href="/docs/legal/terminos" target="_blank" rel="noopener noreferrer">Términos de Uso</a>
+            y la
+            <a href="/docs/legal/privacidad" target="_blank" rel="noopener noreferrer">Política de Privacidad</a>
+          </label>
+        </div>
+        ` : ""}
+
         <button type="submit" class="button" id="auth-submit">
           ${isLogin ? "Entrar" : "Crear cuenta y entrar"}
         </button>
@@ -61,6 +73,7 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
     const submitBtn = card.querySelector<HTMLButtonElement>("#auth-submit")!;
     const errorBox = card.querySelector<HTMLDivElement>("#login-error")!;
     const toggleBtn = card.querySelector<HTMLButtonElement>("#auth-toggle")!;
+    const consentCheckbox = card.querySelector<HTMLInputElement>("#auth-consent");
 
     emailInput.focus();
 
@@ -74,6 +87,13 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
       errorBox.style.display = "none";
       const email = emailInput.value.trim();
       const password = passwordInput.value;
+
+      // Validar checkbox de consentimiento en modo registro.
+      if (mode === "register" && consentCheckbox && !consentCheckbox.checked) {
+        errorBox.textContent = "Debés aceptar los Términos de Uso y la Política de Privacidad.";
+        errorBox.style.display = "block";
+        return;
+      }
 
       submitBtn.disabled = true;
       submitBtn.textContent = "...";
