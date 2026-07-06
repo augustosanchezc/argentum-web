@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import jwt from "@fastify/jwt";
 import websocket from "@fastify/websocket";
 import { env } from "./config/env.js";
+import { metricsRegistry } from "./metrics.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerCharactersRoutes } from "./routes/characters.js";
 import { registerWsRoutes } from "./ws/index.js";
@@ -46,6 +47,15 @@ export async function buildApp(): Promise<FastifyInstance> {
     nodeEnv: env.nodeEnv,
     uptime: process.uptime(),
   }));
+
+  // Endpoint de métricas para Prometheus. No requiere auth; el acceso se
+  // restringe a nivel de red (Caddy no lo expone al exterior en prod).
+  app.get("/metrics", async (_req, reply) => {
+    const metrics = await metricsRegistry.metrics();
+    await reply
+      .header("Content-Type", metricsRegistry.contentType)
+      .send(metrics);
+  });
 
   await app.register(registerAuthRoutes, { prefix: "/auth" });
   await app.register(registerCharactersRoutes, { prefix: "/characters" });

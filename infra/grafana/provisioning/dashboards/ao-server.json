@@ -1,0 +1,97 @@
+{
+  "title": "AO Server",
+  "uid": "ao-server-main",
+  "schemaVersion": 38,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Jugadores conectados",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 0, "w": 6, "h": 4 },
+      "targets": [
+        {
+          "expr": "ao_connected_players{app=\"ao-server\"}",
+          "legendFormat": "Conectados"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Mensajes WS / min",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 0, "w": 18, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(ao_ws_messages_total{app=\"ao-server\"}[1m]) * 60",
+          "legendFormat": "{{direction}} {{op}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Transiciones de mapa / min",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(ao_map_transitions_total{app=\"ao-server\"}[1m]) * 60",
+          "legendFormat": "Transiciones"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "NPCs eliminados / min",
+      "type": "timeseries",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(ao_npc_kills_total{app=\"ao-server\"}[1m]) * 60",
+          "legendFormat": "Kills"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Operaciones de banco / min",
+      "type": "timeseries",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(ao_bank_ops_total{app=\"ao-server\"}[1m]) * 60",
+          "legendFormat": "{{op}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Latencia mensajes WS (p95 ms)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(ao_ws_message_duration_ms_bucket{app=\"ao-server\"}[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.50, rate(ao_ws_message_duration_ms_bucket{app=\"ao-server\"}[5m]))",
+          "legendFormat": "p50"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Chat / min",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 16, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(ao_chat_messages_total{app=\"ao-server\"}[1m]) * 60",
+          "legendFormat": "Mensajes"
+        }
+      ]
+    }
+  ]
+}

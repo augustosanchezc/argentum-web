@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@ao/shared": "workspace:*",
+    "@sentry/browser": "^10.63.0",
     "msgpackr": "^1.11.2",
     "pixi.js": "^8.6.0"
   },

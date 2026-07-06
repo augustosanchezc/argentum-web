@@ -85,6 +85,13 @@ import { tradeRegistry } from "../world/trade.js";
 import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
+import {
+  bankOpsTotal,
+  chatMessagesTotal,
+  mapTransitionsTotal,
+  npcKillsTotal,
+  tradeCompletedTotal,
+} from "../metrics.js";
 import { sessions, type Session } from "./sessions.js";
 
 // Construye el paquete MapData completo para un mapa dado.
@@ -493,6 +500,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         },
         "[ws] transición de mapa",
       );
+      mapTransitionsTotal.inc();
     }
 
     function handleMove(s: Session, move: MoveRequest): void {
@@ -693,6 +701,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           },
           "[ws] NPC eliminado",
         );
+        npcKillsTotal.inc();
       }
     }
 
@@ -857,6 +866,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         { char: s.characterId, item: pkt.item, qty: pkt.qty },
         "[banco] depósito item",
       );
+      bankOpsTotal.inc({ op: "deposit_item" });
     }
 
     function handleBankWithdrawItem(s: Session, pkt: BankWithdrawItemRequest): void {
@@ -868,6 +878,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         { char: s.characterId, item: pkt.item, qty: pkt.qty },
         "[banco] retiro item",
       );
+      bankOpsTotal.inc({ op: "withdraw_item" });
     }
 
     function handleBankDepositGold(s: Session, pkt: BankDepositGoldRequest): void {
@@ -876,6 +887,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!ok) return;
       sendBankUpdate(s);
       req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] depósito oro");
+      bankOpsTotal.inc({ op: "deposit_gold" });
     }
 
     function handleBankWithdrawGold(s: Session, pkt: BankWithdrawGoldRequest): void {
@@ -884,6 +896,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!ok) return;
       sendBankUpdate(s);
       req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] retiro oro");
+      bankOpsTotal.inc({ op: "withdraw_gold" });
     }
 
     // ── Party (E-4.3) ────────────────────────────────────────────────────────
@@ -1164,6 +1177,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         },
         "[trade] completado",
       );
+      tradeCompletedTotal.inc();
     }
 
     function handleTradeCancel(s: Session): void {
@@ -1205,6 +1219,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Por ahora chat global del mapa (sala unica por mapa). Cuando
       // tengamos rango/canales (Fase 3+), filtrar aqui.
       broadcastToMap(s.mapId, out);
+      chatMessagesTotal.inc();
     }
 
     async function doHandshake(loginReq: LoginRequest): Promise<void> {

@@ -1,11 +1,15 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
+import { initSentry } from "./sentry.js";
 import { pool } from "./db/index.js";
 import { loadedMapIds } from "./world/maps.js";
 import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
 
 async function main(): Promise<void> {
+  // Sentry debe inicializarse antes de construir la app para capturar errores
+  // de arranque. Sin DSN configurado, no hace nada.
+  initSentry();
   const app = await buildApp();
 
   // Log de mapas cargados (útil para saber qué mapas están disponibles y

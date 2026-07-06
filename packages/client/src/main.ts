@@ -1,5 +1,18 @@
+import * as Sentry from "@sentry/browser";
 import { ApiError, type CharacterSummary, listCharacters } from "./api";
 import { clearToken, getToken } from "./auth";
+
+// Sentry se activa solo si la variable de entorno está definida en build time.
+// Para producción: VITE_SENTRY_DSN=https://xxx@sentry.io/yyy pnpm build
+const sentryDsn = import.meta.env["VITE_SENTRY_DSN"] as string | undefined;
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: import.meta.env.MODE,
+    tracesSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
+    integrations: [Sentry.browserTracingIntegration()],
+  });
+}
 import { renderLogin } from "./ui/login";
 import { renderCharacterSelect } from "./ui/character-select";
 import { startGameScene, type GameSceneResult } from "./scenes/game";

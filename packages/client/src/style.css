@@ -706,3 +706,129 @@ h3 {
   color: var(--text-dim);
   border: 1px solid var(--gold-soft);
 }
+
+/* ── Banco (E-4.2) ── */
+.ao-bank {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-card);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  padding: 14px;
+  min-width: 580px;
+  max-width: 96vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 150;
+  display: none;
+}
+.ao-bank--open { display: block; }
+.ao-bank__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.ao-bank__title { color: var(--gold-bright); font-weight: 700; font-size: 16px; }
+.ao-bank__close { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
+.ao-bank__body { display: flex; gap: 16px; }
+.ao-bank__section { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.ao-bank__section-title { color: var(--gold); font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--gold-soft); padding-bottom: 4px; }
+.ao-bank__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; min-height: 60px; }
+.ao-bank__item { display: flex; align-items: center; gap: 8px; }
+.ao-bank__item-name { flex: 1; font-size: 13px; }
+.ao-bank__gold-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.ao-bank__gold-input, .ao-bank__gold-input2 { width: 60px; background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; }
+.ao-bank__btn { background: linear-gradient(135deg, var(--gold), var(--gold-dim)); color: var(--bg); border: none; border-radius: 3px; padding: 3px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+
+/* ── Party (E-4.3) ── */
+.ao-party {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--gold-soft);
+  border-radius: 6px;
+  padding: 10px 12px;
+  min-width: 180px;
+  z-index: 120;
+  display: none;
+}
+.ao-party--visible { display: block; }
+.ao-party__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ao-party__title { color: var(--gold); font-size: 13px; font-weight: 700; }
+.ao-party__leave { background: transparent; border: 1px solid var(--crimson); color: var(--crimson-bright); border-radius: 3px; padding: 2px 6px; font-size: 11px; cursor: pointer; }
+.ao-party__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ao-party__member { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.ao-party__name { color: var(--parchment); font-weight: 600; }
+.ao-party__hpbar-bg { width: 100%; height: 5px; background: #1a140d; border-radius: 2px; overflow: hidden; }
+.ao-party__hpbar-fg { height: 100%; border-radius: 2px; }
+.ao-party__hp { color: var(--text-dim); font-size: 11px; }
+
+.ao-party-invite {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 160;
+  font-size: 13px;
+}
+.ao-party-invite--visible { display: flex; }
+.ao-party-invite__accept { background: var(--emerald); border: none; color: #fff; border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.ao-party-invite__decline { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+
+/* ── Trade (E-4.4) ── */
+.ao-trade {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--bg-card);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  padding: 14px;
+  min-width: 520px;
+  max-width: 96vw;
+  z-index: 155;
+  display: none;
+}
+.ao-trade--open { display: block; }
+.ao-trade__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.ao-trade__title { color: var(--gold-bright); font-weight: 700; font-size: 15px; }
+.ao-trade__cancel-btn { background: transparent; border: 1px solid var(--crimson); color: var(--crimson-bright); border-radius: 3px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
+.ao-trade__body { display: flex; gap: 16px; margin-bottom: 12px; }
+.ao-trade__side { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.ao-trade__side-title { color: var(--gold); font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--gold-soft); padding-bottom: 4px; }
+.ao-trade__offer-list { list-style: none; margin: 0; padding: 0; min-height: 50px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.ao-trade__gold-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+.ao-trade__gold-input { width: 70px; background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; }
+.ao-trade__add-item-row { display: flex; align-items: center; gap: 6px; }
+.ao-trade__item-select { background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; flex: 1; }
+.ao-trade__btn { background: linear-gradient(135deg, var(--gold), var(--gold-dim)); color: var(--bg); border: none; border-radius: 3px; padding: 3px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ao-trade__btn--confirm { width: 100%; padding: 8px; font-size: 14px; }
+.ao-trade__footer { text-align: center; }
+.ao-trade__confirmed--yes { color: var(--emerald-bright); font-size: 12px; font-weight: 600; }
+.ao-trade__confirmed--no { color: var(--text-faint); font-size: 12px; }
+
+.ao-trade-invite {
+  position: fixed;
+  bottom: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-card);
+  border: 1px solid var(--gold-dim);
+  border-radius: 6px;
+  padding: 10px 14px;
+  display: none;
+  align-items: center;
+  gap: 10px;
+  z-index: 160;
+  font-size: 13px;
+}
+.ao-trade-invite--visible { display: flex; }
+.ao-trade-invite__accept { background: var(--emerald); border: none; color: #fff; border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+.ao-trade-invite__decline { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }

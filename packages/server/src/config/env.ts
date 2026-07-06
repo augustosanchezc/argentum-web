@@ -38,6 +38,9 @@ export const env = {
   bcrypt: {
     rounds: optionalInt("BCRYPT_ROUNDS", 12),
   },
+  sentry: {
+    dsn: optional("SENTRY_DSN", ""),
+  },
 } as const;
 
 export type AppEnv = typeof env;

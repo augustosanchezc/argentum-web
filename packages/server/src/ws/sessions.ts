@@ -1,5 +1,6 @@
 import type { Direction, InventorySlot, Vector2 } from "@ao/shared";
 import type { WebSocket } from "ws";
+import { connectedPlayers } from "../metrics.js";
 
 export interface Session {
   readonly id: string;
@@ -106,6 +107,7 @@ class SessionRegistry {
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);
+    connectedPlayers.inc();
     return session;
   }
 
@@ -114,6 +116,7 @@ class SessionRegistry {
     if (!s) return;
     this.bySessionId.delete(sessionId);
     this.byCharacterId.delete(s.characterId);
+    connectedPlayers.dec();
   }
 
   touch(sessionId: string): void {

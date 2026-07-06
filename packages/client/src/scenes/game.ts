@@ -558,11 +558,27 @@ export async function startGameScene(
     const dead = hp <= 0;
     if (dead) body.alpha = 0.35;
     // Los demas personajes son clickeables para atacarlos (ademas de Ctrl).
+    // Alt+clic = invitar a party; Shift+clic = proponer trade.
     if (!isSelf) {
       container.eventMode = "static";
       container.cursor = "crosshair";
-      container.on("pointertap", () => {
-        clickAttack(id);
+      container.on("pointertap", (event) => {
+        const ev = event.nativeEvent as PointerEvent;
+        if (ev.altKey && kind === "player") {
+          const pkt: PartyInviteRequest = {
+            op: ClientToServerOp.PartyInvite,
+            targetId: id as unknown as EntityId,
+          };
+          client?.send(pkt);
+        } else if (ev.shiftKey && kind === "player") {
+          const pkt: TradeRequestMsg = {
+            op: ClientToServerOp.TradeRequest,
+            targetId: id as unknown as EntityId,
+          };
+          client?.send(pkt);
+        } else {
+          clickAttack(id);
+        }
       });
     }
     entitiesLayer.addChild(container);
