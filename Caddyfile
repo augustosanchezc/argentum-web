@@ -1,0 +1,39 @@
+# Caddyfile de producción para AO Web MMORPG.
+# Caddy gestiona TLS automáticamente con Let's Encrypt.
+# Reemplazar {$DOMAIN} con el dominio real en .env.prod.
+
+{$DOMAIN} {
+    # ── API + WebSocket ───────────────────────────────────────────────────────
+    # El servidor de juego escucha en ao-server:3000 dentro de la red Docker.
+    @api path /api/* /ws
+    handle @api {
+        reverse_proxy ao-server:3000 {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+        }
+    }
+
+    # ── Grafana (opcional, protegido por contraseña en Grafana mismo) ─────────
+    handle_path /grafana/* {
+        reverse_proxy grafana:3000
+    }
+
+    # ── Cliente estático ──────────────────────────────────────────────────────
+    handle {
+        root * /srv/client
+        try_files {path} /index.html
+        file_server
+    }
+
+    # Compresión gzip/zstd para los assets del cliente.
+    encode zstd gzip
+
+    # Headers de seguridad.
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options DENY
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+}

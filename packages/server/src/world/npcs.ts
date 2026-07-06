@@ -37,6 +37,7 @@ export interface NpcType {
   readonly respawnMs: number;
   readonly hostile: boolean;
   readonly merchant: boolean;
+  readonly banker: boolean;
   readonly goldMin: number;
   readonly goldMax: number;
   readonly drops: readonly NpcDrop[];
@@ -62,6 +63,7 @@ const NPC_TYPES: Record<string, NpcType> = {
     respawnMs: 8_000,
     hostile: true,
     merchant: false,
+    banker: false,
     goldMin: 2,
     goldMax: 6,
     drops: [{ item: 1, chance: 0.5 }], // poción menor
@@ -84,6 +86,7 @@ const NPC_TYPES: Record<string, NpcType> = {
     respawnMs: 12_000,
     hostile: true,
     merchant: false,
+    banker: false,
     goldMin: 5,
     goldMax: 12,
     drops: [
@@ -110,10 +113,33 @@ const NPC_TYPES: Record<string, NpcType> = {
     respawnMs: 0,
     hostile: false,
     merchant: true,
+    banker: false,
     goldMin: 0,
     goldMax: 0,
     drops: [],
     shopOffers: [1, 2, 3, 4, 5],
+  },
+  banquero: {
+    key: "banquero",
+    name: "Banquero",
+    graphic: 0,
+    bodyId: 1,
+    headId: 1,
+    maxHp: 999,
+    damageMin: 0,
+    damageMax: 0,
+    attackCooldownMs: 0,
+    aggroRadius: 0,
+    moveCooldownMs: 0,
+    xpReward: 0,
+    respawnMs: 0,
+    hostile: false,
+    merchant: false,
+    banker: true,
+    goldMin: 0,
+    goldMax: 0,
+    drops: [],
+    shopOffers: [],
   },
 };
 
@@ -140,14 +166,54 @@ interface NpcSpawnDef {
 }
 
 const SPAWN_DEFS: Record<number, NpcSpawnDef[]> = {
-  // Ullathorpe (mapa 1): unas ratas y lobos alrededor de la plaza (spawn ~25,25).
+  // Ullathorpe (mapa 1): ratas y lobos alrededor de la plaza (spawn ~25,25).
   1: [
     { typeKey: "rata", at: { x: 28, y: 24 } },
     { typeKey: "rata", at: { x: 22, y: 27 } },
     { typeKey: "rata", at: { x: 30, y: 30 } },
     { typeKey: "lobo", at: { x: 20, y: 22 } },
     { typeKey: "lobo", at: { x: 32, y: 26 } },
-    { typeKey: "mercader", at: { x: 26, y: 25 } }, // comerciante junto al spawn
+    { typeKey: "mercader", at: { x: 26, y: 25 } },
+    { typeKey: "banquero", at: { x: 24, y: 25 } },
+  ],
+  // Sur de Ullathorpe (mapa 2): campo abierto con ratas y lobos.
+  2: [
+    { typeKey: "rata", at: { x: 30, y: 30 } },
+    { typeKey: "rata", at: { x: 40, y: 25 } },
+    { typeKey: "rata", at: { x: 25, y: 45 } },
+    { typeKey: "lobo", at: { x: 50, y: 30 } },
+    { typeKey: "lobo", at: { x: 35, y: 50 } },
+  ],
+  // Norte de Ullathorpe (mapa 5): bosque con lobos predominantes.
+  5: [
+    { typeKey: "lobo", at: { x: 30, y: 20 } },
+    { typeKey: "lobo", at: { x: 45, y: 35 } },
+    { typeKey: "lobo", at: { x: 25, y: 50 } },
+    { typeKey: "rata", at: { x: 55, y: 40 } },
+    { typeKey: "rata", at: { x: 20, y: 35 } },
+  ],
+  // Camino del Oeste (mapa 8): mezcla equilibrada.
+  8: [
+    { typeKey: "rata", at: { x: 20, y: 30 } },
+    { typeKey: "rata", at: { x: 35, y: 20 } },
+    { typeKey: "lobo", at: { x: 45, y: 40 } },
+    { typeKey: "lobo", at: { x: 25, y: 55 } },
+  ],
+  // Camino del Este (mapa 11): mezcla equilibrada.
+  11: [
+    { typeKey: "rata", at: { x: 30, y: 25 } },
+    { typeKey: "rata", at: { x: 50, y: 35 } },
+    { typeKey: "lobo", at: { x: 40, y: 45 } },
+    { typeKey: "lobo", at: { x: 20, y: 40 } },
+  ],
+  // Sótanos de Ullathorpe (mapa 40): dungeon — más lobos, sin mercaderes.
+  40: [
+    { typeKey: "lobo", at: { x: 25, y: 25 } },
+    { typeKey: "lobo", at: { x: 35, y: 30 } },
+    { typeKey: "lobo", at: { x: 20, y: 40 } },
+    { typeKey: "rata", at: { x: 40, y: 20 } },
+    { typeKey: "rata", at: { x: 30, y: 45 } },
+    { typeKey: "rata", at: { x: 45, y: 35 } },
   ],
 };
 

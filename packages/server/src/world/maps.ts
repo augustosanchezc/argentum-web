@@ -34,6 +34,11 @@ const MAPS_DIR = resolve(HERE, "..", "..", "data", "maps");
 // Nombres canónicos de los mapas conocidos. Los demás reciben "Mapa N".
 const MAP_NAMES: Record<number, string> = {
   1: "Ciudad de Ullathorpe",
+  2: "Sur de Ullathorpe",
+  5: "Norte de Ullathorpe",
+  8: "Camino del Oeste",
+  11: "Camino del Este",
+  40: "Sótanos de Ullathorpe",
 };
 
 function findNearestWalkable(
