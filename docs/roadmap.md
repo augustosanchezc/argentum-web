@@ -4,22 +4,17 @@
 > Ancla de tiempo: Sprint 1 comienza la semana del 2026-06-23.
 > Duración de sprint: 2 semanas.
 
-> **Estado al 2026-07-04:** Fases 0, 1, 2 y **3 cerradas**. Todo el MVP está
-> jugable: auth + personajes, WebSocket binario con game loop a 10 Hz, mapa
-> real de Ullathorpe con el tileset del AO, movimiento autoritativo, chat con
-> filtro, combate cuerpo a cuerpo (HP, muerte, respawn), lista de online,
-> controles táctiles, load test, NPCs hostiles con IA + comerciante,
-> experiencia y niveles 1-10, items, **inventario drag-and-drop, drops al
-> suelo por drag, tienda de NPC y siluetas de personaje con dirección**.
+> **Estado al 2026-07-06:** Fases 0, 1, 2, 3 y **4 cerradas**. El juego es
+> Beta-público: multi-mapa con portales nativos del AO (6 mapas en BFS),
+> banco de items y oro con NPC banquero, party de hasta N jugadores con HP bars,
+> comercio seguro jugador-jugador (swap atómico ADR-007), deploy a VPS con
+> Dockerfile multi-stage + Caddy (HTTPS/WSS) + docker-compose.prod.yml,
+> Prometheus + Grafana dashboard + Sentry server y cliente, load test 200
+> sesiones con rastreo multi-mapa. Documentación legal lista (privacidad.md +
+> terminos.md). ADR-006/007/008 escritos.
 >
-> **Próximo hito:** Fase 4 (Beta pública) — multi-mapa, banco, party,
-> comercio jugador-jugador, deploy a VPS con observabilidad.
->
-> **Estado al 2026-07-06:** Fase 4 **desglosada** en `docs/backlog.md`
-> (T-057 a T-086 + ADR-006/007/008 + TG-06). Sprint 9 abierto. Secuencia:
-> E-4.1 multi-mapa (base) → banco/party/trade → infra + observabilidad →
-> comunidad + legal → load test 200 y cierre. Pendiente antes de codear:
-> ADR-006 (multi-mapa), ADR-007 (transacciones anti-dupe), ADR-008 (infra).
+> **Próximo hito:** Fase 5 — escalado horizontal, contenido extendido (más
+> mapas, clases, habilidades), Discord bot, modos PvP.
 
 ---
 
