@@ -139,20 +139,131 @@ Las siguientes épicas se desglosan en tareas al inicio del Sprint 6. Se listan 
 
 ---
 
-## Épicas de Fase 4 — Beta pública (detalle en Sprint 12)
+## Fase 4 — Beta pública (Sprints 9-12, 2026-09-29 al 2026-10-23)
+
+> **Desglosado el 2026-07-06** (Sprint 9 abierto). Continúa la numeración desde
+> T-056. La secuencia recomendada es E-4.1 (multi-mapa, base técnica) →
+> E-4.2/E-4.3/E-4.4 (features de gameplay sobre multi-mapa) →
+> E-4.5/E-4.6 (infra y observabilidad, en paralelo) → E-4.7/E-4.8 (comunidad y
+> legal, en paralelo desde el inicio) → E-4.9/E-4.10 (cierre).
+>
+> **Decisiones que requieren ADR antes de codear** (regla de trabajo del PM):
+> ADR-006 (estrategia multi-mapa) bloquea E-4.1; ADR-007 (transacciones atómicas
+> de items anti-dupe, R-05) bloquea E-4.2 y E-4.4; ADR-008 (infra de producción)
+> bloquea E-4.5.
+
+### Resumen de épicas
 
 | Épica | Descripción | Agente principal | MoSCoW |
 |---|---|---|---|
-| E-4.1 | Multi-mapa con transiciones (portales) | backend-developer | Must |
+| E-4.1 | Multi-mapa con transiciones (portales) | backend-developer + frontend-designer | Must |
 | E-4.2 | Banco de items por personaje | backend-developer + frontend-designer | Must |
 | E-4.3 | Party system (hasta 5 jugadores) | backend-developer + frontend-designer | Must |
 | E-4.4 | Comercio seguro jugador-jugador | backend-developer + frontend-designer | Must |
 | E-4.5 | Despliegue en VPS con dominio y WSS | backend-developer | Must |
-| E-4.6 | Observabilidad: Prometheus + Grafana + Sentry | backend-developer | Must |
+| E-4.6 | Observabilidad: Prometheus + Grafana + Sentry | backend-developer + frontend-designer | Must |
 | E-4.7 | Discord con canales de comunidad y moderación | project-manager | Must |
-| E-4.8 | Política de privacidad y términos de uso | project-manager | Must |
-| E-4.9 | Prueba de carga con 200 conexiones (k6) | backend-developer | Must |
+| E-4.8 | Política de privacidad y términos de uso | project-manager + frontend-designer | Must |
+| E-4.9 | Prueba de carga con 200 conexiones | backend-developer | Must |
 | E-4.10 | UX review y mejoras post-feedback interno | frontend-designer | Should |
+| E-4.11 | ADRs y gestión de la fase | project-manager | Must |
+
+---
+
+### Épica E-4.1: Multi-mapa con transiciones (portales)
+
+> Hoy el mundo es un único mapa (Ullathorpe). La entidad ya lleva `map_id`
+> (ver `docs/architecture.md` §2), pero todos los broadcasts asumen un solo mapa.
+> Esta épica generaliza el server a N mapas en memoria y añade portales.
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-057 | Registro multi-mapa en el server | E-4.1 | M | T-057-ADR-006 | `world/maps.ts` carga ≥3 mapas del AO en memoria, indexados por `mapId`; NPCs, items del suelo y sesiones se agrupan por mapa; el game loop y todos los broadcasts (`ENTITY_UPDATE`, `CHAT_MSG`, etc.) se filtran por el mapa del emisor | Must |
+| T-058 | Portales en protocolo y data de mapas | E-4.1 | S | T-057, TG-05 | Cada mapa define tiles-portal con `{ destMapId, destX, destY }`; `docs/protocol.md` actualizado con paquete `MAP_CHANGE` (S→C) y, si aplica, `ENTER_PORTAL` (C→S); `@ao/shared` publica los tipos | Must |
+| T-059 | Lógica de transición de mapa (server) | E-4.1 | M | T-057, T-058 | Al pisar un tile-portal el server valida el destino, saca al jugador del mapa origen (despawn a los demás), lo inserta en el destino, envía `MapData` + `EntitySpawn` del nuevo mapa y persiste `map_id/pos` | Must |
+| T-060 | Cambio de mapa en el cliente | E-4.1 | M | T-059, T-027 | Al recibir el `MapData` de otro mapa la escena PixiJS se reconstruye sin fugas de memoria (destroy de capas/texturas), recarga el tileset bajo demanda, reubica la cámara y muestra un fade de transición | Must |
+| T-061 | Tres mapas conectados jugables | E-4.1 | S | T-060 | Ullathorpe + 2 zonas nuevas conectadas por portales bidireccionales; se puede ir y volver entre los 3 mapas con NPCs propios en cada uno | Must |
+
+### Épica E-4.2: Banco de items por personaje
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-062 | Persistencia del banco + NPC banquero | E-4.2 | S | T-057-ADR-007 | Migración añade `bank` (jsonb) a `characters`; se define un NPC "Banquero" (tipo nuevo) colocado en un mapa; carga/guardado junto al resto del personaje | Must |
+| T-063 | Protocolo de banco | E-4.2 | S | T-062, TG-05 | `docs/protocol.md` y `@ao/shared` con `BANK_OPEN`, `BANK_DEPOSIT`, `BANK_WITHDRAW`, `BANK_UPDATE` (oro e items, con slot y cantidad) | Must |
+| T-064 | Lógica de banco atómica (server) | E-4.2 | M | T-063 | Depositar/retirar items y oro con validación de slot/cantidad; toda transferencia inventario↔banco es atómica (sin duplicación, R-05); se abre solo con el Banquero adyacente | Must |
+| T-065 | Ventana de banco en el cliente | E-4.2 | M | T-064, T-... | UI de banco con drag-and-drop entre inventario y banco (reusa el sistema de `ui/inventory.ts`); muestra oro depositado; refleja `BANK_UPDATE` en tiempo real | Must |
+
+### Épica E-4.3: Party system (hasta 5 jugadores)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-066 | Protocolo de party | E-4.3 | S | TG-05 | `docs/protocol.md` y `@ao/shared` con `PARTY_INVITE`, `PARTY_ACCEPT`, `PARTY_LEAVE`, `PARTY_UPDATE` (lista de miembros con id, nombre, hp/maxHp) | Must |
+| T-067 | Lógica de party (server) | E-4.3 | M | T-066 | Crear/invitar/unir/salir/disolver; máximo 5 miembros; el daño no se aplica entre aliados (friendly fire off en combate); estado en memoria por party | Must |
+| T-068 | Reparto de XP en party | E-4.3 | S | T-067, T-055 | Al morir un NPC la XP se reparte entre los miembros de la party que estén en el mismo mapa y en rango; en solitario el comportamiento actual no cambia | Must |
+| T-069 | UI de party en el cliente | E-4.3 | M | T-067 | Panel de party con lista de miembros y barra de HP de aliados; flujo de invitación (recibir/aceptar/rechazar); se actualiza con `PARTY_UPDATE` | Must |
+
+### Épica E-4.4: Comercio seguro jugador-jugador
+
+> Área de máximo riesgo de dupe (R-05). El diseño va en ADR-007 junto al banco.
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-070 | Protocolo de trade | E-4.4 | S | TG-05, T-057-ADR-007 | `docs/protocol.md` y `@ao/shared` con `TRADE_REQUEST`, `TRADE_UPDATE`, `TRADE_CONFIRM`, `TRADE_CANCEL`; incluye oferta de items + oro de ambos lados y estado de confirmación | Must |
+| T-071 | Máquina de estados de trade con commit atómico | E-4.4 | L | T-070 | Ventana de intercambio con doble confirmación; el swap se aplica en una única transacción atómica solo cuando ambos confirman; cualquier cambio de oferta resetea las confirmaciones; cancelación/desconexión aborta sin pérdida; logs auditables de cada trade | Must |
+| T-072 | Ventana de comercio en el cliente | E-4.4 | M | T-071 | Dos áreas (mi oferta / su oferta) + oro, botones confirmar/cancelar, indicador de "el otro confirmó"; refleja `TRADE_UPDATE` en tiempo real | Must |
+
+### Épica E-4.5: Despliegue en VPS con dominio y WSS
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-073 | Dockerfile de producción del server + build del cliente | E-4.5 | M | T-073-ADR-008 | Imagen del `@ao/server` multi-stage optimizada; build estático del `@ao/client`; `pnpm` en modo producción; imagen arranca con variables de entorno (DB, JWT, CORS) | Must |
+| T-074 | Reverse proxy con HTTPS/WSS (Caddy) | E-4.5 | M | T-073 | Caddy sirve el cliente estático y proxya `/ws` y `/auth` al server; TLS automático (Let's Encrypt) para el dominio; `wss://<dominio>/ws` conecta con certificado válido | Must |
+| T-075 | docker-compose de producción + backups | E-4.5 | M | T-074 | Compose de prod (server + postgres + redis + caddy) con volúmenes persistentes, `.env` de prod y healthchecks; job de backup diario de Postgres documentado | Must |
+| T-076 | Deploy en VPS y smoke test remoto | E-4.5 | S | T-075 | Server corriendo 24/7 en el VPS con dominio; un cliente desde internet se registra, entra, camina entre mapas y pelea sin errores de consola críticos | Must |
+
+### Épica E-4.6: Observabilidad (Prometheus + Grafana + Sentry)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-077 | Métricas Prometheus en el server | E-4.6 | M | T-048 | Endpoint `/metrics`: conexiones activas, duración del tick, latencia de paquetes (P50/P95), entidades por mapa, errores; sin degradar el tick de 10 Hz | Must |
+| T-078 | Grafana con dashboard y alertas | E-4.6 | M | T-077, T-075 | Grafana + Prometheus en el compose de prod; dashboard con las métricas de T-077; alerta básica de caída del server (target down) | Must |
+| T-079 | Sentry server-side | E-4.6 | S | T-048 | Excepciones no capturadas y errores del game loop se reportan a Sentry con contexto (mapa, opcode); no rompe el loop | Must |
+| T-080 | Sentry client-side | E-4.6 | S | T-024 | Errores de JS del cliente reportados a Sentry con release/versión; ignora ruido de red esperado (reconexiones) | Must |
+
+### Épica E-4.7: Comunidad (Discord)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-081 | Servidor de Discord con canales y roles | E-4.7 | S | — | Servidor con `#anuncios`, `#bugs`, `#feedback`, `#general`; reglas publicadas; roles básicos (admin, moderador, jugador); sistema de mute/ban configurado | Must |
+| T-082 | Webhook de estado del server a Discord | E-4.7 | S | T-078 | Alertas de caída/recuperación del server publican en `#anuncios` vía webhook | Could |
+
+### Épica E-4.8: Legal (privacidad y términos)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-083 | Redactar Política de Privacidad y Términos de Uso | E-4.8 | S | — | Documentos que cubren datos personales recolectados (email, IP), uso, AGPL y edad mínima; guardados en `docs/legal/` | Must |
+| T-084 | Publicar legal + consentimiento en registro | E-4.8 | S | T-083, T-019 | Enlaces a privacidad/términos accesibles desde el cliente; checkbox de consentimiento obligatorio en la pantalla de registro | Must |
+
+### Épica E-4.9: Prueba de carga (200 conexiones)
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-085 | Load test de 200 conexiones multi-mapa | E-4.9 | M | T-050, T-061 | Extender `scripts/load-test.mjs` a 200 sesiones simultáneas repartidas entre mapas, con movimiento, combate y cambios de mapa por ≥3 min; documentar P95 y decidir si el objetivo de 200 se cumple single-process o requiere sharding (feed a ADR-006) | Must |
+
+### Épica E-4.10: UX review y polish
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-086 | UX review post-feedback interno | E-4.10 | S | T-076 | Sesión de juego interna sobre el server de prod; lista priorizada de fricciones de UX; las correcciones rápidas se aplican y el resto va al backlog de Fase 5 | Should |
+
+### Épica E-4.11: ADRs y gestión de la fase
+
+| ID | Título | Épica | Tamaño | Depende de | Criterio de aceptación | MoSCoW |
+|---|---|---|---|---|---|---|
+| T-057-ADR-006 | ADR-006: Estrategia multi-mapa | E-4.11 | S | — | `docs/decisions/ADR-006-multi-mapa.md`: single-process con mapas en memoria vs. sharding por proceso/mapa; decide para la Beta y deja el plan B de escalado (R-06) | Must |
+| T-057-ADR-007 | ADR-007: Transacciones atómicas de items (anti-dupe) | E-4.11 | S | — | `docs/decisions/ADR-007-transacciones-items.md`: patrón atómico común para banco y trade jugador-jugador; mitiga R-05; define logging auditable | Must |
+| T-073-ADR-008 | ADR-008: Infraestructura de producción | E-4.11 | S | — | `docs/decisions/ADR-008-infra-produccion.md`: VPS elegido, Caddy vs. Nginx, estrategia de TLS/WSS, backups y secretos; presupuesto ≤ USD 40/mes (R-10) | Must |
+| TG-06 | Cerrar Fase 4 en roadmap y dashboard | E-4.11 | S | T-076, T-085 | `docs/roadmap.md`, `docs/roadmap.html` y `docs/estado.html` reflejan Fase 4 cerrada; retro de la fase registrada | Must |
 
 ---
 

@@ -226,7 +226,16 @@ El servidor no garantiza que cada `sequence` reciba una respuesta individual; pu
 
 Tipo TS: `MapData` en `@ao/shared/protocol.ts`
 
-El servidor envia este paquete inmediatamente despues de un login exitoso (y ante cambio de mapa en fases futuras). Describe el mapa completo en el que el personaje hace spawn.
+El servidor envia este paquete en dos situaciones:
+
+1. **Login** — inmediatamente despues de `LOGIN_RESPONSE { ok: true }`.
+2. **Cambio de mapa (Fase 4)** — cuando el jugador pisa un portal (tile-exit del
+   formato AO). El cliente detecta que es una transicion comparando `mapId` con
+   el mapa que ya tiene cargado; si difieren, destruye la escena actual y
+   reconstruye con los nuevos datos.
+
+Describe el mapa completo y las entidades visibles al momento del spawn o de la
+transicion.
 
 **Campos:**
 

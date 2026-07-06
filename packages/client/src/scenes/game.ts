@@ -358,6 +358,18 @@ export async function startGameScene(
     if (tileset.ready) void tileset.preload(itemGraphicIds);
   });
 
+  // Overlay de transición de mapa: flash negro que se desvanece en 400 ms.
+  const TRANSITION_FLASH_MS = 400;
+  let transitionFlashEnd = 0;
+  const transitionFlash = new Graphics();
+  // Rect sobredimensionado para cubrir cualquier tamaño de pantalla.
+  transitionFlash.rect(-500, -500, 10000, 10000).fill({ color: 0x000000 });
+  transitionFlash.alpha = 0;
+  transitionFlash.visible = false;
+  app.stage.addChild(transitionFlash);
+
+  let currentMapId = -1;
+
   const entityVisuals = new Map<number, EntityVisual>();
   const groundItemVisuals = new Map<number, Container>();
   let mapWidth = 0;
@@ -815,6 +827,19 @@ export async function startGameScene(
   }
 
   async function applyMapData(data: MapData): Promise<void> {
+    const isTransition = currentMapId !== -1 && data.mapId !== currentMapId;
+    currentMapId = data.mapId;
+
+    if (isTransition) {
+      // Reset de estado de input para que no queden teclas "pegadas"
+      // ni predicciones pendientes al reconstruir la escena.
+      keysHeld.clear();
+      lastLocalMoveAt = 0;
+      transitionFlash.visible = true;
+      transitionFlash.alpha = 1;
+      transitionFlashEnd = performance.now() + TRANSITION_FLASH_MS;
+    }
+
     await renderTiles(data);
     renderEntities(data);
     clearGroundItems();
@@ -1074,6 +1099,17 @@ export async function startGameScene(
       f.text.y = f.startY - 24 * t;
       f.text.alpha = 1 - t;
     }
+    // Fade-out del flash de transición de mapa.
+    if (transitionFlash.visible) {
+      const remaining = transitionFlashEnd - now;
+      if (remaining <= 0) {
+        transitionFlash.visible = false;
+        transitionFlash.alpha = 0;
+      } else {
+        transitionFlash.alpha = remaining / TRANSITION_FLASH_MS;
+      }
+    }
+
     pumpHeldKeys();
     if (mapWidth > 0) centerCameraOnSelf();
   };

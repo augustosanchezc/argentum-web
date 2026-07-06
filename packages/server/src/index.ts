@@ -1,11 +1,16 @@
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { pool } from "./db/index.js";
+import { loadedMapIds } from "./world/maps.js";
 import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
 
 async function main(): Promise<void> {
   const app = await buildApp();
+
+  // Log de mapas cargados (útil para saber qué mapas están disponibles y
+  // cuáles hay que descargar con scripts/fetch-maps.mjs).
+  app.log.info({ maps: loadedMapIds() }, "[ao-server] mapas cargados");
 
   // Crea las instancias de NPC del mundo antes de arrancar el loop.
   npcs.init();

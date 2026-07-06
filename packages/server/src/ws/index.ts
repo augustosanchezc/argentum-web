@@ -54,12 +54,60 @@ import {
   weaponBonusFor,
 } from "../world/inventory.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
+import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { isNpcId, npcs, rollNpcGold } from "../world/npcs.js";
 import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import { sessions, type Session } from "./sessions.js";
+
+// Construye el paquete MapData completo para un mapa dado.
+// Incluye al propio jugador en las entidades (session.mapId ya apunta al mapa).
+// Puede llamarse fuera del closure del WS porque solo usa singletons globales.
+function buildMapDataPacket(map: MapState): MapData {
+  const playerEntities = sessions.inMap(map.id).map((s) => ({
+    id: s.characterId as EntityId,
+    position: { x: s.position.x, y: s.position.y },
+    direction: s.direction,
+    name: s.characterName,
+    hp: s.hp,
+    maxHp: s.maxHp,
+    kind: "player" as const,
+    bodyId: s.bodyId,
+    headId: s.headId,
+    graphic: 0,
+  }));
+  const npcEntities = npcs.inMap(map.id).map((n) => ({
+    id: n.id as EntityId,
+    position: { x: n.position.x, y: n.position.y },
+    direction: n.direction,
+    name: n.type.name,
+    hp: n.hp,
+    maxHp: n.type.maxHp,
+    kind: n.type.merchant ? ("merchant" as const) : ("npc" as const),
+    bodyId: n.type.bodyId ?? 0,
+    headId: n.type.headId ?? 0,
+    graphic: n.type.graphic,
+  }));
+  const groundItemEntities = groundItems.inMap(map.id).map((g) => ({
+    id: g.id as EntityId,
+    position: { x: g.position.x, y: g.position.y },
+    item: g.item,
+    qty: g.qty,
+  }));
+  return {
+    op: ServerToClientOp.MapData,
+    mapId: map.id,
+    name: map.name,
+    width: map.width,
+    height: map.height,
+    graphic: map.graphic,
+    blocked: map.blocked,
+    entities: [...playerEntities, ...npcEntities],
+    groundItems: groundItemEntities,
+  };
+}
 
 const CLOSE_NORMAL = 1000;
 const CLOSE_AUTH_FAILED = 4001;
@@ -305,6 +353,58 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
     }
 
+    // Teletransporta al jugador al mapa destino indicado por un portal.
+    // Precondición: el jugador está vivo y acaba de pisar el tile-portal.
+    function doMapTransition(s: Session, portal: PortalTile): void {
+      const destMap = getMap(portal.toMapId);
+      if (!destMap) return; // mapa no cargado — portal inactivo
+
+      const fromMapId = s.mapId;
+
+      // 1. Avisar al mapa origen que el personaje se fue.
+      const despawn: EntityDespawn = {
+        op: ServerToClientOp.EntityDespawn,
+        id: s.characterId as EntityId,
+      };
+      broadcastToMap(fromMapId, despawn, s.id);
+
+      // 2. Actualizar estado de la sesion.
+      s.mapId = destMap.id;
+      s.position = { x: portal.toX, y: portal.toY };
+      s.direction = "south";
+
+      // 3. Enviar MapData del nuevo mapa al jugador.
+      //    buildMapDataPacket incluye al jugador mismo (s.mapId ya apunta al nuevo mapa).
+      send(s.socket, buildMapDataPacket(destMap));
+
+      // 4. Avisar al nuevo mapa que llegó un personaje.
+      const spawn: EntitySpawn = {
+        op: ServerToClientOp.EntitySpawn,
+        id: s.characterId as EntityId,
+        position: { x: s.position.x, y: s.position.y },
+        direction: s.direction,
+        name: s.characterName,
+        hp: s.hp,
+        maxHp: s.maxHp,
+        kind: "player",
+        bodyId: s.bodyId,
+        headId: s.headId,
+        graphic: 0,
+      };
+      broadcastToMap(destMap.id, spawn, s.id);
+
+      req.log.info(
+        {
+          sessionId: s.id,
+          characterId: s.characterId,
+          fromMap: fromMapId,
+          toMap: destMap.id,
+          pos: s.position,
+        },
+        "[ws] transición de mapa",
+      );
+    }
+
     function handleMove(s: Session, move: MoveRequest): void {
       // Un personaje muerto no se mueve. Le reenviamos su posicion canonica
       // para que el cliente revierta cualquier prediccion.
@@ -370,6 +470,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Asi el cliente puede usar el ACK del server como fuente
       // de verdad para reconciliar su prediccion optimista.
       broadcastToMap(s.mapId, update);
+
+      // Portal check: si el nuevo tile tiene un exit hacia otro mapa, transicionar.
+      const portal = map.portals.find(
+        (p) => p.x === s.position.x && p.y === s.position.y,
+      );
+      if (portal) doMapTransition(s, portal);
     }
 
     function handleAttack(s: Session, attack: AttackRequest): void {
@@ -749,53 +855,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         level: character.level,
       });
 
-      // Mapa + entidades visibles. Por ahora incluimos a TODAS las
-      // sesiones del mapa porque no hay rango de vision todavia.
-      const playerEntities = sessions.inMap(map.id).map((s) => ({
-        id: s.characterId as EntityId,
-        position: { x: s.position.x, y: s.position.y },
-        direction: s.direction,
-        name: s.characterName,
-        hp: s.hp,
-        maxHp: s.maxHp,
-        kind: "player" as const,
-        bodyId: s.bodyId,
-        headId: s.headId,
-        graphic: 0,
-      }));
-      const npcEntities = npcs.inMap(map.id).map((n) => ({
-        id: n.id as EntityId,
-        position: { x: n.position.x, y: n.position.y },
-        direction: n.direction,
-        name: n.type.name,
-        hp: n.hp,
-        maxHp: n.type.maxHp,
-        kind: n.type.merchant ? ("merchant" as const) : ("npc" as const),
-        bodyId: n.type.bodyId ?? 0,
-        headId: n.type.headId ?? 0,
-        graphic: n.type.graphic,
-      }));
-      const entities = [...playerEntities, ...npcEntities];
-
-      const groundItemEntities = groundItems.inMap(map.id).map((g) => ({
-        id: g.id as EntityId,
-        position: { x: g.position.x, y: g.position.y },
-        item: g.item,
-        qty: g.qty,
-      }));
-
-      const mapPacket: MapData = {
-        op: ServerToClientOp.MapData,
-        mapId: map.id,
-        name: map.name,
-        width: map.width,
-        height: map.height,
-        graphic: map.graphic,
-        blocked: map.blocked,
-        entities,
-        groundItems: groundItemEntities,
-      };
-      send(socket, mapPacket);
+      // Mapa + entidades visibles al conectar. El jugador ya fue agregado a
+      // sessions (sessions.create arriba), así que buildMapDataPacket lo incluye.
+      send(socket, buildMapDataPacket(map));
 
       // Avisamos al resto del mapa que aparecio un nuevo personaje.
       const spawn: EntitySpawn = {

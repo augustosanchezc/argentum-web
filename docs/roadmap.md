@@ -14,6 +14,12 @@
 >
 > **Próximo hito:** Fase 4 (Beta pública) — multi-mapa, banco, party,
 > comercio jugador-jugador, deploy a VPS con observabilidad.
+>
+> **Estado al 2026-07-06:** Fase 4 **desglosada** en `docs/backlog.md`
+> (T-057 a T-086 + ADR-006/007/008 + TG-06). Sprint 9 abierto. Secuencia:
+> E-4.1 multi-mapa (base) → banco/party/trade → infra + observabilidad →
+> comunidad + legal → load test 200 y cierre. Pendiente antes de codear:
+> ADR-006 (multi-mapa), ADR-007 (transacciones anti-dupe), ADR-008 (infra).
 
 ---
 
