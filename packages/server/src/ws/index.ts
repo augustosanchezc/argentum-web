@@ -5,6 +5,12 @@ import {
   ServerToClientOp,
   type AnyPacket,
   type AttackRequest,
+  type BankDepositGoldRequest,
+  type BankDepositItemRequest,
+  type BankOpen,
+  type BankUpdate,
+  type BankWithdrawGoldRequest,
+  type BankWithdrawItemRequest,
   type ChatBroadcast,
   type ChatError,
   type ChatSend,
@@ -25,10 +31,21 @@ import {
   type LoginResponse,
   type MapData,
   type MoveRequest,
+  type PartyDisbanded,
+  type PartyInviteReceived,
+  type PartyInviteRequest,
+  type PartyUpdate,
   type ShopBuyRequest,
   type ShopOpen,
   type ShopSellRequest,
   type StatsUpdate,
+  type TradeAddItemMsg,
+  type TradeCancelled,
+  type TradeComplete,
+  type TradeInviteReceived,
+  type TradeRequestMsg,
+  type TradeSetGoldMsg,
+  type TradeUpdate,
   type UseItemRequest,
   type Vector2,
   getItem,
@@ -53,10 +70,18 @@ import {
   reorderSlots,
   weaponBonusFor,
 } from "../world/inventory.js";
+import {
+  bankDepositGold,
+  bankDepositItem,
+  bankWithdrawGold,
+  bankWithdrawItem,
+} from "../world/bank.js";
 import { getMap, isWalkable, type MapState } from "../world/maps.js";
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { isNpcId, npcs, rollNpcGold } from "../world/npcs.js";
+import { partyRegistry } from "../world/party.js";
+import { tradeRegistry } from "../world/trade.js";
 import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
@@ -85,7 +110,11 @@ function buildMapDataPacket(map: MapState): MapData {
     name: n.type.name,
     hp: n.hp,
     maxHp: n.type.maxHp,
-    kind: n.type.merchant ? ("merchant" as const) : ("npc" as const),
+    kind: n.type.merchant
+      ? ("merchant" as const)
+      : n.type.banker
+        ? ("banker" as const)
+        : ("npc" as const),
     bodyId: n.type.bodyId ?? 0,
     headId: n.type.headId ?? 0,
     graphic: n.type.graphic,
@@ -165,6 +194,8 @@ async function persistPosition(s: Session): Promise<void> {
       inventory: s.inventory,
       equippedWeapon: s.equippedWeapon,
       equippedArmor: s.equippedArmor,
+      bankInventory: s.bankInventory,
+      bankGold: s.bankGold,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -196,6 +227,12 @@ function sendLoginResponse(
     ...(character !== undefined && { character }),
   };
   send(socket, resp);
+}
+
+// Sincroniza HP del jugador en su party (si tiene). Llamar después de cambios de HP.
+function syncPartyStats(s: Session): void {
+  if (!s.partyId) return;
+  partyRegistry.updateMemberStats(s.characterId, s.hp, s.maxHp);
 }
 
 // Envia al jugador su nivel, progreso de XP y HP actuales. Solo al dueño.
@@ -260,6 +297,17 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       clearTimeout(handshakeTimer);
       if (session) {
         const closingSession = session;
+
+        // Cancelar trade activo si hay uno.
+        if (closingSession.tradeId) {
+          cancelTrade(closingSession.tradeId, "DISCONNECT");
+        }
+
+        // Salir de party si está en una.
+        if (closingSession.partyId) {
+          doPartyLeave(closingSession);
+        }
+
         const despawn: EntityDespawn = {
           op: ServerToClientOp.EntityDespawn,
           id: closingSession.characterId as EntityId,
@@ -346,6 +394,48 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.InventoryReorder:
           handleReorder(session, packet);
+          break;
+        // Banco (E-4.2)
+        case ClientToServerOp.BankDepositItem:
+          handleBankDepositItem(session, packet);
+          break;
+        case ClientToServerOp.BankWithdrawItem:
+          handleBankWithdrawItem(session, packet);
+          break;
+        case ClientToServerOp.BankDepositGold:
+          handleBankDepositGold(session, packet);
+          break;
+        case ClientToServerOp.BankWithdrawGold:
+          handleBankWithdrawGold(session, packet);
+          break;
+        // Party (E-4.3)
+        case ClientToServerOp.PartyInvite:
+          handlePartyInvite(session, packet);
+          break;
+        case ClientToServerOp.PartyAccept:
+          handlePartyAccept(session);
+          break;
+        case ClientToServerOp.PartyLeave:
+          doPartyLeave(session);
+          break;
+        // Trade (E-4.4)
+        case ClientToServerOp.TradeRequest:
+          handleTradeRequest(session, packet);
+          break;
+        case ClientToServerOp.TradeAccept:
+          handleTradeAccept(session);
+          break;
+        case ClientToServerOp.TradeAddItem:
+          handleTradeAddItem(session, packet);
+          break;
+        case ClientToServerOp.TradeSetGold:
+          handleTradeSetGold(session, packet);
+          break;
+        case ClientToServerOp.TradeConfirm:
+          handleTradeConfirm(session);
+          break;
+        case ClientToServerOp.TradeCancel:
+          handleTradeCancel(session);
           break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
@@ -521,8 +611,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         "[ws] golpe",
       );
 
+      syncPartyStats(target);
       if (target.hp === 0) {
         target.deadUntil = now + RESPAWN_DELAY_MS;
+        if (target.tradeId) cancelTrade(target.tradeId, "DEATH");
         const death: Death = {
           op: ServerToClientOp.Death,
           id: target.characterId as EntityId,
@@ -687,21 +779,31 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const targetId = pkt.targetId as unknown as number;
       if (!isNpcId(targetId)) return;
       const npc = npcs.get(targetId);
-      if (!npc || npc.mapId !== s.mapId || !npc.type.merchant) return;
+      if (!npc || npc.mapId !== s.mapId) return;
       const dx = Math.abs(npc.position.x - s.position.x);
       const dy = Math.abs(npc.position.y - s.position.y);
       if (Math.max(dx, dy) > 3) return;
 
-      const offers = npc.type.shopOffers.map((it) => {
-        const def = getItem(it);
-        return { item: it, price: def ? def.value : 0 };
-      });
-      const shop: ShopOpen = {
-        op: ServerToClientOp.ShopOpen,
-        merchantId: npc.id as EntityId,
-        offers,
-      };
-      send(s.socket, shop);
+      if (npc.type.merchant) {
+        const offers = npc.type.shopOffers.map((it) => {
+          const def = getItem(it);
+          return { item: it, price: def ? def.value : 0 };
+        });
+        const shop: ShopOpen = {
+          op: ServerToClientOp.ShopOpen,
+          merchantId: npc.id as EntityId,
+          offers,
+        };
+        send(s.socket, shop);
+      } else if (npc.type.banker) {
+        const bankOpen: BankOpen = {
+          op: ServerToClientOp.BankOpen,
+          bankerId: npc.id as EntityId,
+          bankInventory: s.bankInventory,
+          bankGold: s.bankGold,
+        };
+        send(s.socket, bankOpen);
+      }
     }
 
     function handleShopBuy(s: Session, pkt: ShopBuyRequest): void {
@@ -721,6 +823,352 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       s.inventory = removed;
       s.gold += Math.floor(def.value / 2); // se vende a mitad de precio
       sendInventoryUpdate(s);
+    }
+
+    // ── Banco (E-4.2) ────────────────────────────────────────────────────────
+
+    function nearBanker(s: Session): boolean {
+      for (const n of npcs.inMap(s.mapId)) {
+        if (!n.type.banker) continue;
+        const dx = Math.abs(n.position.x - s.position.x);
+        const dy = Math.abs(n.position.y - s.position.y);
+        if (Math.max(dx, dy) <= 3) return true;
+      }
+      return false;
+    }
+
+    function sendBankUpdate(s: Session): void {
+      const pkt: BankUpdate = {
+        op: ServerToClientOp.BankUpdate,
+        bankInventory: s.bankInventory,
+        bankGold: s.bankGold,
+        playerInventory: s.inventory,
+        playerGold: s.gold,
+      };
+      send(s.socket, pkt);
+    }
+
+    function handleBankDepositItem(s: Session, pkt: BankDepositItemRequest): void {
+      if (!nearBanker(s)) return;
+      const ok = bankDepositItem(s, pkt.item, pkt.qty);
+      if (!ok) return;
+      sendBankUpdate(s);
+      req.log.info(
+        { char: s.characterId, item: pkt.item, qty: pkt.qty },
+        "[banco] depósito item",
+      );
+    }
+
+    function handleBankWithdrawItem(s: Session, pkt: BankWithdrawItemRequest): void {
+      if (!nearBanker(s)) return;
+      const ok = bankWithdrawItem(s, pkt.item, pkt.qty);
+      if (!ok) return;
+      sendBankUpdate(s);
+      req.log.info(
+        { char: s.characterId, item: pkt.item, qty: pkt.qty },
+        "[banco] retiro item",
+      );
+    }
+
+    function handleBankDepositGold(s: Session, pkt: BankDepositGoldRequest): void {
+      if (!nearBanker(s)) return;
+      const ok = bankDepositGold(s, pkt.amount);
+      if (!ok) return;
+      sendBankUpdate(s);
+      req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] depósito oro");
+    }
+
+    function handleBankWithdrawGold(s: Session, pkt: BankWithdrawGoldRequest): void {
+      if (!nearBanker(s)) return;
+      const ok = bankWithdrawGold(s, pkt.amount);
+      if (!ok) return;
+      sendBankUpdate(s);
+      req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] retiro oro");
+    }
+
+    // ── Party (E-4.3) ────────────────────────────────────────────────────────
+
+    function broadcastPartyUpdate(partyId: string): void {
+      const party = partyRegistry.get(partyId);
+      if (!party) return;
+      const members = Array.from(party.members.values()).map((m) => ({
+        characterId: m.characterId,
+        name: m.name,
+        hp: m.hp,
+        maxHp: m.maxHp,
+      }));
+      const pkt: PartyUpdate = { op: ServerToClientOp.PartyUpdate, members };
+      for (const m of party.members.values()) {
+        const ms = sessions.getByCharacterId(m.characterId);
+        if (ms) send(ms.socket, pkt);
+      }
+    }
+
+    function doPartyLeave(s: Session): void {
+      if (!s.partyId) return;
+      const partyId = s.partyId;
+      s.partyId = null;
+      const { disbanded, party } = partyRegistry.removeMember(s.characterId);
+      if (!party) return;
+
+      if (disbanded) {
+        const pkt: PartyDisbanded = { op: ServerToClientOp.PartyDisbanded };
+        for (const m of party.members.values()) {
+          const ms = sessions.getByCharacterId(m.characterId);
+          if (ms) { ms.partyId = null; send(ms.socket, pkt); }
+        }
+      } else {
+        broadcastPartyUpdate(partyId);
+      }
+    }
+
+    function handlePartyInvite(s: Session, pkt: PartyInviteRequest): void {
+      if (s.deadUntil !== 0) return;
+      const targetId = pkt.targetId as unknown as number;
+      const target = sessions.getByCharacterId(targetId);
+      if (!target || target.mapId !== s.mapId) return;
+      if (target.partyId) return; // ya en una party
+      if (partyRegistry.getInvite(targetId)) return; // ya tiene invitación pendiente
+
+      partyRegistry.addInvite(s.characterId, s.characterName, targetId);
+      const inv: PartyInviteReceived = {
+        op: ServerToClientOp.PartyInviteReceived,
+        inviterId: s.characterId,
+        inviterName: s.characterName,
+      };
+      send(target.socket, inv);
+      req.log.info(
+        { inviter: s.characterId, invited: targetId },
+        "[party] invitación enviada",
+      );
+    }
+
+    function handlePartyAccept(s: Session): void {
+      const invite = partyRegistry.getInvite(s.characterId);
+      if (!invite) return;
+      partyRegistry.removeInvite(s.characterId);
+
+      const inviterSession = sessions.getByCharacterId(invite.inviterId);
+
+      // El invitador puede o no estar en una party ya.
+      let party = partyRegistry.getByCharacter(invite.inviterId);
+      if (!party) {
+        // Crear party nueva con el invitador como líder.
+        if (inviterSession) {
+          party = partyRegistry.create(invite.inviterId, invite.inviterName);
+          partyRegistry.updateMemberStats(invite.inviterId, inviterSession.hp, inviterSession.maxHp);
+          inviterSession.partyId = party.id;
+        } else {
+          return; // invitador se desconectó
+        }
+      }
+
+      partyRegistry.addMember(party, s.characterId, s.characterName);
+      partyRegistry.updateMemberStats(s.characterId, s.hp, s.maxHp);
+      s.partyId = party.id;
+      broadcastPartyUpdate(party.id);
+      req.log.info(
+        { party: party.id, member: s.characterId },
+        "[party] miembro se unió",
+      );
+    }
+
+    // ── Trade (E-4.4) ────────────────────────────────────────────────────────
+
+    function sendTradeUpdateForTrade(tradeId: string): void {
+      for (const s of sessions.all()) {
+        if (s.tradeId !== tradeId) continue;
+        const trade = tradeRegistry.getByCharacter(s.characterId);
+        if (!trade) continue;
+        const isA = s.characterId === trade.playerA;
+        const myOffer = isA ? trade.offerA : trade.offerB;
+        const theirOffer = isA ? trade.offerB : trade.offerA;
+        const other = sessions.getByCharacterId(isA ? trade.playerB : trade.playerA);
+        const pkt: TradeUpdate = {
+          op: ServerToClientOp.TradeUpdate,
+          myOffer: { items: myOffer.items, gold: myOffer.gold, confirmed: myOffer.confirmed },
+          theirOffer: { items: theirOffer.items, gold: theirOffer.gold, confirmed: theirOffer.confirmed },
+          theirName: other?.characterName ?? "?",
+        };
+        send(s.socket, pkt);
+      }
+    }
+
+    function cancelTrade(tradeId: string, reason: string): void {
+      const trade = tradeRegistry.remove(tradeId);
+      if (!trade) return;
+      const pkt: TradeCancelled = { op: ServerToClientOp.TradeCancelled, reason };
+      const sA = sessions.getByCharacterId(trade.playerA);
+      const sB = sessions.getByCharacterId(trade.playerB);
+      if (sA) { sA.tradeId = null; send(sA.socket, pkt); }
+      if (sB) { sB.tradeId = null; send(sB.socket, pkt); }
+    }
+
+    function handleTradeRequest(s: Session, pkt: TradeRequestMsg): void {
+      if (s.deadUntil !== 0) return;
+      if (s.tradeId) return; // ya en trade
+      const targetId = pkt.targetId as unknown as number;
+      if (targetId === s.characterId) return;
+      const target = sessions.getByCharacterId(targetId);
+      if (!target || target.mapId !== s.mapId) return;
+      if (target.tradeId) return; // target ya en trade
+
+      tradeRegistry.addInvite(s.characterId, s.characterName, targetId);
+      const inv: TradeInviteReceived = {
+        op: ServerToClientOp.TradeInviteReceived,
+        initiatorId: s.characterId,
+        initiatorName: s.characterName,
+      };
+      send(target.socket, inv);
+      req.log.info(
+        { initiator: s.characterId, target: targetId },
+        "[trade] solicitud enviada",
+      );
+    }
+
+    function handleTradeAccept(s: Session): void {
+      if (s.tradeId) return;
+      const invite = tradeRegistry.getInvite(s.characterId);
+      if (!invite) return;
+      tradeRegistry.removeInvite(s.characterId);
+
+      const initiator = sessions.getByCharacterId(invite.initiatorId);
+      if (!initiator || initiator.tradeId) return;
+
+      const trade = tradeRegistry.create(invite.initiatorId, s.characterId);
+      initiator.tradeId = trade.id;
+      s.tradeId = trade.id;
+
+      sendTradeUpdateForTrade(trade.id);
+      req.log.info(
+        { trade: trade.id, playerA: trade.playerA, playerB: trade.playerB },
+        "[trade] trade iniciado",
+      );
+    }
+
+    function handleTradeAddItem(s: Session, pkt: TradeAddItemMsg): void {
+      if (!s.tradeId) return;
+      const trade = tradeRegistry.getByCharacter(s.characterId);
+      if (!trade) return;
+
+      const isA = s.characterId === trade.playerA;
+      const offer = isA ? trade.offerA : trade.offerB;
+
+      // Resetear confirmaciones al modificar la oferta.
+      trade.offerA.confirmed = false;
+      trade.offerB.confirmed = false;
+      offer.confirmed = false;
+
+      const def = getItem(pkt.item);
+      if (!def) return;
+      if (countItem(s.inventory, pkt.item) < pkt.qty) return;
+
+      // Agregar o incrementar en la oferta.
+      const existing = offer.items.find((sl) => sl.item === pkt.item);
+      if (existing) {
+        const newQty = existing.qty + pkt.qty;
+        if (countItem(s.inventory, pkt.item) < newQty) return;
+        offer.items = offer.items.map((sl) =>
+          sl.item === pkt.item ? { item: sl.item, qty: newQty } : sl,
+        );
+      } else {
+        offer.items = [...offer.items, { item: pkt.item, qty: pkt.qty }];
+      }
+
+      sendTradeUpdateForTrade(trade.id);
+    }
+
+    function handleTradeSetGold(s: Session, pkt: TradeSetGoldMsg): void {
+      if (!s.tradeId) return;
+      const trade = tradeRegistry.getByCharacter(s.characterId);
+      if (!trade) return;
+      if (pkt.amount < 0 || pkt.amount > s.gold) return;
+
+      const isA = s.characterId === trade.playerA;
+      const offer = isA ? trade.offerA : trade.offerB;
+      trade.offerA.confirmed = false;
+      trade.offerB.confirmed = false;
+      offer.gold = pkt.amount;
+      sendTradeUpdateForTrade(trade.id);
+    }
+
+    function handleTradeConfirm(s: Session): void {
+      if (!s.tradeId) return;
+      const trade = tradeRegistry.getByCharacter(s.characterId);
+      if (!trade) return;
+
+      const isA = s.characterId === trade.playerA;
+      const offer = isA ? trade.offerA : trade.offerB;
+      offer.confirmed = true;
+      sendTradeUpdateForTrade(trade.id);
+
+      // Si ambos confirmaron, ejecutar el swap.
+      if (!trade.offerA.confirmed || !trade.offerB.confirmed) return;
+
+      const sA = sessions.getByCharacterId(trade.playerA);
+      const sB = sessions.getByCharacterId(trade.playerB);
+      if (!sA || !sB) {
+        cancelTrade(trade.id, "PLAYER_DISCONNECTED");
+        return;
+      }
+
+      // Validar que ambos siguen teniendo los items/oro ofrecidos.
+      for (const slot of trade.offerA.items) {
+        if (countItem(sA.inventory, slot.item) < slot.qty) {
+          cancelTrade(trade.id, "OFFER_INVALID");
+          return;
+        }
+      }
+      if (sA.gold < trade.offerA.gold) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
+      for (const slot of trade.offerB.items) {
+        if (countItem(sB.inventory, slot.item) < slot.qty) {
+          cancelTrade(trade.id, "OFFER_INVALID");
+          return;
+        }
+      }
+      if (sB.gold < trade.offerB.gold) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
+
+      // Swap atómico (síncrono, Node.js garantiza no-interrupción — ADR-007).
+      for (const slot of trade.offerA.items) {
+        sA.inventory = removeItem(sA.inventory, slot.item, slot.qty) ?? sA.inventory;
+        sB.inventory = addItem(sB.inventory, slot.item, slot.qty);
+      }
+      sA.gold -= trade.offerA.gold;
+      sB.gold += trade.offerA.gold;
+      for (const slot of trade.offerB.items) {
+        sB.inventory = removeItem(sB.inventory, slot.item, slot.qty) ?? sB.inventory;
+        sA.inventory = addItem(sA.inventory, slot.item, slot.qty);
+      }
+      sB.gold -= trade.offerB.gold;
+      sA.gold += trade.offerB.gold;
+
+      tradeRegistry.remove(trade.id);
+      sA.tradeId = null;
+      sB.tradeId = null;
+
+      const completePkt: TradeComplete = { op: ServerToClientOp.TradeComplete };
+      send(sA.socket, completePkt);
+      send(sB.socket, completePkt);
+      sendInventoryUpdate(sA);
+      sendInventoryUpdate(sB);
+
+      req.log.info(
+        {
+          tradeId: trade.id,
+          playerA: trade.playerA,
+          playerB: trade.playerB,
+          itemsA: trade.offerA.items,
+          goldA: trade.offerA.gold,
+          itemsB: trade.offerB.items,
+          goldB: trade.offerB.gold,
+        },
+        "[trade] completado",
+      );
+    }
+
+    function handleTradeCancel(s: Session): void {
+      if (!s.tradeId) return;
+      cancelTrade(s.tradeId, "CANCELLED_BY_PLAYER");
     }
 
     function handleChat(s: Session, chat: ChatSend): void {
@@ -795,6 +1243,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           direction: characters.direction,
           bodyId: characters.bodyId,
           headId: characters.headId,
+          bankInventory: characters.bankInventory,
+          bankGold: characters.bankGold,
         })
         .from(characters)
         .where(
@@ -847,6 +1297,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.equippedArmor = character.equippedArmor;
       session.bodyId = character.bodyId;
       session.headId = character.headId;
+      session.bankInventory = character.bankInventory.map((sl) => ({ ...sl }));
+      session.bankGold = character.bankGold;
       recomputeEquipment(session);
 
       sendLoginResponse(socket, true, undefined, {

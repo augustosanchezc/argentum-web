@@ -7,6 +7,12 @@ import {
   ServerToClientOp,
   type AnyPacket,
   type AttackRequest,
+  type BankDepositGoldRequest,
+  type BankDepositItemRequest,
+  type BankOpen,
+  type BankUpdate,
+  type BankWithdrawGoldRequest,
+  type BankWithdrawItemRequest,
   type ChatBroadcast,
   type ChatError,
   type ChatSend,
@@ -24,23 +30,42 @@ import {
   type InventoryUpdate,
   type MapData,
   type MoveRequest,
+  type PartyAcceptRequest,
+  type PartyDisbanded,
+  type PartyInviteReceived,
+  type PartyInviteRequest,
+  type PartyLeaveRequest,
+  type PartyUpdate,
   type PickupRequest,
   type Respawn,
   type ShopBuyRequest,
   type ShopOpen,
   type ShopSellRequest,
   type StatsUpdate,
+  type TradeAcceptMsg,
+  type TradeAddItemMsg,
+  type TradeCancelled,
+  type TradeCancelMsg,
+  type TradeComplete,
+  type TradeConfirmMsg,
+  type TradeInviteReceived,
+  type TradeRequestMsg,
+  type TradeSetGoldMsg,
+  type TradeUpdate,
   type UseItemRequest,
   type Vector2,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
+import { mountBank, type BankHandle } from "../ui/bank";
 import { mountChat, type ChatHandle } from "../ui/chat";
 import { mountInventory, type InventoryHandle } from "../ui/inventory";
+import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
+import { mountTrade, type TradeHandle } from "../ui/trade";
 import { Personajes, type CharDirection } from "../world/personajes";
 import { Tileset } from "../world/tileset";
 
@@ -404,20 +429,25 @@ export async function startGameScene(
   ): void {
     const isNpc = kind === "npc";
     const isMerchant = kind === "merchant";
+    const isBanker = kind === "banker";
     const bodyColor = isMerchant
       ? 0x2d7d5a
-      : isNpc
-        ? 0x8c3b2e
-        : isSelf
-          ? 0xa8862c
-          : 0x4a6d8f;
+      : isBanker
+        ? 0x2d4d8c
+        : isNpc
+          ? 0x8c3b2e
+          : isSelf
+            ? 0xa8862c
+            : 0x4a6d8f;
     const bodyStroke = isMerchant
       ? 0x4cb87e
-      : isNpc
-        ? 0xc9603f
-        : isSelf
-          ? 0xf4d56a
-          : 0x9bc6f1;
+      : isBanker
+        ? 0x6b9fff
+        : isNpc
+          ? 0xc9603f
+          : isSelf
+            ? 0xf4d56a
+            : 0x9bc6f1;
     // Tono "piel" para la cabeza — un poco de contraste con el torso.
     const headColor = isNpc ? 0xd4a68c : 0xe5c9a8;
 
@@ -865,6 +895,9 @@ export async function startGameScene(
   let touchControls: TouchControlsHandle | null = null;
   let inventory: InventoryHandle | null = null;
   let shop: ShopHandle | null = null;
+  let bank: BankHandle | null = null;
+  let partyUi: PartyUiHandle | null = null;
+  let tradeUi: TradeHandle | null = null;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -955,7 +988,7 @@ export async function startGameScene(
     const target = entityVisuals.get(targetId);
     if (!target) return;
 
-    if (target.kind === "merchant") {
+    if (target.kind === "merchant" || target.kind === "banker") {
       const interact: InteractRequest = {
         op: ClientToServerOp.Interact,
         targetId: targetId as unknown as EntityId,
@@ -1029,6 +1062,12 @@ export async function startGameScene(
     if (e.code === "KeyI") {
       e.preventDefault();
       inventory?.toggle();
+      return;
+    }
+    if (e.code === "KeyB") {
+      e.preventDefault();
+      if (bank?.isOpen()) bank.close();
+      // Si está cerrado, el servidor lo abre al interactuar con el banquero.
       return;
     }
     const dir = KEY_TO_DIRECTION[e.code];
@@ -1160,6 +1199,33 @@ export async function startGameScene(
       case ServerToClientOp.ShopOpen:
         handleShopOpen(packet);
         break;
+      case ServerToClientOp.BankOpen:
+        handleBankOpen(packet);
+        break;
+      case ServerToClientOp.BankUpdate:
+        handleBankUpdate(packet);
+        break;
+      case ServerToClientOp.PartyInviteReceived:
+        handlePartyInviteReceived(packet);
+        break;
+      case ServerToClientOp.PartyUpdate:
+        handlePartyUpdate(packet);
+        break;
+      case ServerToClientOp.PartyDisbanded:
+        handlePartyDisbanded(packet);
+        break;
+      case ServerToClientOp.TradeInviteReceived:
+        handleTradeInviteReceived(packet);
+        break;
+      case ServerToClientOp.TradeUpdate:
+        handleTradeUpdatePacket(packet);
+        break;
+      case ServerToClientOp.TradeComplete:
+        handleTradeComplete(packet);
+        break;
+      case ServerToClientOp.TradeCancelled:
+        handleTradeCancelled(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
@@ -1233,10 +1299,58 @@ export async function startGameScene(
       equippedWeapon: p.equippedWeapon,
       equippedArmor: p.equippedArmor,
     });
+    bank?.setPlayerInventory(p.slots, p.gold);
+    tradeUi?.setInventory(p.slots, p.gold);
   }
 
   function handleShopOpen(p: ShopOpen): void {
     shop?.open(p.offers);
+  }
+
+  function handleBankOpen(p: BankOpen): void {
+    bank?.open(p.bankInventory, p.bankGold);
+  }
+
+  function handleBankUpdate(p: BankUpdate): void {
+    bank?.update(p.bankInventory, p.bankGold, p.playerInventory, p.playerGold);
+    // También sincronizar el inventario del jugador en el panel de inventario.
+    inventory?.setData({
+      gold: p.playerGold,
+      slots: p.playerInventory,
+      equippedWeapon: null, // se re-enviará con el próximo InventoryUpdate
+      equippedArmor: null,
+    });
+  }
+
+  function handlePartyInviteReceived(p: PartyInviteReceived): void {
+    partyUi?.showInvite(p.inviterName);
+  }
+
+  function handlePartyUpdate(p: PartyUpdate): void {
+    partyUi?.updateParty(p.members);
+  }
+
+  function handlePartyDisbanded(_p: PartyDisbanded): void {
+    partyUi?.clearParty();
+  }
+
+  function handleTradeInviteReceived(p: TradeInviteReceived): void {
+    tradeUi?.showInvite(p.initiatorName);
+  }
+
+  function handleTradeUpdatePacket(p: TradeUpdate): void {
+    if (!tradeUi?.isOpen()) {
+      tradeUi?.openTrade(p.theirName);
+    }
+    tradeUi?.updateTrade(p.myOffer, p.theirOffer, p.theirName);
+  }
+
+  function handleTradeComplete(_p: TradeComplete): void {
+    tradeUi?.closeTrade();
+  }
+
+  function handleTradeCancelled(_p: TradeCancelled): void {
+    tradeUi?.closeTrade();
   }
 
   function handleStatsUpdate(p: StatsUpdate): void {
@@ -1398,6 +1512,76 @@ export async function startGameScene(
       },
     });
 
+    bank = mountBank(root, {
+      onDepositItem: (item, qty) => {
+        const pkt: BankDepositItemRequest = {
+          op: ClientToServerOp.BankDepositItem,
+          item,
+          qty,
+        };
+        client?.send(pkt);
+      },
+      onWithdrawItem: (item, qty) => {
+        const pkt: BankWithdrawItemRequest = {
+          op: ClientToServerOp.BankWithdrawItem,
+          item,
+          qty,
+        };
+        client?.send(pkt);
+      },
+      onDepositGold: (amount) => {
+        const pkt: BankDepositGoldRequest = {
+          op: ClientToServerOp.BankDepositGold,
+          amount,
+        };
+        client?.send(pkt);
+      },
+      onWithdrawGold: (amount) => {
+        const pkt: BankWithdrawGoldRequest = {
+          op: ClientToServerOp.BankWithdrawGold,
+          amount,
+        };
+        client?.send(pkt);
+      },
+    });
+
+    partyUi = mountPartyUi(root, {
+      onAcceptInvite: () => {
+        const pkt: PartyAcceptRequest = { op: ClientToServerOp.PartyAccept };
+        client?.send(pkt);
+      },
+      onDeclineInvite: () => {
+        // El servidor expira la invitación automáticamente. No enviar nada.
+      },
+      onLeave: () => {
+        const pkt: PartyLeaveRequest = { op: ClientToServerOp.PartyLeave };
+        client?.send(pkt);
+      },
+    });
+
+    tradeUi = mountTrade(root, {
+      onAccept: () => {
+        const pkt: TradeAcceptMsg = { op: ClientToServerOp.TradeAccept };
+        client?.send(pkt);
+      },
+      onAddItem: (item, qty) => {
+        const pkt: TradeAddItemMsg = { op: ClientToServerOp.TradeAddItem, item, qty };
+        client?.send(pkt);
+      },
+      onSetGold: (amount) => {
+        const pkt: TradeSetGoldMsg = { op: ClientToServerOp.TradeSetGold, amount };
+        client?.send(pkt);
+      },
+      onConfirm: () => {
+        const pkt: TradeConfirmMsg = { op: ClientToServerOp.TradeConfirm };
+        client?.send(pkt);
+      },
+      onCancel: () => {
+        const pkt: TradeCancelMsg = { op: ClientToServerOp.TradeCancel };
+        client?.send(pkt);
+      },
+    });
+
     touchControls = mountTouchControls(root, {
       onDirDown: (dir) => {
         keysHeld.add(DIR_TO_CODE[dir]);
@@ -1440,6 +1624,9 @@ export async function startGameScene(
       playerList?.destroy();
       inventory?.destroy();
       shop?.destroy();
+      bank?.destroy();
+      partyUi?.destroy();
+      tradeUi?.destroy();
       touchControls?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });
