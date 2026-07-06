@@ -21,6 +21,22 @@ export enum ClientToServerOp {
   ShopSell = 0x44,
   DropItem = 0x45,
   InventoryReorder = 0x46,
+  // Banco (E-4.2)
+  BankDepositItem = 0x47,
+  BankWithdrawItem = 0x48,
+  BankDepositGold = 0x49,
+  BankWithdrawGold = 0x4a,
+  // Party (E-4.3)
+  PartyInvite = 0x60,
+  PartyAccept = 0x61,
+  PartyLeave = 0x62,
+  // Trade (E-4.4)
+  TradeRequest = 0x70,
+  TradeAccept = 0x71,
+  TradeAddItem = 0x72,
+  TradeSetGold = 0x73,
+  TradeConfirm = 0x74,
+  TradeCancel = 0x75,
   Disconnect = 0xff,
 }
 
@@ -40,6 +56,18 @@ export enum ServerToClientOp {
   StatsUpdate = 0xb3,
   InventoryUpdate = 0xc0,
   ShopOpen = 0xc1,
+  // Banco (E-4.2)
+  BankOpen = 0xc2,
+  BankUpdate = 0xc3,
+  // Party (E-4.3)
+  PartyInviteReceived = 0xd0,
+  PartyUpdate = 0xd1,
+  PartyDisbanded = 0xd2,
+  // Trade (E-4.4)
+  TradeInviteReceived = 0xe0,
+  TradeUpdate = 0xe1,
+  TradeComplete = 0xe2,
+  TradeCancelled = 0xe3,
 }
 
 export interface LoginRequest {
@@ -278,6 +306,134 @@ export interface ShopOpen {
   readonly offers: ReadonlyArray<{ readonly item: number; readonly price: number }>;
 }
 
+// -- Banco (E-4.2) --
+
+export interface BankDepositItemRequest {
+  readonly op: ClientToServerOp.BankDepositItem;
+  readonly item: number;
+  readonly qty: number;
+}
+export interface BankWithdrawItemRequest {
+  readonly op: ClientToServerOp.BankWithdrawItem;
+  readonly item: number;
+  readonly qty: number;
+}
+export interface BankDepositGoldRequest {
+  readonly op: ClientToServerOp.BankDepositGold;
+  readonly amount: number;
+}
+export interface BankWithdrawGoldRequest {
+  readonly op: ClientToServerOp.BankWithdrawGold;
+  readonly amount: number;
+}
+
+// S→C: abre la ventana del banco con el estado actual.
+export interface BankOpen {
+  readonly op: ServerToClientOp.BankOpen;
+  readonly bankerId: EntityId;
+  readonly bankInventory: ReadonlyArray<InventorySlot>;
+  readonly bankGold: number;
+}
+// S→C: estado del banco actualizado tras un depósito/retiro.
+export interface BankUpdate {
+  readonly op: ServerToClientOp.BankUpdate;
+  readonly bankInventory: ReadonlyArray<InventorySlot>;
+  readonly bankGold: number;
+  // También incluye inventario + oro del jugador (cambiaron).
+  readonly playerInventory: ReadonlyArray<InventorySlot>;
+  readonly playerGold: number;
+}
+
+// -- Party (E-4.3) --
+
+export interface PartyInviteRequest {
+  readonly op: ClientToServerOp.PartyInvite;
+  readonly targetId: EntityId;
+}
+export interface PartyAcceptRequest {
+  readonly op: ClientToServerOp.PartyAccept;
+}
+export interface PartyLeaveRequest {
+  readonly op: ClientToServerOp.PartyLeave;
+}
+
+export interface PartyMemberData {
+  readonly characterId: number;
+  readonly name: string;
+  readonly hp: number;
+  readonly maxHp: number;
+}
+
+// S→C: alguien te invitó a una party.
+export interface PartyInviteReceived {
+  readonly op: ServerToClientOp.PartyInviteReceived;
+  readonly inviterId: number;
+  readonly inviterName: string;
+}
+// S→C: estado completo de la party (se envía al unirse, al salir alguien y en cada tick de HP).
+export interface PartyUpdate {
+  readonly op: ServerToClientOp.PartyUpdate;
+  readonly members: ReadonlyArray<PartyMemberData>;
+}
+// S→C: la party fue disuelta.
+export interface PartyDisbanded {
+  readonly op: ServerToClientOp.PartyDisbanded;
+}
+
+// -- Trade (E-4.4) --
+
+export interface TradeRequestMsg {
+  readonly op: ClientToServerOp.TradeRequest;
+  readonly targetId: EntityId;
+}
+export interface TradeAcceptMsg {
+  readonly op: ClientToServerOp.TradeAccept;
+}
+export interface TradeAddItemMsg {
+  readonly op: ClientToServerOp.TradeAddItem;
+  readonly item: number;
+  readonly qty: number;
+}
+export interface TradeSetGoldMsg {
+  readonly op: ClientToServerOp.TradeSetGold;
+  readonly amount: number;
+}
+export interface TradeConfirmMsg {
+  readonly op: ClientToServerOp.TradeConfirm;
+}
+export interface TradeCancelMsg {
+  readonly op: ClientToServerOp.TradeCancel;
+}
+
+export interface TradeOfferData {
+  readonly items: ReadonlyArray<InventorySlot>;
+  readonly gold: number;
+  readonly confirmed: boolean;
+}
+
+// S→C: alguien quiere comerciar con vos.
+export interface TradeInviteReceived {
+  readonly op: ServerToClientOp.TradeInviteReceived;
+  readonly initiatorId: number;
+  readonly initiatorName: string;
+}
+// S→C: estado actual del trade (mi oferta + su oferta).
+export interface TradeUpdate {
+  readonly op: ServerToClientOp.TradeUpdate;
+  readonly myOffer: TradeOfferData;
+  readonly theirOffer: TradeOfferData;
+  readonly theirName: string;
+}
+// S→C: trade completado — el inventario del jugador ya fue actualizado.
+export interface TradeComplete {
+  readonly op: ServerToClientOp.TradeComplete;
+}
+// S→C: trade cancelado.
+export interface TradeCancelled {
+  readonly op: ServerToClientOp.TradeCancelled;
+  readonly reason: string;
+}
+
 export type ClientPacket =
   | LoginRequest
   | MoveRequest
@@ -290,6 +446,19 @@ export type ClientPacket =
   | ShopSellRequest
   | DropItemRequest
   | InventoryReorderRequest
+  | BankDepositItemRequest
+  | BankWithdrawItemRequest
+  | BankDepositGoldRequest
+  | BankWithdrawGoldRequest
+  | PartyInviteRequest
+  | PartyAcceptRequest
+  | PartyLeaveRequest
+  | TradeRequestMsg
+  | TradeAcceptMsg
+  | TradeAddItemMsg
+  | TradeSetGoldMsg
+  | TradeConfirmMsg
+  | TradeCancelMsg
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse
@@ -306,5 +475,14 @@ export type ServerPacket =
   | GroundItemSpawn
   | GroundItemDespawn
   | InventoryUpdate
-  | ShopOpen;
+  | ShopOpen
+  | BankOpen
+  | BankUpdate
+  | PartyInviteReceived
+  | PartyUpdate
+  | PartyDisbanded
+  | TradeInviteReceived
+  | TradeUpdate
+  | TradeComplete
+  | TradeCancelled;
 export type AnyPacket = ClientPacket | ServerPacket;

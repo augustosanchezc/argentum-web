@@ -43,6 +43,12 @@ export const characters = pgTable(
     // visual entra en Fase 4 (creacion de personaje avanzada).
     bodyId: integer("body_id").notNull().default(1),
     headId: integer("head_id").notNull().default(1),
+    // Banco (E-4.2): inventario y oro guardados en el banco del personaje.
+    bankInventory: jsonb("bank_inventory")
+      .$type<InventorySlot[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    bankGold: integer("bank_gold").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -35,6 +35,13 @@ export interface Session {
   // todos los personajes usan body 1 y head 1 (aventurero humano clásico).
   bodyId: number;
   headId: number;
+  // Banco (E-4.2): espejo del banco en memoria (cargado al login, persistido al logout).
+  bankInventory: InventorySlot[];
+  bankGold: number;
+  // Party (E-4.3): id de la party activa, null si no está en ninguna.
+  partyId: string | null;
+  // Trade (E-4.4): id del trade activo, null si no hay.
+  tradeId: string | null;
 }
 
 class SessionRegistry {
@@ -92,6 +99,10 @@ class SessionRegistry {
       armorDefense: 0,
       bodyId: 1,
       headId: 1,
+      bankInventory: [],
+      bankGold: 0,
+      partyId: null,
+      tradeId: null,
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);
