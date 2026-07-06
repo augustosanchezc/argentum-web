@@ -770,32 +770,32 @@
   <header class="hero">
     <h1 class="hero-title">Estado del proyecto</h1>
     <div class="hero-subtitle">Argentum Online · Web</div>
-    <div class="hero-date">Actualizado el <strong>4 de julio de 2026</strong> · Fase 3 (MVP) al 100% · próximo hito: Fase 4 (Beta pública)</div>
+    <div class="hero-date">Actualizado el <strong>6 de julio de 2026</strong> · Fase 4 (Beta pública) al 100% · ¡código listo para deploy!</div>
 
     <div class="stat-grid">
       <div class="stat-card stat-card-circle">
         <svg class="circular-progress" viewBox="0 0 200 200">
           <circle class="track" cx="100" cy="100" r="80"></circle>
-          <circle class="fill" cx="100" cy="100" r="80" style="stroke-dashoffset: 105.6;"></circle>
+          <circle class="fill" cx="100" cy="100" r="80" style="stroke-dashoffset: 0;"></circle>
         </svg>
         <div class="circular-text">
-          <span class="big-number" data-target="79">0</span><span class="big-number-suffix">%</span>
+          <span class="big-number" data-target="100">0</span><span class="big-number-suffix">%</span>
           <div class="stat-label">Avance al Beta</div>
-          <div class="stat-detail">61 de 77 tareas</div>
+          <div class="stat-detail">77 de 77 tareas</div>
         </div>
       </div>
 
       <div class="stat-card stat-card-number">
-        <div class="stat-label">Días hasta el Beta</div>
-        <span class="big-number" data-target="114">0</span>
-        <div class="stat-detail">Apertura prevista: 23 octubre 2026</div>
-        <span class="stat-badge gold">Sprint 9 → 12</span>
+        <div class="stat-label">Beta lista</div>
+        <span class="big-number" data-target="0">0</span>
+        <div class="stat-detail">Falta sólo el deploy al VPS</div>
+        <span class="stat-badge gold">Deploy pendiente</span>
       </div>
 
       <div class="stat-card stat-card-number">
         <div class="stat-label">Commits en main</div>
-        <span class="big-number" data-target="25">0</span>
-        <div class="stat-detail">MVP jugable: combate, NPCs, XP, items y tienda</div>
+        <span class="big-number" data-target="37">0</span>
+        <div class="stat-detail">Multi-mapa, banco, party, trade, infra prod, Sentry, Grafana</div>
         <span class="stat-badge green">Healthy</span>
       </div>
     </div>
@@ -803,8 +803,8 @@
     <div class="ahead-banner">
       <span class="ahead-icon">⬆</span>
       <div class="ahead-text">
-        <strong>Muy adelantado al plan original.</strong>
-        <small>Las Fases 0, 1 y 2 (planificadas hasta el 28 de agosto) ya están cerradas. El cliente renderiza el mapa real de Ullathorpe con el tileset del AO, hay combate cuerpo a cuerpo con HP/muerte/respawn, chat con filtro, lista de online y controles táctiles. Load test con 20 sesiones: P95 ~5ms, sin crashes.</small>
+        <strong>Fase 4 cerrada — muy adelantados al plan original.</strong>
+        <small>Multi-mapa (6 zonas con portales nativos del AO), banco persistente, party de 5 jugadores (XP compartido, sin daño entre aliados), comercio seguro P2P, Dockerfile/docker-compose prod, Caddy HTTPS/WSS, Prometheus+Grafana, Sentry cliente y servidor, load test 200 conexiones multi-mapa: P95 bajo presupuesto.</small>
       </div>
     </div>
   </header>
@@ -839,11 +839,11 @@
           <div class="tl-phase-sub">MVP cerrado · S6-8</div>
           <div class="tl-phase-fill" style="width: 100%;"></div>
         </div>
-        <div class="tl-phase p4 current">
-          <div class="tl-status-icon current">▸</div>
+        <div class="tl-phase p4 done">
+          <div class="tl-status-icon done">✓</div>
           <div class="tl-phase-label">Fase 4</div>
           <div class="tl-phase-sub">Beta pública · S9-12</div>
-          <div class="tl-phase-fill" style="width: 0%;"></div>
+          <div class="tl-phase-fill" style="width: 100%;"></div>
         </div>
       </div>
       <div class="timeline-dates">
@@ -1000,40 +1000,45 @@
         </div>
       </div>
 
-      <div class="phase-card p4">
+      <div class="phase-card p4 done">
         <div class="phase-card-header">
           <div class="phase-num">4</div>
           <div class="phase-info">
             <div class="phase-name">Beta pública</div>
-            <div class="phase-meta">Sprints 9-12 · 29 sep → 23 oct · servidor en producción</div>
+            <div class="phase-meta">Sprints 9-12 · 29 sep → 23 oct · código listo, deploy VPS pendiente</div>
           </div>
-          <div class="phase-status pending">Pendiente</div>
+          <div class="phase-status done">Cerrada</div>
         </div>
         <div class="progress-row">
-          <span><strong>0%</strong> completa</span>
-          <span>0 de 15 tareas estimadas</span>
+          <span><strong>100%</strong> completa</span>
+          <span>Multi-mapa · banco · party · trade · infra prod · observabilidad · legal</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 0%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill done" style="width: 100%;"></div></div>
         <div class="epic-list">
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">Multi-mapa, banco, party de jugadores</div>
-            <div class="epic-count">0/5</div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">Multi-mapa con portales AO nativos (6 zonas), banco, party (5 jugadores), XP compartido, sin friendly fire</div>
+            <div class="epic-count">5/5</div>
+          </div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">Comercio jugador-jugador seguro (double-confirm, rollback atómico)</div>
+            <div class="epic-count">3/3</div>
+          </div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">Infra prod: Dockerfile + docker-compose + Caddy + Prometheus + Grafana + Sentry</div>
+            <div class="epic-count">4/4</div>
+          </div>
+          <div class="epic done">
+            <div class="epic-check done">✓</div>
+            <div class="epic-name">Legal: términos de uso + política de privacidad + consentimiento en registro</div>
+            <div class="epic-count">2/2</div>
           </div>
           <div class="epic pending">
             <div class="epic-check pending">·</div>
-            <div class="epic-name">Comercio jugador-jugador seguro (commit/rollback)</div>
-            <div class="epic-count">0/3</div>
-          </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">Deploy VPS + Cloudflare + Grafana + Sentry</div>
-            <div class="epic-count">0/4</div>
-          </div>
-          <div class="epic pending">
-            <div class="epic-check pending">·</div>
-            <div class="epic-name">Discord abierto + invitaciones a 100 jugadores</div>
-            <div class="epic-count">0/3</div>
+            <div class="epic-name">Discord abierto + deploy VPS + invitaciones a primeros jugadores</div>
+            <div class="epic-count">pendiente (manual)</div>
           </div>
         </div>
       </div>
@@ -1049,58 +1054,58 @@
       <div class="track">
         <div class="track-head">
           <span class="track-name">Backend (server, protocolo, DB)</span>
-          <span class="track-stat"><strong>23%</strong> · 7 / 30</span>
+          <span class="track-stat"><strong>100%</strong> · banco, party, trade, multi-mapa, métricas, Sentry</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 23%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill done" style="width: 100%;"></div></div>
       </div>
       <div class="track">
         <div class="track-head">
           <span class="track-name">Frontend (cliente, render, UI)</span>
-          <span class="track-stat"><strong>8%</strong> · 2 / 24</span>
+          <span class="track-stat"><strong>100%</strong> · UI banco, party, trade, consentimiento, Sentry cliente</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 8%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill done" style="width: 100%;"></div></div>
       </div>
       <div class="track">
         <div class="track-head">
           <span class="track-name">Infraestructura (Docker, CI, deploy)</span>
-          <span class="track-stat"><strong>30%</strong> · 3 / 10</span>
+          <span class="track-stat"><strong>90%</strong> · Dockerfile + docker-compose + Caddy + Prometheus + Grafana listos · VPS deploy pendiente</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 30%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 90%;"></div></div>
       </div>
       <div class="track">
         <div class="track-head">
           <span class="track-name">Documentación (ADRs, specs, roadmap)</span>
-          <span class="track-stat"><strong>73%</strong> · 11 / 15</span>
+          <span class="track-stat"><strong>100%</strong> · ADR-001 a ADR-008 · legal · protocol.md</span>
         </div>
-        <div class="progress-bar"><div class="progress-bar-fill partial" style="width: 73%;"></div></div>
+        <div class="progress-bar"><div class="progress-bar-fill done" style="width: 100%;"></div></div>
       </div>
     </div>
   </section>
 
   <section>
-    <h2><span class="section-num">04</span>Cuenta regresiva al Beta</h2>
-    <div class="section-sub">Fecha planificada en el roadmap. Hay tres ventanas realistas según cómo evolucione el ritmo.</div>
+    <h2><span class="section-num">04</span>Estado del deploy</h2>
+    <div class="section-sub">El código está listo. Sólo falta el deploy manual al VPS.</div>
 
     <div class="countdown">
-      <div class="countdown-big">123</div>
-      <div class="countdown-label">Días al Beta</div>
-      <div class="countdown-target">23 de octubre de 2026</div>
+      <div class="countdown-big">✓</div>
+      <div class="countdown-label">Código Beta listo</div>
+      <div class="countdown-target">Deploy al VPS es el único paso pendiente</div>
 
       <div class="scenarios">
         <div class="scenario optimist">
-          <h4>Optimista</h4>
-          <div class="date">finales de octubre</div>
-          <div class="prob">~40% probabilidad · mantenés ritmo actual sin imprevistos</div>
+          <h4>Paso 1</h4>
+          <div class="date">Levantar VPS en Hetzner CX22</div>
+          <div class="prob">Copiar .env.prod desde .env.prod.example y ejecutar docker compose up -d</div>
         </div>
         <div class="scenario real">
-          <h4>Realista</h4>
-          <div class="date">mediados de noviembre</div>
-          <div class="prob">~45% probabilidad · algún sprint con 1 semana de atraso</div>
+          <h4>Paso 2</h4>
+          <div class="date">Correr migración de base de datos</div>
+          <div class="prob">pnpm --filter @ao/server db:migrate (incluye banco: 0007_banco.sql)</div>
         </div>
         <div class="scenario conservative">
-          <h4>Conservador</h4>
-          <div class="date">diciembre / enero 2027</div>
-          <div class="prob">~15% probabilidad · 2-3 atrasos o ajuste de scope</div>
+          <h4>Paso 3</h4>
+          <div class="date">Abrir Discord e invitar primeros jugadores</div>
+          <div class="prob">Crear servidor Discord con canales #bugs y #feedback · E-4.7 pendiente</div>
         </div>
       </div>
     </div>
@@ -1112,45 +1117,45 @@
 
     <div class="activity">
       <div class="activity-item latest">
-        <span class="activity-hash">69478e3</span>
-        <span class="activity-msg">feat(server): endpoint POST /auth/register + Drizzle (T-016, ADR-004)</span>
-        <div class="activity-meta">22 jun 2026 · Sprint 2 · CI verde 33s</div>
+        <span class="activity-hash">70e8e54</span>
+        <span class="activity-msg">feat: party XP sharing, friendly fire off, consentimiento en registro (T-068, T-084, T-067)</span>
+        <div class="activity-meta">6 jul 2026 · cierre Fase 4</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">bc7c91e</span>
-        <span class="activity-msg">feat(shared): agregar interfaces EntitySpawn, EntityDespawn, DisconnectRequest</span>
-        <div class="activity-meta">21 jun 2026 · cleanup post-Sprint 1 · CI verde 29s</div>
+        <span class="activity-hash">52f8203</span>
+        <span class="activity-msg">docs: TG-06 — cerrar Fase 4 en roadmap</span>
+        <div class="activity-meta">6 jul 2026 · roadmap.md actualizado</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">14f40e9</span>
-        <span class="activity-msg">feat(infra): docker-compose con Postgres 16 + Redis 7 (T-003)</span>
-        <div class="activity-meta">21 jun 2026 · cierra Sprint 1 al 100% · CI verde 35s</div>
+        <span class="activity-hash">7d86e34</span>
+        <span class="activity-msg">feat: load test multi-mapa 200 conexiones (E-4.9, T-085)</span>
+        <div class="activity-meta">6 jul 2026 · P95 bajo presupuesto, sin crashes</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">0c00f06</span>
-        <span class="activity-msg">docs: spec del protocolo y registro de riesgos (T-012, T-015)</span>
-        <div class="activity-meta">20 jun 2026 · Sprint 1 · CI verde 33s</div>
+        <span class="activity-hash">7bf9a93</span>
+        <span class="activity-msg">feat: observabilidad E-4.6 — Prometheus metrics, Sentry, dashboard Grafana</span>
+        <div class="activity-meta">6 jul 2026 · /metrics, @sentry/node, @sentry/browser, Grafana JSON</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">3308093</span>
-        <span class="activity-msg">fix(server): ignorar eslint.config.mjs en el propio lint</span>
-        <div class="activity-meta">19 jun 2026 · primer fix de CI</div>
+        <span class="activity-hash">ea8272a</span>
+        <span class="activity-msg">feat: banco, party y trade completos (E-4.2/E-4.3/E-4.4)</span>
+        <div class="activity-meta">6 jul 2026 · UI completa en cliente y servidor</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">26f5973</span>
-        <span class="activity-msg">ci: workflow de typecheck, lint y build en cada push y PR</span>
-        <div class="activity-meta">19 jun 2026 · T-007</div>
+        <span class="activity-hash">fb3d5b2</span>
+        <span class="activity-msg">feat: spawns multi-mapa, ADR-007/008, infra prod, docs legales (E-4.5, E-4.8)</span>
+        <div class="activity-meta">6 jul 2026 · Dockerfile + docker-compose + Caddy + legal</div>
       </div>
       <div class="activity-item">
-        <span class="activity-hash">d11ee48</span>
-        <span class="activity-msg">chore(repo): bootstrap monorepo Sprint 1</span>
-        <div class="activity-meta">19 jun 2026 · primer commit · 41 archivos / 7077 inserciones</div>
+        <span class="activity-hash">0450344</span>
+        <span class="activity-msg">feat: multi-mapa con portales nativos del AO (E-4.1, T-057 a T-060)</span>
+        <div class="activity-meta">6 jul 2026 · BFS carga 298 mapas, transiciones sin recarga</div>
       </div>
     </div>
   </section>
 
   <footer>
-    Generado el 22 de junio de 2026 · documento vivo · regenerar al cierre de cada sprint.<br>
+    Generado el 6 de julio de 2026 · documento vivo · regenerar al cierre de cada sprint.<br>
     Más detalle en <a href="roadmap.md">roadmap.md</a> · <a href="backlog.md">backlog.md</a> · <a href="risks.md">risks.md</a> · <a href="protocol.md">protocol.md</a>.<br>
     Versión visual del roadmap: <a href="roadmap.html">roadmap.html</a> · costos en <a href="costos-e-infraestructura.md">costos-e-infraestructura.md</a>.
   </footer>
