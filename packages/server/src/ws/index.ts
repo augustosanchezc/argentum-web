@@ -687,6 +687,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           posX: characters.posX,
           posY: characters.posY,
           direction: characters.direction,
+          bodyId: characters.bodyId,
+          headId: characters.headId,
         })
         .from(characters)
         .where(
@@ -737,6 +739,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.inventory = character.inventory.map((s) => ({ ...s }));
       session.equippedWeapon = character.equippedWeapon;
       session.equippedArmor = character.equippedArmor;
+      session.bodyId = character.bodyId;
+      session.headId = character.headId;
       recomputeEquipment(session);
 
       sendLoginResponse(socket, true, undefined, {
@@ -755,6 +759,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: s.hp,
         maxHp: s.maxHp,
         kind: "player" as const,
+        bodyId: s.bodyId,
+        headId: s.headId,
         graphic: 0,
       }));
       const npcEntities = npcs.inMap(map.id).map((n) => ({
@@ -765,6 +771,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: n.hp,
         maxHp: n.type.maxHp,
         kind: n.type.merchant ? ("merchant" as const) : ("npc" as const),
+        bodyId: n.type.bodyId ?? 0,
+        headId: n.type.headId ?? 0,
         graphic: n.type.graphic,
       }));
       const entities = [...playerEntities, ...npcEntities];
@@ -799,6 +807,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: session.hp,
         maxHp: session.maxHp,
         kind: "player",
+        bodyId: session.bodyId,
+        headId: session.headId,
         graphic: 0,
       };
       broadcastToMap(map.id, spawn, session.id);

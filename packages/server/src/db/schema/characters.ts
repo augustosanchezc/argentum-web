@@ -38,6 +38,11 @@ export const characters = pgTable(
     posX: integer("pos_x").notNull().default(25),
     posY: integer("pos_y").notNull().default(25),
     direction: varchar("direction", { length: 8 }).notNull().default("south"),
+    // Sprite del personaje del AO original (Personajes.ind / Cabezas.ind).
+    // Body 1 y head 1 son el aventurero humano clasico. La customizacion
+    // visual entra en Fase 4 (creacion de personaje avanzada).
+    bodyId: integer("body_id").notNull().default(1),
+    headId: integer("head_id").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

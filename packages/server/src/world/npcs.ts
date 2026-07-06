@@ -19,7 +19,14 @@ export interface NpcDrop {
 export interface NpcType {
   readonly key: string;
   readonly name: string;
-  readonly graphic: number; // sprite AO (placeholder por ahora; el cliente usa marcador)
+  // Sprite legacy del AO (Graficos.ind) — se usa cuando el NPC no tiene
+  // body/head (típico de monstruos: rata, lobo, dragón, un sprite único).
+  readonly graphic: number;
+  // Sprite del sistema de personajes (Personajes.ind / Cabezas.ind), típico
+  // de NPCs humanoides como el mercader o los guardias. Si están definidos,
+  // el cliente los prefiere sobre `graphic`.
+  readonly bodyId?: number;
+  readonly headId?: number;
   readonly maxHp: number;
   readonly damageMin: number;
   readonly damageMax: number;
@@ -42,6 +49,9 @@ const NPC_TYPES: Record<string, NpcType> = {
     key: "rata",
     name: "Rata gigante",
     graphic: 0,
+    // Personajes.ini body 71 (rata clásica del AO).
+    bodyId: 71,
+    headId: 0,
     maxHp: 12,
     damageMin: 1,
     damageMax: 3,
@@ -61,6 +71,9 @@ const NPC_TYPES: Record<string, NpcType> = {
     key: "lobo",
     name: "Lobo",
     graphic: 0,
+    // Personajes.ini body 10 (lobo clásico del AO).
+    bodyId: 10,
+    headId: 0,
     maxHp: 26,
     damageMin: 2,
     damageMax: 5,
@@ -83,6 +96,10 @@ const NPC_TYPES: Record<string, NpcType> = {
     key: "mercader",
     name: "Mercader",
     graphic: 0,
+    // Humanoide: reutiliza el mismo body/head del jugador por ahora. Cuando
+    // saquemos sprites customizados para NPCs los cambiamos aca.
+    bodyId: 1,
+    headId: 1,
     maxHp: 50,
     damageMin: 0,
     damageMax: 0,

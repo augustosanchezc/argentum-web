@@ -30,6 +30,11 @@ export interface Session {
   // Derivados del equipo (se recalculan al equipar/loguear).
   weaponBonus: number;
   armorDefense: number;
+  // Sprite del personaje (Personajes.ind / Cabezas.ind del AO). Se persisten
+  // en characters.body_id / head_id; hasta que haya customización visual,
+  // todos los personajes usan body 1 y head 1 (aventurero humano clásico).
+  bodyId: number;
+  headId: number;
 }
 
 class SessionRegistry {
@@ -85,6 +90,8 @@ class SessionRegistry {
       equippedArmor: null,
       weaponBonus: 0,
       armorDefense: 0,
+      bodyId: 1,
+      headId: 1,
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);

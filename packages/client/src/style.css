@@ -626,6 +626,15 @@ h3 {
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.8);
   letter-spacing: 0.05em;
 }
+.ao-inv__cell-icon {
+  background-repeat: no-repeat;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+}
+.ao-inv__cell--filled:has(.ao-inv__cell-icon) {
+  background: rgba(212, 175, 55, 0.08);
+}
 .ao-inv__cell-qty {
   position: absolute;
   bottom: 2px;

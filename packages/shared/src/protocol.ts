@@ -82,7 +82,12 @@ export interface MapData {
     readonly hp: number;
     readonly maxHp: number;
     readonly kind: EntityKind;
-    // Gráfico/sprite del AO para NPCs (0 para jugadores, que usan el sprite base).
+    // Body/head para el sistema de sprites del AO clasico (Personajes.ind /
+    // Cabezas.ind). 0 significa que la entidad usa el sprite genérico del
+    // gráfico legacy (para NPCs monstruo tipo rata/lobo).
+    readonly bodyId: number;
+    readonly headId: number;
+    // Grafico legacy — usado si bodyId=0 (NPCs monstruo con sprite unico).
     readonly graphic: number;
   }>;
   // Items tirados en el suelo del mapa (E-3.2).
@@ -110,6 +115,8 @@ export interface EntitySpawn {
   readonly hp: number;
   readonly maxHp: number;
   readonly kind: EntityKind;
+  readonly bodyId: number;
+  readonly headId: number;
   readonly graphic: number;
 }
 

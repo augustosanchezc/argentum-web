@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.
 import {
   ClientToServerOp,
   getItem,
+  ITEMS,
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AnyPacket,
@@ -40,6 +41,7 @@ import { mountInventory, type InventoryHandle } from "../ui/inventory";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
+import { Personajes, type CharDirection } from "../world/personajes";
 import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
@@ -112,10 +114,16 @@ export interface GameSceneResult {
 
 interface EntityVisual {
   container: Container;
-  body: Graphics;    // figura humana (la redibujamos al cambiar direccion / morir)
-  hpBar: Graphics;   // barra de HP sobre la cabeza (la redibujamos)
+  // Silueta de fallback: se usa mientras no hay body/head del AO cargados,
+  // o cuando el NPC no tiene sprite del sistema de personajes.
+  body: Graphics;
+  // Sprites del AO cuando hay body/head disponibles. Cuando bodySprite es
+  // no nulo, ocultamos `body` (fallback) y usamos estos.
+  bodySprite: Sprite | null;
+  headSprite: Sprite | null;
+  hpBar: Graphics;
   position: Vector2; // tile destino (verdad logica)
-  renderX: number;   // px actual (interpolado)
+  renderX: number;
   renderY: number;
   tweenFromX: number;
   tweenFromY: number;
@@ -131,6 +139,12 @@ interface EntityVisual {
   swingStart: number; // 0 = sin swing
   swingDx: number;
   swingDy: number;
+  // Sprite del AO (0 = usa silueta fallback).
+  bodyId: number;
+  headId: number;
+  // Frame actual del walk cycle y timestamp del último avance.
+  walkFrame: number;
+  lastFrameAt: number;
 }
 
 // Numero de daño que sube y se desvanece sobre una entidad.
@@ -322,6 +336,28 @@ export async function startGameScene(
     console.warn("[ao-client] no se pudo cargar el tileset, se usa fallback de color", err);
   });
 
+  // Sistema de sprites de personaje (Personajes.ind / Cabezas.ind del AO).
+  // Se carga en paralelo. Mientras no esté listo, las entidades usan la
+  // silueta de fallback. Cuando termina, se les enchufa el sprite real.
+  const personajes = new Personajes(tileset);
+  const personajesReady = personajes.load().catch((err: unknown) => {
+    console.warn("[ao-client] no se pudo cargar personajes.json, siluetas de fallback", err);
+  });
+  void personajesReady.then(() => {
+    for (const v of entityVisuals.values()) tryAttachCharSprites(v);
+  });
+
+  // Precargamos los PNGs de los items del catálogo para que el inventario
+  // y los ground items los muestren desde el primer render en lugar de
+  // caer al fallback de siglas.
+  const itemGraphicIds = new Set<number>();
+  for (const item of Object.values(ITEMS)) {
+    if (item.graphic > 0) itemGraphicIds.add(item.graphic);
+  }
+  void tilesetIndexReady.then(() => {
+    if (tileset.ready) void tileset.preload(itemGraphicIds);
+  });
+
   const entityVisuals = new Map<number, EntityVisual>();
   const groundItemVisuals = new Map<number, Container>();
   let mapWidth = 0;
@@ -470,6 +506,8 @@ export async function startGameScene(
     maxHp: number,
     kind: EntityKind,
     facing: Direction,
+    bodyId: number,
+    headId: number,
   ): EntityVisual {
     const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp, kind, facing);
     const c = entityCenterPx(pos);
@@ -489,6 +527,8 @@ export async function startGameScene(
     const visual: EntityVisual = {
       container,
       body,
+      bodySprite: null,
+      headSprite: null,
       hpBar,
       position: { x: pos.x, y: pos.y },
       renderX: c.x,
@@ -506,9 +546,93 @@ export async function startGameScene(
       swingStart: 0,
       swingDx: 0,
       swingDy: 0,
+      bodyId,
+      headId,
+      walkFrame: 0,
+      lastFrameAt: 0,
     };
     entityVisuals.set(id, visual);
+    tryAttachCharSprites(visual);
     return visual;
+  }
+
+  // Duración de cada frame del walk cycle. TWEEN_DURATION_MS lo recorre un
+  // tile completo; dividimos en ~6 frames para que la animación quepa en
+  // el tiempo del movimiento.
+  const WALK_FRAME_MS = 60;
+
+  // Mapa de Direction del server a la Direction del AO (mismos nombres).
+  function toCharDir(d: Direction): CharDirection {
+    return d;
+  }
+
+  // Los NPCs monstruo (hostiles) usan Personajes.ini (monster bodies) sin
+  // cabeza separada. Los jugadores, comerciantes y humanoides usan
+  // Personajes.ind + Cabezas.ind (body + head compuestos).
+  function isMonsterVisual(v: EntityVisual): boolean {
+    return v.kind === "npc";
+  }
+
+  // Si el sistema de personajes está cargado y la entidad tiene bodyId>0,
+  // creamos body/head Sprites y ocultamos la silueta Graphics. Idempotente:
+  // si ya están creados o el índice todavía no cargó, no hace nada.
+  function tryAttachCharSprites(v: EntityVisual): void {
+    if (v.bodySprite) return;
+    if (!personajes.ready) return;
+    if (v.bodyId <= 0) return;
+
+    const dir = toCharDir(v.facing);
+    const monster = isMonsterVisual(v);
+
+    let bodyTex: import("pixi.js").Texture | null = null;
+    if (monster) {
+      if (!personajes.hasMonsterBody(v.bodyId)) return;
+      bodyTex = personajes.monsterBodyFrame(v.bodyId, dir, 0);
+    } else {
+      if (!personajes.hasBody(v.bodyId)) return;
+      bodyTex = personajes.bodyFrame(v.bodyId, dir, 0);
+    }
+    if (!bodyTex) return;
+
+    const bodySprite = new Sprite(bodyTex);
+    // Anchor abajo-centro para que el pie apoye en el tile lógico.
+    bodySprite.anchor.set(0.5, 1);
+    // El tile lógico del AO es 32x32; el sprite del cuerpo suele ser más alto
+    // (~50-64px), lo ubicamos apoyado un poco por debajo del centro del tile.
+    bodySprite.y = 12;
+    v.bodySprite = bodySprite;
+    v.container.addChildAt(bodySprite, 0); // debajo de la barra HP
+
+    // Los monstruos no tienen head separada (ya viene en el body).
+    if (!monster && v.headId > 0 && personajes.hasHead(v.headId)) {
+      const headTex = personajes.head(v.headId, dir);
+      if (headTex) {
+        const headSprite = new Sprite(headTex);
+        headSprite.anchor.set(0.5, 1);
+        const offset = personajes.headOffset(v.bodyId);
+        headSprite.x = offset.x;
+        headSprite.y = bodySprite.y - bodySprite.height + offset.y + headTex.height;
+        v.headSprite = headSprite;
+        v.container.addChildAt(headSprite, 1);
+      }
+    }
+
+    // Ocultamos la silueta fallback ahora que hay sprite real.
+    v.body.visible = false;
+  }
+
+  // Actualiza texturas del sprite según facing y walkFrame actuales.
+  function refreshCharTextures(v: EntityVisual): void {
+    if (!v.bodySprite) return;
+    const dir = toCharDir(v.facing);
+    const bt = isMonsterVisual(v)
+      ? personajes.monsterBodyFrame(v.bodyId, dir, v.walkFrame)
+      : personajes.bodyFrame(v.bodyId, dir, v.walkFrame);
+    if (bt) v.bodySprite.texture = bt;
+    if (v.headSprite) {
+      const ht = personajes.head(v.headId, dir);
+      if (ht) v.headSprite.texture = ht;
+    }
   }
 
   // Cambia la direccion en la que mira la entidad y redibuja el body.
@@ -516,8 +640,14 @@ export async function startGameScene(
   function setEntityFacing(v: EntityVisual, facing: Direction): void {
     if (v.facing === facing) return;
     v.facing = facing;
-    drawEntityBody(v.body, v.isSelf, v.kind, facing);
-    if (v.dead) v.body.alpha = 0.35;
+    if (v.bodySprite) {
+      // Reset del frame al cambiar de dirección, así arranca desde idle.
+      v.walkFrame = 0;
+      refreshCharTextures(v);
+    } else {
+      drawEntityBody(v.body, v.isSelf, v.kind, facing);
+      if (v.dead) v.body.alpha = 0.35;
+    }
   }
 
   function moveEntityTo(id: number, pos: Vector2): void {
@@ -557,11 +687,22 @@ export async function startGameScene(
     if (groundItemVisuals.has(id)) return;
     const def = getItem(item);
     const c = new Container();
-    const g = new Graphics();
-    g.rect(-6, -6, 12, 12)
-      .fill({ color: 0xd4af37 })
-      .stroke({ width: 1, color: 0xf4d56a });
-    c.addChild(g);
+
+    // Sprite real del AO si el atlas tiene el grh del item. Si no,
+    // fallback al cuadrado dorado clásico.
+    const sprite = def && def.graphic > 0 ? tileset.get(def.graphic) : null;
+    if (sprite) {
+      const s = new Sprite(sprite);
+      s.anchor.set(0.5);
+      c.addChild(s);
+    } else {
+      const g = new Graphics();
+      g.rect(-6, -6, 12, 12)
+        .fill({ color: 0xd4af37 })
+        .stroke({ width: 1, color: 0xf4d56a });
+      c.addChild(g);
+    }
+
     const label = new Text({
       text: def ? def.name : `#${item.toString()}`,
       style: new TextStyle({
@@ -572,7 +713,7 @@ export async function startGameScene(
       }),
     });
     label.anchor.set(0.5, 1);
-    label.y = -8;
+    label.y = -14;
     c.addChild(label);
     const px = entityCenterPx(pos);
     c.x = px.x;
@@ -668,7 +809,7 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId);
     }
     updateSelfHud();
   }
@@ -889,6 +1030,18 @@ export async function startGameScene(
         v.renderX = v.tweenFromX + (targetPx.x - v.tweenFromX) * t;
         v.renderY = v.tweenFromY + (targetPx.y - v.tweenFromY) * t;
         if (t >= 1) v.tweenDuration = 0;
+        // Walk cycle: mientras la entidad se está trasladando avanzamos
+        // el frame del cuerpo cada WALK_FRAME_MS. Cuando el tween termina,
+        // el else de abajo lo devuelve a idle (frame 0).
+        if (v.bodySprite && now - v.lastFrameAt >= WALK_FRAME_MS) {
+          v.walkFrame += 1;
+          v.lastFrameAt = now;
+          refreshCharTextures(v);
+        }
+      } else if (v.bodySprite && v.walkFrame !== 0) {
+        // Idle: reset al primer frame para que quede parado con pose base.
+        v.walkFrame = 0;
+        refreshCharTextures(v);
       }
       // Swing de ataque: lunge breve en la direccion del golpe, sumado
       // al render interpolado. Se aplica cada frame.
@@ -1087,7 +1240,7 @@ export async function startGameScene(
       // Llego un update de algo que no conocemos — lo creamos.
       // Sucede si nos perdimos el spawn (race en reconexion). No tenemos
       // su HP real todavia; lo mostramos lleno hasta el proximo DAMAGE.
-      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1, "player", p.direction);
+      addEntity(id, p.position, `?${id.toString()}`, id === character.id, 1, 1, "player", p.direction, 0, 0);
       refreshPlayerList();
       return;
     }
@@ -1108,7 +1261,7 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId);
     refreshPlayerList();
   }
 
@@ -1199,6 +1352,7 @@ export async function startGameScene(
         };
         client?.send(pkt);
       },
+      resolveIcon: (grh) => tileset.entry(grh),
     });
 
     shop = mountShop(root, {

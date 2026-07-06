@@ -78,6 +78,15 @@ export class Tileset {
     );
   }
 
+  // Devuelve las coordenadas del grh dentro de su PNG. Sirve para renderizar
+  // el sprite como fondo CSS (fuera de PixiJS, típicamente en el inventario
+  // que es DOM). Null si el grh no existe en el índice.
+  entry(grh: number): { fileNum: number; x: number; y: number; w: number; h: number } | null {
+    const e = this.index[grh.toString()];
+    if (!e) return null;
+    return { fileNum: e.f, x: e.x, y: e.y, w: e.w, h: e.h };
+  }
+
   // Sub-textura para un grh, o null si no la tenemos (grh desconocido o PNG
   // no cargado). Memoiza el resultado, incluido el null.
   get(grh: number): Texture | null {

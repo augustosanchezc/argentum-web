@@ -43,6 +43,13 @@
       "when": 1782902713778,
       "tag": "0005_silent_lyja",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783255542462,
+      "tag": "0006_amused_manta",
+      "breakpoints": true
     }
   ]
 }

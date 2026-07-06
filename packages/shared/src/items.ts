@@ -15,13 +15,14 @@ export interface ItemDef {
   readonly heal?: number; // poción (cura HP al usar)
 }
 
-// 5 items base del MVP.
+// 5 items base del MVP. Los `graphic` son los GrhIndex del AO clásico
+// (obj.dat del server ao-libre) para reusar el mismo tileset del mapa.
 export const ITEMS: Record<number, ItemDef> = {
-  1: { id: 1, name: "Poción menor", type: "potion", value: 10, graphic: 0, heal: 15 },
-  2: { id: 2, name: "Daga", type: "weapon", value: 25, graphic: 0, damageBonus: 3 },
-  3: { id: 3, name: "Espada larga", type: "weapon", value: 80, graphic: 0, damageBonus: 7 },
-  4: { id: 4, name: "Armadura de cuero", type: "armor", value: 40, graphic: 0, defense: 2 },
-  5: { id: 5, name: "Casco de hierro", type: "armor", value: 20, graphic: 0, defense: 1 },
+  1: { id: 1, name: "Poción menor", type: "potion", value: 10, graphic: 542, heal: 15 },
+  2: { id: 2, name: "Daga", type: "weapon", value: 25, graphic: 510, damageBonus: 3 },
+  3: { id: 3, name: "Espada larga", type: "weapon", value: 80, graphic: 504, damageBonus: 7 },
+  4: { id: 4, name: "Armadura de cuero", type: "armor", value: 40, graphic: 526, defense: 2 },
+  5: { id: 5, name: "Casco de hierro", type: "armor", value: 20, graphic: 559, defense: 1 },
 };
 
 export function getItem(id: number): ItemDef | undefined {

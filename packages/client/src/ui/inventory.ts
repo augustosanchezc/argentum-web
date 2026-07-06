@@ -16,11 +16,24 @@ export interface InventoryData {
   equippedArmor: number | null;
 }
 
+// Coordenadas de un sprite dentro del atlas del AO. Devuelto por Tileset.entry
+// pero acá lo redeclaramos para no acoplar la UI al módulo de world/.
+export interface IconRect {
+  fileNum: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export interface InventoryCallbacks {
   onUse(item: number): void;
   onSell(item: number): void;
   onReorder(from: number, to: number): void;
   onDrop(slot: number, qty: number): void;
+  // Devuelve las bounds del sprite del ítem dentro del atlas del AO.
+  // null si el grh no está disponible (usa fallback: siglas).
+  resolveIcon(graphicId: number): IconRect | null;
 }
 
 export interface InventoryHandle {
@@ -84,10 +97,22 @@ export function mountInventory(
           cell.title = `${def.name}${slot.qty > 1 ? ` x${slot.qty.toString()}` : ""}${isEquipped(def.id) ? " (equipada)" : ""}`;
           cell.draggable = true;
 
-          const label = document.createElement("span");
-          label.className = "ao-inv__cell-name";
-          label.textContent = def.name.slice(0, 3).toUpperCase();
-          cell.appendChild(label);
+          // Sprite real del AO si el atlas ya lo tiene cargado. Si no, siglas.
+          const icon = def.graphic > 0 ? cb.resolveIcon(def.graphic) : null;
+          if (icon) {
+            const img = document.createElement("div");
+            img.className = "ao-inv__cell-icon";
+            img.style.width = `${icon.w.toString()}px`;
+            img.style.height = `${icon.h.toString()}px`;
+            img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
+            img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
+            cell.appendChild(img);
+          } else {
+            const label = document.createElement("span");
+            label.className = "ao-inv__cell-name";
+            label.textContent = def.name.slice(0, 3).toUpperCase();
+            cell.appendChild(label);
+          }
 
           if (slot.qty > 1) {
             const qty = document.createElement("span");
