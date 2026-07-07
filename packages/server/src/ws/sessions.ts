@@ -15,33 +15,44 @@ export interface Session {
   lastChatAt: number;
   joinedAt: number;
   lastSeenAt: number;
-  // Combate (E-2.2). hp/maxHp se cargan de la DB en el handshake.
+  // Clase y stats primarios
+  classId: number;
+  str: number;
+  agi: number;
+  int_: number;
+  con: number;
+  car: number;
+  statPoints: number;
+  // HP / MP
   level: number;
   xp: number;
   hp: number;
   maxHp: number;
+  mana: number;
+  maxMana: number;
   lastAttackAt: number;
-  // 0 = vivo. Si > 0, es el epoch ms en que el personaje debe reaparecer.
   deadUntil: number;
-  // Economía e inventario (E-3.2/3.4).
+  // Economía e inventario
   gold: number;
   inventory: InventorySlot[];
   equippedWeapon: number | null;
   equippedArmor: number | null;
-  // Derivados del equipo (se recalculan al equipar/loguear).
+  equippedHelmet: number | null;
+  equippedShield: number | null;
+  // Derivados del equipo (se recalculan al equipar/loguear)
   weaponBonus: number;
   armorDefense: number;
-  // Sprite del personaje (Personajes.ind / Cabezas.ind del AO). Se persisten
-  // en characters.body_id / head_id; hasta que haya customización visual,
-  // todos los personajes usan body 1 y head 1 (aventurero humano clásico).
+  helmetDefense: number;
+  shieldDefense: number;
+  // Sprite (Personajes.ind / Cabezas.ind del AO)
   bodyId: number;
   headId: number;
-  // Banco (E-4.2): espejo del banco en memoria (cargado al login, persistido al logout).
+  // Banco (E-4.2)
   bankInventory: InventorySlot[];
   bankGold: number;
-  // Party (E-4.3): id de la party activa, null si no está en ninguna.
+  // Party (E-4.3)
   partyId: string | null;
-  // Trade (E-4.4): id del trade activo, null si no hay.
+  // Trade (E-4.4)
   tradeId: string | null;
 }
 
@@ -58,9 +69,6 @@ class SessionRegistry {
     mapId: number,
     position: Vector2,
   ): Session {
-    // Si el mismo personaje ya tenia sesion, la cerramos antes de abrir la nueva.
-    // Politica: una sesion activa por personaje. La conexion anterior queda
-    // huerfana — el cliente vera el close 4008 y debera reconectar.
     const existing = this.byCharacterId.get(characterId);
     if (existing) {
       this.remove(existing.id);
@@ -86,18 +94,31 @@ class SessionRegistry {
       lastChatAt: 0,
       joinedAt: now,
       lastSeenAt: now,
+      classId: 1,
+      str: 18,
+      agi: 13,
+      int_: 12,
+      con: 17,
+      car: 8,
+      statPoints: 0,
       level: 1,
       xp: 0,
       hp: 30,
       maxHp: 30,
+      mana: 0,
+      maxMana: 0,
       lastAttackAt: 0,
       deadUntil: 0,
       gold: 0,
       inventory: [],
       equippedWeapon: null,
       equippedArmor: null,
+      equippedHelmet: null,
+      equippedShield: null,
       weaponBonus: 0,
       armorDefense: 0,
+      helmetDefense: 0,
+      shieldDefense: 0,
       bodyId: 1,
       headId: 1,
       bankInventory: [],

@@ -1,18 +1,12 @@
-// Experiencia y niveles (E-3.5, T-055). Lógica pura y testeable.
+import { calcMaxHp, calcMaxMp, getClass } from "@ao/shared";
 
-export const MAX_LEVEL = 10;
-const BASE_MAX_HP = 30;
-const HP_PER_LEVEL = 8;
+export { calcMaxHp, calcMaxMp };
 
-// HP máximo derivado del nivel. Lo derivamos siempre del nivel (no confiamos
-// solo en la columna) para evitar drift si cambia la fórmula.
-export function maxHpForLevel(level: number): number {
-  return BASE_MAX_HP + (Math.max(1, level) - 1) * HP_PER_LEVEL;
-}
+export const MAX_LEVEL = 36;
 
-// XP necesaria para pasar de `level` a `level + 1`.
+// Fórmula AO original: NecesitaExp(n) = n*(n-1)/2*100 + 100
 function xpForLevel(level: number): number {
-  return 40 + (level - 1) * 30;
+  return Math.floor(level * (level - 1) / 2) * 100 + 100;
 }
 
 // XP total acumulada para ALCANZAR un nivel (nivel 1 = 0).
@@ -22,11 +16,18 @@ export function cumulativeXpForLevel(level: number): number {
   return total;
 }
 
+// Backward-compat: retorna HP para nivel dado, usando clase Guerrero (id=1) y CON=17.
+// Preferir calcMaxHp(getClass(classId), level, con) en código nuevo.
+export function maxHpForLevel(level: number): number {
+  const def = getClass(1);
+  if (!def) return 30 + (level - 1) * 6;
+  return calcMaxHp(def, level, def.con);
+}
+
 export interface LevelProgress {
   readonly level: number;
-  // XP dentro del nivel actual y XP total que requiere completar el nivel.
   readonly xpIntoLevel: number;
-  readonly xpForNextLevel: number; // 0 si está al máximo
+  readonly xpForNextLevel: number;
 }
 
 export function levelProgress(level: number, totalXp: number): LevelProgress {
@@ -44,7 +45,6 @@ export interface GainResult {
   readonly leveledUp: boolean;
 }
 
-// Suma XP y sube de nivel tantas veces como corresponda (hasta MAX_LEVEL).
 export function applyXpGain(level: number, totalXp: number, reward: number): GainResult {
   const newXp = totalXp + reward;
   let newLevel = level;

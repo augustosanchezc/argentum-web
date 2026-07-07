@@ -3,6 +3,7 @@ import {
   ClientToServerOp,
   PROTOCOL_VERSION,
   ServerToClientOp,
+  type AllocStatRequest,
   type AnyPacket,
   type AttackRequest,
   type BankDepositGoldRequest,
@@ -65,9 +66,12 @@ import {
   addItem,
   armorDefenseFor,
   countItem,
+  helmetDefenseFor,
   removeFromSlot,
   removeItem,
   reorderSlots,
+  shieldDefenseFor,
+  totalArmorDefense,
   weaponBonusFor,
 } from "../world/inventory.js";
 import {
@@ -82,7 +86,10 @@ import { attemptMove } from "../world/movement.js";
 import { isNpcId, npcs, rollNpcGold } from "../world/npcs.js";
 import { partyRegistry } from "../world/party.js";
 import { tradeRegistry } from "../world/trade.js";
-import { applyXpGain, levelProgress, maxHpForLevel } from "../world/xp.js";
+import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel } from "../world/xp.js";
+import { getClass, STAT_POINTS_PER_LEVEL } from "../world/classes.js";
+import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
+import { canAttackPlayer } from "../world/zones.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import {
@@ -94,9 +101,6 @@ import {
 } from "../metrics.js";
 import { sessions, type Session } from "./sessions.js";
 
-// Construye el paquete MapData completo para un mapa dado.
-// Incluye al propio jugador en las entidades (session.mapId ya apunta al mapa).
-// Puede llamarse fuera del closure del WS porque solo usa singletons globales.
 function buildMapDataPacket(map: MapState): MapData {
   const playerEntities = sessions.inMap(map.id).map((s) => ({
     id: s.characterId as EntityId,
@@ -153,10 +157,7 @@ const CLOSE_PROTOCOL_VERSION = 4005;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 
 const VALID_DIRECTIONS: ReadonlySet<Direction> = new Set([
-  "north",
-  "south",
-  "east",
-  "west",
+  "north", "south", "east", "west",
 ]);
 
 function parseDirection(raw: string | null | undefined): Direction {
@@ -164,11 +165,6 @@ function parseDirection(raw: string | null | undefined): Direction {
   return "south";
 }
 
-// Resuelve donde aparece el personaje al conectarse:
-// - Si la posicion persistida es valida (caminable) en el mapa correspondiente, ahi.
-// - Caso contrario, en el spawn del mapa por defecto.
-// No checkeamos colision con otros jugadores aqui — es raro y el cliente
-// resolvera la situacion al primer movimiento.
 function resolveSpawn(
   persistedMapId: number,
   persistedPos: Vector2,
@@ -197,10 +193,20 @@ async function persistPosition(s: Session): Promise<void> {
       xp: s.xp,
       hp: s.hp,
       maxHp: s.maxHp,
+      mana: s.mana,
+      maxMana: s.maxMana,
+      str: s.str,
+      agi: s.agi,
+      int_: s.int_,
+      con: s.con,
+      car: s.car,
+      statPoints: s.statPoints,
       gold: s.gold,
       inventory: s.inventory,
       equippedWeapon: s.equippedWeapon,
       equippedArmor: s.equippedArmor,
+      equippedHelmet: s.equippedHelmet,
+      equippedShield: s.equippedShield,
       bankInventory: s.bankInventory,
       bankGold: s.bankGold,
       updatedAt: new Date(),
@@ -217,7 +223,7 @@ function send(socket: Session["socket"], packet: AnyPacket): void {
   try {
     socket.send(encode(packet));
   } catch {
-    // socket cerrado o roto — el cleanup lo maneja el evento close
+    // socket cerrado o roto
   }
 }
 
@@ -236,13 +242,11 @@ function sendLoginResponse(
   send(socket, resp);
 }
 
-// Sincroniza HP del jugador en su party (si tiene). Llamar después de cambios de HP.
 function syncPartyStats(s: Session): void {
   if (!s.partyId) return;
   partyRegistry.updateMemberStats(s.characterId, s.hp, s.maxHp);
 }
 
-// Envia al jugador su nivel, progreso de XP y HP actuales. Solo al dueño.
 function sendStatsUpdate(s: Session): void {
   const prog = levelProgress(s.level, s.xp);
   const pkt: StatsUpdate = {
@@ -252,12 +256,19 @@ function sendStatsUpdate(s: Session): void {
     xpForNextLevel: prog.xpForNextLevel,
     hp: s.hp,
     maxHp: s.maxHp,
+    mana: s.mana,
+    maxMana: s.maxMana,
+    str: s.str,
+    agi: s.agi,
+    int: s.int_,
+    con: s.con,
+    car: s.car,
+    statPoints: s.statPoints,
+    classId: s.classId,
   };
   send(s.socket, pkt);
 }
 
-// Recalcula los bonos derivados del equipo. Si un item equipado ya no está
-// en el inventario, lo des-equipa.
 function recomputeEquipment(s: Session): void {
   if (s.equippedWeapon !== null && countItem(s.inventory, s.equippedWeapon) === 0) {
     s.equippedWeapon = null;
@@ -265,8 +276,16 @@ function recomputeEquipment(s: Session): void {
   if (s.equippedArmor !== null && countItem(s.inventory, s.equippedArmor) === 0) {
     s.equippedArmor = null;
   }
+  if (s.equippedHelmet !== null && countItem(s.inventory, s.equippedHelmet) === 0) {
+    s.equippedHelmet = null;
+  }
+  if (s.equippedShield !== null && countItem(s.inventory, s.equippedShield) === 0) {
+    s.equippedShield = null;
+  }
   s.weaponBonus = weaponBonusFor(s.equippedWeapon);
   s.armorDefense = armorDefenseFor(s.equippedArmor);
+  s.helmetDefense = helmetDefenseFor(s.equippedHelmet);
+  s.shieldDefense = shieldDefenseFor(s.equippedShield);
 }
 
 function sendInventoryUpdate(s: Session): void {
@@ -277,17 +296,21 @@ function sendInventoryUpdate(s: Session): void {
     slots: s.inventory,
     equippedWeapon: s.equippedWeapon,
     equippedArmor: s.equippedArmor,
+    equippedHelmet: s.equippedHelmet,
+    equippedShield: s.equippedShield,
   };
   send(s.socket, pkt);
 }
+
+// Iniciar el loop de regen al momento de cargar el módulo.
+// Usar sendStatsUpdate como callback — funciona porque es función declarada más arriba.
+setInterval(() => tickRegen(sendStatsUpdate), REGEN_INTERVAL_MS);
 
 // eslint-disable-next-line @typescript-eslint/require-await
 export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get("/ws", { websocket: true }, (socket, req) => {
     let session: Session | null = null;
 
-    // Timeout: si el cliente no manda LoginRequest en HANDSHAKE_TIMEOUT_MS,
-    // cerramos la conexion. Evita conexiones colgadas.
     const handshakeTimer = setTimeout(() => {
       if (!session) {
         req.log.warn("[ws] handshake timeout");
@@ -305,12 +328,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (session) {
         const closingSession = session;
 
-        // Cancelar trade activo si hay uno.
         if (closingSession.tradeId) {
           cancelTrade(closingSession.tradeId, "DISCONNECT");
         }
-
-        // Salir de party si está en una.
         if (closingSession.partyId) {
           doPartyLeave(closingSession);
         }
@@ -319,14 +339,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           op: ServerToClientOp.EntityDespawn,
           id: closingSession.characterId as EntityId,
         };
-        // Avisamos a los vecinos del mapa que el personaje se fue, ANTES
-        // de removerlo del registro (asi no se incluye a si mismo).
         broadcastToMap(closingSession.mapId, despawn, closingSession.id);
         sessions.remove(closingSession.id);
         session = null;
 
-        // Persistimos la posicion + direccion en background. No bloqueamos
-        // el cleanup del socket; si la DB falla, logueamos y seguimos.
         void persistPosition(closingSession)
           .then(() => {
             req.log.info(
@@ -356,7 +372,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      // Antes del handshake solo aceptamos LoginRequest.
       if (!session) {
         if (packet.op !== ClientToServerOp.LoginRequest) {
           sendLoginResponse(socket, false, "EXPECTED_LOGIN");
@@ -367,7 +382,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      // Post-handshake: routing del opcode al modulo correspondiente.
       switch (packet.op) {
         case ClientToServerOp.Disconnect:
           socket.close(CLOSE_NORMAL, "CLIENT_DISCONNECT");
@@ -401,6 +415,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.InventoryReorder:
           handleReorder(session, packet);
+          break;
+        case ClientToServerOp.AllocStat:
+          handleAllocStat(session, packet);
           break;
         // Banco (E-4.2)
         case ClientToServerOp.BankDepositItem:
@@ -450,31 +467,24 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
     }
 
-    // Teletransporta al jugador al mapa destino indicado por un portal.
-    // Precondición: el jugador está vivo y acaba de pisar el tile-portal.
     function doMapTransition(s: Session, portal: PortalTile): void {
       const destMap = getMap(portal.toMapId);
-      if (!destMap) return; // mapa no cargado — portal inactivo
+      if (!destMap) return;
 
       const fromMapId = s.mapId;
 
-      // 1. Avisar al mapa origen que el personaje se fue.
       const despawn: EntityDespawn = {
         op: ServerToClientOp.EntityDespawn,
         id: s.characterId as EntityId,
       };
       broadcastToMap(fromMapId, despawn, s.id);
 
-      // 2. Actualizar estado de la sesion.
       s.mapId = destMap.id;
       s.position = { x: portal.toX, y: portal.toY };
       s.direction = "south";
 
-      // 3. Enviar MapData del nuevo mapa al jugador.
-      //    buildMapDataPacket incluye al jugador mismo (s.mapId ya apunta al nuevo mapa).
       send(s.socket, buildMapDataPacket(destMap));
 
-      // 4. Avisar al nuevo mapa que llegó un personaje.
       const spawn: EntitySpawn = {
         op: ServerToClientOp.EntitySpawn,
         id: s.characterId as EntityId,
@@ -491,21 +501,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(destMap.id, spawn, s.id);
 
       req.log.info(
-        {
-          sessionId: s.id,
-          characterId: s.characterId,
-          fromMap: fromMapId,
-          toMap: destMap.id,
-          pos: s.position,
-        },
+        { sessionId: s.id, characterId: s.characterId, fromMap: fromMapId, toMap: destMap.id },
         "[ws] transición de mapa",
       );
       mapTransitionsTotal.inc();
     }
 
     function handleMove(s: Session, move: MoveRequest): void {
-      // Un personaje muerto no se mueve. Le reenviamos su posicion canonica
-      // para que el cliente revierta cualquier prediccion.
       if (s.deadUntil !== 0) {
         const correction: EntityUpdate = {
           op: ServerToClientOp.EntityUpdate,
@@ -541,8 +543,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       });
 
       if (!result.ok) {
-        // Rechazo: reenviamos al cliente su posicion canonica para que
-        // reconcilie su prediccion local. Misma sesion, no broadcast.
         const correction: EntityUpdate = {
           op: ServerToClientOp.EntityUpdate,
           id: s.characterId as EntityId,
@@ -564,12 +564,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         position: { x: s.position.x, y: s.position.y },
         direction: s.direction,
       };
-      // Broadcast a TODO el mapa, incluido el que se movio.
-      // Asi el cliente puede usar el ACK del server como fuente
-      // de verdad para reconciliar su prediccion optimista.
       broadcastToMap(s.mapId, update);
 
-      // Portal check: si el nuevo tile tiene un exit hacia otro mapa, transicionar.
       const portal = map.portals.find(
         (p) => p.x === s.position.x && p.y === s.position.y,
       );
@@ -578,32 +574,30 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function handleAttack(s: Session, attack: AttackRequest): void {
       const now = Date.now();
-      // Muerto o en cooldown: ignoramos en silencio (el cliente tambien
-      // aplica el cooldown localmente, asi que esto solo frena trampas).
       if (s.deadUntil !== 0) return;
       if (now - s.lastAttackAt < ATTACK_COOLDOWN_MS) return;
 
       const targetId = attack.targetId as unknown as number;
-      if (targetId === s.characterId) return; // no autodaño
+      if (targetId === s.characterId) return;
 
-      // Objetivo NPC vs objetivo jugador.
       if (isNpcId(targetId)) {
         attackNpc(s, targetId, now);
         return;
       }
 
       const target = sessions.getByCharacterId(targetId);
-      if (!target || target.mapId !== s.mapId) return; // objetivo inexistente
-      if (target.deadUntil !== 0) return; // ya esta muerto
-      if (!isAdjacent(s.position, target.position)) return; // fuera de rango
-      // Friendly fire off: no se puede atacar a miembros de la misma party.
+      if (!target || target.mapId !== s.mapId) return;
+      if (target.deadUntil !== 0) return;
+      if (!isAdjacent(s.position, target.position)) return;
       if (s.partyId !== null && s.partyId === target.partyId) return;
+      // Zona segura: no PvP en ciudad
+      if (!canAttackPlayer(s.mapId, target.mapId)) return;
 
       s.lastAttackAt = now;
       sessions.touch(s.id);
 
-      // Arma del atacante suma daño; armadura del objetivo lo reduce (mín 1).
-      const amount = Math.max(1, rollDamage(s.level) + s.weaponBonus - target.armorDefense);
+      const defTotal = totalArmorDefense(target.equippedArmor, target.equippedHelmet, target.equippedShield);
+      const amount = rollDamage(s.level, s.weaponBonus, s.str, defTotal);
       target.hp = Math.max(0, target.hp - amount);
 
       const damage: Damage = {
@@ -614,12 +608,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: target.hp,
         maxHp: target.maxHp,
       };
-      // Broadcast al mapa: todos actualizan la barra de HP y ven el golpe.
       broadcastToMap(s.mapId, damage);
-      req.log.debug(
-        { attacker: s.characterId, target: target.characterId, amount, targetHp: target.hp },
-        "[ws] golpe",
-      );
 
       syncPartyStats(target);
       if (target.hp === 0) {
@@ -632,7 +621,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         broadcastToMap(target.mapId, death);
         req.log.info(
           { attacker: s.characterId, victim: target.characterId },
-          "[ws] muerte en combate",
+          "[ws] muerte en combate PvP",
         );
       }
     }
@@ -640,13 +629,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function attackNpc(s: Session, npcId: number, now: number): void {
       const npc = npcs.get(npcId);
       if (!npc || npc.mapId !== s.mapId || npc.deadUntil !== 0) return;
-      if (npc.type.merchant) return; // a los comerciantes no se los ataca
-      if (!isAdjacent(s.position, npc.position)) return; // fuera de rango
+      if (npc.type.merchant || npc.type.banker) return;
+      if (!isAdjacent(s.position, npc.position)) return;
 
       s.lastAttackAt = now;
       sessions.touch(s.id);
 
-      const amount = rollDamage(s.level) + s.weaponBonus;
+      const amount = rollDamage(s.level, s.weaponBonus, s.str, 0);
       npc.hp = Math.max(0, npc.hp - amount);
 
       const damage: Damage = {
@@ -665,7 +654,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId };
         broadcastToMap(npc.mapId, death);
 
-        // Loot: oro directo al matador + items al suelo (según drop table).
         const gold = rollNpcGold(npc.type);
         if (gold > 0) s.gold += gold;
         for (const drop of npc.type.drops) {
@@ -682,9 +670,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           }
         }
 
-        // XP: si el atacante está en party, se reparte entre los miembros del
-        // mismo mapa. Cada miembro recibe xpReward / N (con N = tamaño del grupo).
-        // En solitario el comportamiento es el mismo de antes.
         const party = partyRegistry.getByCharacter(s.characterId);
         const xpReceivers: Session[] = party
           ? Array.from(party.members.keys())
@@ -697,23 +682,25 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           recv.xp = gain.totalXp;
           if (gain.leveledUp) {
             recv.level = gain.level;
-            recv.maxHp = maxHpForLevel(recv.level);
+            recv.statPoints += STAT_POINTS_PER_LEVEL;
+            // Recalcular HP/MP máximos con la clase del personaje
+            const classDef = getClass(recv.classId);
+            if (classDef) {
+              recv.maxHp = calcMaxHp(classDef, recv.level, recv.con);
+              recv.maxMana = calcMaxMp(classDef, recv.level, recv.int_);
+            } else {
+              recv.maxHp = maxHpForLevel(recv.level);
+            }
             recv.hp = recv.maxHp;
+            recv.mana = recv.maxMana;
             if (party) partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
           }
           sendStatsUpdate(recv);
         }
         if (party) broadcastPartyUpdate(party.id);
-        sendInventoryUpdate(s); // cambió el oro
+        sendInventoryUpdate(s);
         req.log.info(
-          {
-            attacker: s.characterId,
-            npc: npc.id,
-            xpReward: npc.type.xpReward,
-            xpShare,
-            partySize: xpReceivers.length,
-            gold,
-          },
+          { attacker: s.characterId, npc: npc.id, xpShare, gold },
           "[ws] NPC eliminado",
         );
         npcKillsTotal.inc();
@@ -738,12 +725,17 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (s.deadUntil !== 0) return;
       const removed = removeFromSlot(s.inventory, pkt.slot, pkt.qty);
       if (!removed) return;
-      // Al soltar un item equipado, dejamos de tenerlo puesto.
       if (s.equippedWeapon === removed.item && countItem(removed.slots, removed.item) === 0) {
         s.equippedWeapon = null;
       }
       if (s.equippedArmor === removed.item && countItem(removed.slots, removed.item) === 0) {
         s.equippedArmor = null;
+      }
+      if (s.equippedHelmet === removed.item && countItem(removed.slots, removed.item) === 0) {
+        s.equippedHelmet = null;
+      }
+      if (s.equippedShield === removed.item && countItem(removed.slots, removed.item) === 0) {
+        s.equippedShield = null;
       }
       s.inventory = removed.slots;
       const g = groundItems.spawn(s.mapId, s.position, removed.item, removed.qty);
@@ -772,23 +764,67 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       if (def.type === "potion") {
         if (s.deadUntil !== 0) return;
-        const healed = Math.min(s.maxHp, s.hp + (def.heal ?? 0));
-        if (healed === s.hp) return; // ya está al máximo, no gastar la poción
-        s.hp = healed;
-        const removed = removeItem(s.inventory, pkt.item, 1);
-        if (removed) s.inventory = removed;
-        sendStatsUpdate(s); // actualiza HP en el HUD del dueño
-        sendInventoryUpdate(s);
+        if (def.heal !== undefined && def.heal > 0) {
+          const healed = Math.min(s.maxHp, s.hp + def.heal);
+          if (healed === s.hp) return;
+          s.hp = healed;
+          const removed = removeItem(s.inventory, pkt.item, 1);
+          if (removed) s.inventory = removed;
+          sendStatsUpdate(s);
+          sendInventoryUpdate(s);
+        } else if (def.manaHeal !== undefined && def.manaHeal > 0) {
+          if (s.maxMana === 0) return; // clase sin maná
+          const restored = Math.min(s.maxMana, s.mana + def.manaHeal);
+          if (restored === s.mana) return;
+          s.mana = restored;
+          const removed = removeItem(s.inventory, pkt.item, 1);
+          if (removed) s.inventory = removed;
+          sendStatsUpdate(s);
+          sendInventoryUpdate(s);
+        }
       } else if (def.type === "weapon") {
         s.equippedWeapon = pkt.item;
-        sendInventoryUpdate(s); // recomputa el bono de arma
+        sendInventoryUpdate(s);
       } else if (def.type === "armor") {
         s.equippedArmor = pkt.item;
+        sendInventoryUpdate(s);
+      } else if (def.type === "helmet") {
+        s.equippedHelmet = pkt.item;
+        sendInventoryUpdate(s);
+      } else if (def.type === "shield") {
+        s.equippedShield = pkt.item;
         sendInventoryUpdate(s);
       }
     }
 
-    // True si hay un comerciante del mapa a <= 3 tiles del jugador.
+    function handleAllocStat(s: Session, pkt: AllocStatRequest): void {
+      if (s.statPoints <= 0) return;
+      s.statPoints -= 1;
+      switch (pkt.stat) {
+        case "str": s.str += 1; break;
+        case "agi": s.agi += 1; break;
+        case "int": s.int_ += 1; break;
+        case "con":
+          s.con += 1;
+          {
+            const classDef = getClass(s.classId);
+            if (classDef) {
+              const newMax = calcMaxHp(classDef, s.level, s.con);
+              s.maxHp += newMax - s.maxHp; // aplica solo la diferencia
+              s.maxHp = newMax;
+            }
+          }
+          break;
+        case "car": s.car += 1; break;
+      }
+      // Re-calcular MP si sube INT
+      if (pkt.stat === "int") {
+        const classDef = getClass(s.classId);
+        if (classDef) s.maxMana = calcMaxMp(classDef, s.level, s.int_);
+      }
+      sendStatsUpdate(s);
+    }
+
     function nearMerchant(s: Session): boolean {
       for (const n of npcs.inMap(s.mapId)) {
         if (!n.type.merchant) continue;
@@ -845,7 +881,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const removed = removeItem(s.inventory, def.id, 1);
       if (!removed) return;
       s.inventory = removed;
-      s.gold += Math.floor(def.value / 2); // se vende a mitad de precio
+      s.gold += Math.floor(def.value / 2);
       sendInventoryUpdate(s);
     }
 
@@ -877,10 +913,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const ok = bankDepositItem(s, pkt.item, pkt.qty);
       if (!ok) return;
       sendBankUpdate(s);
-      req.log.info(
-        { char: s.characterId, item: pkt.item, qty: pkt.qty },
-        "[banco] depósito item",
-      );
       bankOpsTotal.inc({ op: "deposit_item" });
     }
 
@@ -889,10 +921,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const ok = bankWithdrawItem(s, pkt.item, pkt.qty);
       if (!ok) return;
       sendBankUpdate(s);
-      req.log.info(
-        { char: s.characterId, item: pkt.item, qty: pkt.qty },
-        "[banco] retiro item",
-      );
       bankOpsTotal.inc({ op: "withdraw_item" });
     }
 
@@ -901,7 +929,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const ok = bankDepositGold(s, pkt.amount);
       if (!ok) return;
       sendBankUpdate(s);
-      req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] depósito oro");
       bankOpsTotal.inc({ op: "deposit_gold" });
     }
 
@@ -910,7 +937,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const ok = bankWithdrawGold(s, pkt.amount);
       if (!ok) return;
       sendBankUpdate(s);
-      req.log.info({ char: s.characterId, amount: pkt.amount }, "[banco] retiro oro");
       bankOpsTotal.inc({ op: "withdraw_gold" });
     }
 
@@ -955,8 +981,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const targetId = pkt.targetId as unknown as number;
       const target = sessions.getByCharacterId(targetId);
       if (!target || target.mapId !== s.mapId) return;
-      if (target.partyId) return; // ya en una party
-      if (partyRegistry.getInvite(targetId)) return; // ya tiene invitación pendiente
+      if (target.partyId) return;
+      if (partyRegistry.getInvite(targetId)) return;
 
       partyRegistry.addInvite(s.characterId, s.characterName, targetId);
       const inv: PartyInviteReceived = {
@@ -965,10 +991,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         inviterName: s.characterName,
       };
       send(target.socket, inv);
-      req.log.info(
-        { inviter: s.characterId, invited: targetId },
-        "[party] invitación enviada",
-      );
     }
 
     function handlePartyAccept(s: Session): void {
@@ -978,16 +1000,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       const inviterSession = sessions.getByCharacterId(invite.inviterId);
 
-      // El invitador puede o no estar en una party ya.
       let party = partyRegistry.getByCharacter(invite.inviterId);
       if (!party) {
-        // Crear party nueva con el invitador como líder.
         if (inviterSession) {
           party = partyRegistry.create(invite.inviterId, invite.inviterName);
           partyRegistry.updateMemberStats(invite.inviterId, inviterSession.hp, inviterSession.maxHp);
           inviterSession.partyId = party.id;
         } else {
-          return; // invitador se desconectó
+          return;
         }
       }
 
@@ -995,10 +1015,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       partyRegistry.updateMemberStats(s.characterId, s.hp, s.maxHp);
       s.partyId = party.id;
       broadcastPartyUpdate(party.id);
-      req.log.info(
-        { party: party.id, member: s.characterId },
-        "[party] miembro se unió",
-      );
     }
 
     // ── Trade (E-4.4) ────────────────────────────────────────────────────────
@@ -1034,12 +1050,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function handleTradeRequest(s: Session, pkt: TradeRequestMsg): void {
       if (s.deadUntil !== 0) return;
-      if (s.tradeId) return; // ya en trade
+      if (s.tradeId) return;
       const targetId = pkt.targetId as unknown as number;
       if (targetId === s.characterId) return;
       const target = sessions.getByCharacterId(targetId);
       if (!target || target.mapId !== s.mapId) return;
-      if (target.tradeId) return; // target ya en trade
+      if (target.tradeId) return;
 
       tradeRegistry.addInvite(s.characterId, s.characterName, targetId);
       const inv: TradeInviteReceived = {
@@ -1048,10 +1064,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         initiatorName: s.characterName,
       };
       send(target.socket, inv);
-      req.log.info(
-        { initiator: s.characterId, target: targetId },
-        "[trade] solicitud enviada",
-      );
     }
 
     function handleTradeAccept(s: Session): void {
@@ -1068,10 +1080,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       s.tradeId = trade.id;
 
       sendTradeUpdateForTrade(trade.id);
-      req.log.info(
-        { trade: trade.id, playerA: trade.playerA, playerB: trade.playerB },
-        "[trade] trade iniciado",
-      );
     }
 
     function handleTradeAddItem(s: Session, pkt: TradeAddItemMsg): void {
@@ -1082,7 +1090,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const isA = s.characterId === trade.playerA;
       const offer = isA ? trade.offerA : trade.offerB;
 
-      // Resetear confirmaciones al modificar la oferta.
       trade.offerA.confirmed = false;
       trade.offerB.confirmed = false;
       offer.confirmed = false;
@@ -1091,7 +1098,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!def) return;
       if (countItem(s.inventory, pkt.item) < pkt.qty) return;
 
-      // Agregar o incrementar en la oferta.
       const existing = offer.items.find((sl) => sl.item === pkt.item);
       if (existing) {
         const newQty = existing.qty + pkt.qty;
@@ -1130,7 +1136,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       offer.confirmed = true;
       sendTradeUpdateForTrade(trade.id);
 
-      // Si ambos confirmaron, ejecutar el swap.
       if (!trade.offerA.confirmed || !trade.offerB.confirmed) return;
 
       const sA = sessions.getByCharacterId(trade.playerA);
@@ -1140,23 +1145,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      // Validar que ambos siguen teniendo los items/oro ofrecidos.
       for (const slot of trade.offerA.items) {
         if (countItem(sA.inventory, slot.item) < slot.qty) {
-          cancelTrade(trade.id, "OFFER_INVALID");
-          return;
+          cancelTrade(trade.id, "OFFER_INVALID"); return;
         }
       }
       if (sA.gold < trade.offerA.gold) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
       for (const slot of trade.offerB.items) {
         if (countItem(sB.inventory, slot.item) < slot.qty) {
-          cancelTrade(trade.id, "OFFER_INVALID");
-          return;
+          cancelTrade(trade.id, "OFFER_INVALID"); return;
         }
       }
       if (sB.gold < trade.offerB.gold) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
 
-      // Swap atómico (síncrono, Node.js garantiza no-interrupción — ADR-007).
       for (const slot of trade.offerA.items) {
         sA.inventory = removeItem(sA.inventory, slot.item, slot.qty) ?? sA.inventory;
         sB.inventory = addItem(sB.inventory, slot.item, slot.qty);
@@ -1179,19 +1180,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       send(sB.socket, completePkt);
       sendInventoryUpdate(sA);
       sendInventoryUpdate(sB);
-
-      req.log.info(
-        {
-          tradeId: trade.id,
-          playerA: trade.playerA,
-          playerB: trade.playerB,
-          itemsA: trade.offerA.items,
-          goldA: trade.offerA.gold,
-          itemsB: trade.offerB.items,
-          goldB: trade.offerB.gold,
-        },
-        "[trade] completado",
-      );
       tradeCompletedTotal.inc();
     }
 
@@ -1203,20 +1191,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function handleChat(s: Session, chat: ChatSend): void {
       const now = Date.now();
       if (isOnChatCooldown(s.lastChatAt, now)) {
-        const err: ChatError = {
-          op: ServerToClientOp.ChatError,
-          reason: "RATE_LIMITED",
-        };
+        const err: ChatError = { op: ServerToClientOp.ChatError, reason: "RATE_LIMITED" };
         send(s.socket, err);
         return;
       }
 
       const validation = validateChatText(chat.text);
       if (!validation.ok) {
-        const err: ChatError = {
-          op: ServerToClientOp.ChatError,
-          reason: validation.reason,
-        };
+        const err: ChatError = { op: ServerToClientOp.ChatError, reason: validation.reason };
         send(s.socket, err);
         return;
       }
@@ -1231,8 +1213,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         text: validation.text,
         timestamp: now,
       };
-      // Por ahora chat global del mapa (sala unica por mapa). Cuando
-      // tengamos rango/canales (Fase 3+), filtrar aqui.
       broadcastToMap(s.mapId, out);
       chatMessagesTotal.inc();
     }
@@ -1259,14 +1239,25 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         .select({
           id: characters.id,
           name: characters.name,
+          classId: characters.classId,
           level: characters.level,
           xp: characters.xp,
           hp: characters.hp,
           maxHp: characters.maxHp,
+          mana: characters.mana,
+          maxMana: characters.maxMana,
+          str: characters.str,
+          agi: characters.agi,
+          int_: characters.int_,
+          con: characters.con,
+          car: characters.car,
+          statPoints: characters.statPoints,
           gold: characters.gold,
           inventory: characters.inventory,
           equippedWeapon: characters.equippedWeapon,
           equippedArmor: characters.equippedArmor,
+          equippedHelmet: characters.equippedHelmet,
+          equippedShield: characters.equippedShield,
           mapId: characters.mapId,
           posX: characters.posX,
           posY: characters.posY,
@@ -1293,10 +1284,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       let spawnInfo: { map: MapState; position: Vector2 };
       try {
-        spawnInfo = resolveSpawn(character.mapId, {
-          x: character.posX,
-          y: character.posY,
-        });
+        spawnInfo = resolveSpawn(character.mapId, { x: character.posX, y: character.posY });
       } catch {
         sendLoginResponse(socket, false, "MAP_NOT_FOUND");
         socket.close(CLOSE_AUTH_FAILED, "MAP_NOT_FOUND");
@@ -1312,19 +1300,36 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         map.id,
         spawnPos,
       );
+
       session.direction = parseDirection(character.direction);
+      session.classId = character.classId;
       session.level = character.level;
       session.xp = character.xp;
-      // maxHp se deriva del nivel (fuente de verdad) para evitar drift.
-      session.maxHp = maxHpForLevel(character.level);
-      // Si el personaje quedo guardado con HP <= 0 (desconecto muerto), lo
-      // revivimos al loguear con HP completo. Asi nunca entra "muerto eterno".
-      session.hp =
-        character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
+      session.str = character.str;
+      session.agi = character.agi;
+      session.int_ = character.int_;
+      session.con = character.con;
+      session.car = character.car;
+      session.statPoints = character.statPoints;
+
+      // Recalcular HP/MP máximos desde la clase (fuente de verdad)
+      const classDef = getClass(session.classId);
+      if (classDef) {
+        session.maxHp = calcMaxHp(classDef, session.level, session.con);
+        session.maxMana = calcMaxMp(classDef, session.level, session.int_);
+      } else {
+        session.maxHp = maxHpForLevel(character.level);
+        session.maxMana = 0;
+      }
+      session.hp = character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
+      session.mana = Math.min(character.mana, session.maxMana);
+
       session.gold = character.gold;
-      session.inventory = character.inventory.map((s) => ({ ...s }));
+      session.inventory = character.inventory.map((sl) => ({ ...sl }));
       session.equippedWeapon = character.equippedWeapon;
       session.equippedArmor = character.equippedArmor;
+      session.equippedHelmet = character.equippedHelmet;
+      session.equippedShield = character.equippedShield;
       session.bodyId = character.bodyId;
       session.headId = character.headId;
       session.bankInventory = character.bankInventory.map((sl) => ({ ...sl }));
@@ -1335,13 +1340,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         id: character.id as EntityId,
         name: character.name,
         level: character.level,
+        classId: character.classId,
       });
 
-      // Mapa + entidades visibles al conectar. El jugador ya fue agregado a
-      // sessions (sessions.create arriba), así que buildMapDataPacket lo incluye.
       send(socket, buildMapDataPacket(map));
 
-      // Avisamos al resto del mapa que aparecio un nuevo personaje.
       const spawn: EntitySpawn = {
         op: ServerToClientOp.EntitySpawn,
         id: session.characterId as EntityId,
@@ -1357,7 +1360,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
       broadcastToMap(map.id, spawn, session.id);
 
-      // Stats e inventario iniciales para el HUD del jugador.
       sendStatsUpdate(session);
       sendInventoryUpdate(session);
 
@@ -1366,11 +1368,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           sessionId: session.id,
           characterId: character.id,
           characterName: character.name,
+          classId: character.classId,
           mapId: map.id,
-          spawn: spawnPos,
-          persisted: { mapId: character.mapId, x: character.posX, y: character.posY },
         },
-        "[ws] handshake OK + MAP_DATA + SPAWN broadcast",
+        "[ws] handshake OK",
       );
     }
   });

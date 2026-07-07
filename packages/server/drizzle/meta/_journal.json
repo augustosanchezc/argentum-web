@@ -57,6 +57,13 @@
       "when": 1751760000000,
       "tag": "0007_banco",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1751846400000,
+      "tag": "0008_classes",
+      "breakpoints": true
     }
   ]
 }

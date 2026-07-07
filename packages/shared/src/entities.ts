@@ -15,4 +15,5 @@ export interface CharacterSummary {
   readonly id: EntityId;
   readonly name: string;
   readonly level: number;
+  readonly classId: number;
 }
