@@ -10,6 +10,7 @@ export interface CharacterSummary {
   id: number;
   name: string;
   level: number;
+  classId: number;
   createdAt: string;
 }
 
@@ -76,9 +77,9 @@ export function listCharacters(): Promise<CharactersListResponse> {
   return jsonRequest<CharactersListResponse>("/characters/");
 }
 
-export function createCharacter(name: string): Promise<CharacterSummary> {
+export function createCharacter(name: string, classId = 1): Promise<CharacterSummary> {
   return jsonRequest<CharacterSummary>("/characters/", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, classId }),
   });
 }

@@ -26,6 +26,8 @@ export enum ClientToServerOp {
   BankWithdrawItem = 0x48,
   BankDepositGold = 0x49,
   BankWithdrawGold = 0x4a,
+  // Stats (Fase 5)
+  AllocStat = 0x4c,
   // Party (E-4.3)
   PartyInvite = 0x60,
   PartyAccept = 0x61,
@@ -226,6 +228,23 @@ export interface StatsUpdate {
   readonly xpForNextLevel: number;
   readonly hp: number;
   readonly maxHp: number;
+  // Maná (0 para clases sin maná como Guerrero o Arquero)
+  readonly mana: number;
+  readonly maxMana: number;
+  // Stats primarios
+  readonly str: number;
+  readonly agi: number;
+  readonly int: number;
+  readonly con: number;
+  readonly car: number;
+  readonly statPoints: number;
+  readonly classId: number;
+}
+
+// C→S: el jugador asigna 1 punto de stat libre (ganado al subir de nivel).
+export interface AllocStatRequest {
+  readonly op: ClientToServerOp.AllocStat;
+  readonly stat: "str" | "agi" | "int" | "con" | "car";
 }
 
 // -- Items, inventario y tienda (Fase 3, E-3.2/3.3/3.4) --
@@ -297,6 +316,9 @@ export interface InventoryUpdate {
   readonly slots: ReadonlyArray<InventorySlot>;
   readonly equippedWeapon: number | null;
   readonly equippedArmor: number | null;
+  // Nuevos slots de equipo (Fase 5)
+  readonly equippedHelmet: number | null;
+  readonly equippedShield: number | null;
 }
 
 // S→C: abrir la ventana de tienda con la oferta del comerciante.
@@ -459,6 +481,7 @@ export type ClientPacket =
   | TradeSetGoldMsg
   | TradeConfirmMsg
   | TradeCancelMsg
+  | AllocStatRequest
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse

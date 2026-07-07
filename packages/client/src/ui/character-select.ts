@@ -5,6 +5,7 @@ import {
   listCharacters,
 } from "../api";
 import { clearToken } from "../auth";
+import { CLASSES } from "@ao/shared";
 
 const ERROR_MESSAGES: Record<string, string> = {
   NAME_TAKEN: "Ese nombre ya está tomado.",
@@ -59,13 +60,15 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
     }
   }
 
+  let selectedClassId = 1;
+
   async function onCreate(name: string, input: HTMLInputElement, btn: HTMLButtonElement): Promise<void> {
     if (!name.trim()) return;
     btn.disabled = true;
     btn.textContent = "...";
     setError(null);
     try {
-      const created = await createCharacter(name.trim());
+      const created = await createCharacter(name.trim(), selectedClassId);
       characters = [...characters, created];
       selectedId = created.id;
       input.value = "";
@@ -99,13 +102,15 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
 
     const charsHtml = characters
       .map(
-        (c) => `
+        (c) => {
+          const cls = CLASSES[c.classId ?? 1];
+          return `
           <div class="char-card${c.id === selectedId ? " selected" : ""}" data-id="${c.id}">
             <div class="char-name">${escapeHtml(c.name)}</div>
-            <div class="char-level">Nivel ${c.level}</div>
+            <div class="char-level">Nivel ${c.level.toString()} ${cls ? `· ${cls.name}` : ""}</div>
             <div class="char-meta">creado ${new Date(c.createdAt).toLocaleDateString("es")}</div>
-          </div>
-        `,
+          </div>`;
+        },
       )
       .join("");
 
@@ -135,6 +140,15 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
         <form class="create-form" id="create-form" novalidate>
           <input id="create-name" type="text" minlength="3" maxlength="16" required
                  placeholder="nombre del personaje (3-16, sin espacios)" autocomplete="off" />
+          <div class="class-selector" id="class-selector">
+            ${Object.values(CLASSES).map((cls) => `
+              <div class="class-option${cls.id === selectedClassId ? " selected" : ""}"
+                   data-class-id="${cls.id.toString()}"
+                   title="${escapeHtml(cls.description)}">
+                <div class="class-option-name">${escapeHtml(cls.name)}</div>
+                <div class="class-option-desc">${escapeHtml(cls.description)}</div>
+              </div>`).join("")}
+          </div>
           <button type="submit" class="button" id="create-btn">Crear</button>
         </form>
       `
@@ -168,6 +182,17 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
       createForm.addEventListener("submit", (ev) => {
         ev.preventDefault();
         void onCreate(input.value, input, btn);
+      });
+      card.querySelectorAll<HTMLDivElement>(".class-option").forEach((opt) => {
+        opt.addEventListener("click", () => {
+          const id = Number.parseInt(opt.dataset.classId ?? "1", 10);
+          if (!Number.isNaN(id)) {
+            selectedClassId = id;
+            card.querySelectorAll<HTMLDivElement>(".class-option").forEach((o) => {
+              o.classList.toggle("selected", Number.parseInt(o.dataset.classId ?? "0", 10) === id);
+            });
+          }
+        });
       });
     }
 

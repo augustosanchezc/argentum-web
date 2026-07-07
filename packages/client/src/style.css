@@ -858,3 +858,121 @@ h3 {
 .ao-trade-invite--visible { display: flex; }
 .ao-trade-invite__accept { background: var(--emerald); border: none; color: #fff; border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 .ao-trade-invite__decline { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
+
+/* ── Stats Panel (Fase 5) ── */
+.ao-stats-panel {
+  position: fixed;
+  top: 60px;
+  left: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--gold-soft);
+  border-radius: 6px;
+  padding: 10px 12px;
+  min-width: 200px;
+  z-index: 120;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+}
+.ao-stats-panel--open { display: flex; }
+.ao-stats-panel__title {
+  color: var(--gold-bright);
+  font-weight: 700;
+  font-size: 14px;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 6px;
+  margin-bottom: 2px;
+}
+.ao-stats-panel__rows { display: flex; flex-direction: column; gap: 4px; }
+.ao-stats-panel__footer { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; border-top: 1px solid var(--gold-soft); padding-top: 6px; }
+.stat-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+.stat-label { flex: 1; color: var(--text-dim); }
+.stat-value { font-weight: 600; color: var(--parchment); min-width: 28px; text-align: right; }
+.stat-alloc-btn {
+  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
+  color: var(--bg);
+  border: none;
+  border-radius: 3px;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.stat-alloc-btn:hover { filter: brightness(1.2); }
+.stat-row--hp .stat-value { color: #4cb87e; }
+.stat-row--mp .stat-value { color: #4a8cda; }
+
+/* ── Mana bar (bajo HP bar) ── */
+/* Rendered in PixiJS, styles here are for reference only */
+
+/* ── Level Up Popup ── */
+.levelup-popup {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: linear-gradient(135deg, #2a1f00, #1a1208);
+  border: 2px solid var(--gold-bright);
+  border-radius: 8px;
+  color: var(--gold-bright);
+  font-family: Georgia, serif;
+  font-size: 22px;
+  font-weight: bold;
+  padding: 14px 28px;
+  text-align: center;
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.levelup-popup--visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ── Class Selector (Creación de personaje) ── */
+.class-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 10px 0;
+}
+.class-option {
+  background: var(--bg-soft);
+  border: 1px solid var(--gold-soft);
+  border-radius: 5px;
+  padding: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.class-option:hover {
+  border-color: var(--gold-dim);
+  background: rgba(212, 175, 55, 0.08);
+}
+.class-option.selected {
+  border-color: var(--gold-bright);
+  background: rgba(212, 175, 55, 0.15);
+}
+.class-option-name {
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--gold-bright);
+  margin-bottom: 3px;
+}
+.class-option-desc {
+  font-size: 10px;
+  color: var(--text-dim);
+  line-height: 1.3;
+}

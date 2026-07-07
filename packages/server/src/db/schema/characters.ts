@@ -20,30 +20,42 @@ export const characters = pgTable(
       .notNull()
       .references(() => accounts.id, { onDelete: "cascade" }),
     name: varchar("name", { length: 32 }).notNull(),
+    // Clase del personaje (1=Guerrero, 2=Mago, 3=Clérigo, 4=Arquero, 5=Asesino, 6=Druida)
+    classId: integer("class_id").notNull().default(1),
     level: integer("level").notNull().default(1),
-    // Experiencia acumulada total (E-3.5).
     xp: integer("xp").notNull().default(0),
-    // Stats de combate (E-2.2). Valores por defecto de nivel 1.
+    // HP / MP
     hp: integer("hp").notNull().default(30),
     maxHp: integer("max_hp").notNull().default(30),
-    // Economía e inventario (E-3.2/3.4). Oro inicial para probar la tienda.
+    mana: integer("mana").notNull().default(0),
+    maxMana: integer("max_mana").notNull().default(0),
+    // Stats primarios (inicializados según la clase al crear)
+    str: integer("str").notNull().default(18),
+    agi: integer("agi").notNull().default(13),
+    int_: integer("int").notNull().default(12),
+    con: integer("con").notNull().default(17),
+    car: integer("car").notNull().default(8),
+    // Puntos de stat sin asignar (3 por nivel)
+    statPoints: integer("stat_points").notNull().default(0),
+    // Economía e inventario
     gold: integer("gold").notNull().default(100),
     inventory: jsonb("inventory")
       .$type<InventorySlot[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    // Slots de equipo: arma, armadura, casco, escudo
     equippedWeapon: integer("equipped_weapon"),
     equippedArmor: integer("equipped_armor"),
+    equippedHelmet: integer("equipped_helmet"),
+    equippedShield: integer("equipped_shield"),
     mapId: integer("map_id").notNull().default(1),
     posX: integer("pos_x").notNull().default(25),
     posY: integer("pos_y").notNull().default(25),
     direction: varchar("direction", { length: 8 }).notNull().default("south"),
-    // Sprite del personaje del AO original (Personajes.ind / Cabezas.ind).
-    // Body 1 y head 1 son el aventurero humano clasico. La customizacion
-    // visual entra en Fase 4 (creacion de personaje avanzada).
+    // Sprite del personaje (Personajes.ind / Cabezas.ind del AO original)
     bodyId: integer("body_id").notNull().default(1),
     headId: integer("head_id").notNull().default(1),
-    // Banco (E-4.2): inventario y oro guardados en el banco del personaje.
+    // Banco (E-4.2)
     bankInventory: jsonb("bank_inventory")
       .$type<InventorySlot[]>()
       .notNull()

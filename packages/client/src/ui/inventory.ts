@@ -14,6 +14,8 @@ export interface InventoryData {
   slots: ReadonlyArray<InventorySlot>;
   equippedWeapon: number | null;
   equippedArmor: number | null;
+  equippedHelmet?: number | null;
+  equippedShield?: number | null;
 }
 
 // Coordenadas de un sprite dentro del atlas del AO. Devuelto por Tileset.entry
@@ -72,11 +74,16 @@ export function mountInventory(
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
 
   let open = false;
-  let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null };
+  let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null, equippedHelmet: null, equippedShield: null };
   let draggingFrom: number | null = null;
 
   function isEquipped(item: number): boolean {
-    return last.equippedWeapon === item || last.equippedArmor === item;
+    return (
+      last.equippedWeapon === item ||
+      last.equippedArmor === item ||
+      last.equippedHelmet === item ||
+      last.equippedShield === item
+    );
   }
 
   function render(): void {

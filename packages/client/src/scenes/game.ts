@@ -5,6 +5,7 @@ import {
   ITEMS,
   PROTOCOL_VERSION,
   ServerToClientOp,
+  type AllocStatRequest,
   type AnyPacket,
   type AttackRequest,
   type BankDepositGoldRequest,
@@ -64,6 +65,7 @@ import { mountInventory, type InventoryHandle } from "../ui/inventory";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
+import { mountStatsPanel, type StatsPanelHandle } from "../ui/stats-panel";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
 import { mountTrade, type TradeHandle } from "../ui/trade";
 import { Personajes, type CharDirection } from "../world/personajes";
@@ -249,6 +251,26 @@ export async function startGameScene(
   hpBarText.anchor.set(0.5);
   app.stage.addChild(hpBarBg, hpBarFg, hpBarText);
 
+  // Barra de maná, justo debajo de la barra de HP (solo visible si maxMana>0).
+  const MP_BAR_H = 10;
+  const mpBarBg = new Graphics();
+  const mpBarFg = new Graphics();
+  const mpBarText = new Text({
+    text: "",
+    style: new TextStyle({
+      fill: "#8ab8f0",
+      fontFamily: "Consolas, monospace",
+      fontSize: 11,
+      fontWeight: "bold",
+      stroke: { color: "#0a0805", width: 2 },
+    }),
+  });
+  mpBarText.anchor.set(0.5);
+  mpBarBg.visible = false;
+  mpBarFg.visible = false;
+  mpBarText.visible = false;
+  app.stage.addChild(mpBarBg, mpBarFg, mpBarText);
+
   // Barra de XP + nivel, justo encima de la de HP.
   const XP_BAR_H = 8;
   const xpBarBg = new Graphics();
@@ -292,6 +314,15 @@ export async function startGameScene(
     hpBarFg.y = y;
     hpBarText.x = x + HP_BAR_W / 2;
     hpBarText.y = y + HP_BAR_H / 2;
+
+    // Mana bar just below HP bar
+    const mpY = y + HP_BAR_H + 4;
+    mpBarBg.x = x;
+    mpBarBg.y = mpY;
+    mpBarFg.x = x;
+    mpBarFg.y = mpY;
+    mpBarText.x = x + HP_BAR_W / 2;
+    mpBarText.y = mpY + MP_BAR_H / 2;
 
     const xpY = y - XP_BAR_H - 4;
     xpBarBg.x = x;
@@ -914,6 +945,8 @@ export async function startGameScene(
   let bank: BankHandle | null = null;
   let partyUi: PartyUiHandle | null = null;
   let tradeUi: TradeHandle | null = null;
+  let statsPanel: StatsPanelHandle | null = null;
+  let prevLevel = 1;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   const keysHeld = new Set<string>();
@@ -1084,6 +1117,12 @@ export async function startGameScene(
       e.preventDefault();
       if (bank?.isOpen()) bank.close();
       // Si está cerrado, el servidor lo abre al interactuar con el banquero.
+      return;
+    }
+    if (e.code === "KeyC") {
+      e.preventDefault();
+      const panel = root.querySelector<HTMLElement>(".ao-stats-panel");
+      if (panel) panel.classList.toggle("ao-stats-panel--open");
       return;
     }
     const dir = KEY_TO_DIRECTION[e.code];
@@ -1314,6 +1353,8 @@ export async function startGameScene(
       slots: p.slots,
       equippedWeapon: p.equippedWeapon,
       equippedArmor: p.equippedArmor,
+      equippedHelmet: p.equippedHelmet ?? null,
+      equippedShield: p.equippedShield ?? null,
     });
     bank?.setPlayerInventory(p.slots, p.gold);
     tradeUi?.setInventory(p.slots, p.gold);
@@ -1369,6 +1410,42 @@ export async function startGameScene(
     tradeUi?.closeTrade();
   }
 
+  function updateManaHud(mana: number, maxMana: number): void {
+    if (maxMana <= 0) {
+      mpBarBg.visible = false;
+      mpBarFg.visible = false;
+      mpBarText.visible = false;
+      return;
+    }
+    mpBarBg.visible = true;
+    mpBarFg.visible = true;
+    mpBarText.visible = true;
+    const frac = Math.max(0, Math.min(1, mana / maxMana));
+    mpBarBg.clear();
+    mpBarBg.rect(0, 0, HP_BAR_W, MP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
+    mpBarBg.rect(0, 0, HP_BAR_W, MP_BAR_H).stroke({ width: 1, color: 0x2a4d6b });
+    mpBarFg.clear();
+    if (frac > 0) {
+      mpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, MP_BAR_H - 2).fill({ color: 0x4a8cda });
+    }
+    mpBarText.text = `MP ${mana.toString()} / ${maxMana.toString()}`;
+  }
+
+  function showLevelUpPopup(level: number): void {
+    const popup = document.createElement("div");
+    popup.className = "levelup-popup";
+    popup.textContent = `¡Subiste de nivel! Nivel ${level.toString()}`;
+    root.appendChild(popup);
+    // Trigger animation then remove
+    requestAnimationFrame(() => {
+      popup.classList.add("levelup-popup--visible");
+      setTimeout(() => {
+        popup.classList.remove("levelup-popup--visible");
+        setTimeout(() => popup.remove(), 400);
+      }, 2600);
+    });
+  }
+
   function handleStatsUpdate(p: StatsUpdate): void {
     // Sincroniza HP propio (p. ej. curación al subir de nivel) y la barra de XP.
     const own = entityVisuals.get(character.id);
@@ -1379,6 +1456,12 @@ export async function startGameScene(
       updateSelfHud();
     }
     updateXpHud(p.level, p.xp, p.xpForNextLevel);
+    updateManaHud(p.mana ?? 0, p.maxMana ?? 0);
+    statsPanel?.update(p);
+    if (p.level > prevLevel) {
+      showLevelUpPopup(p.level);
+      prevLevel = p.level;
+    }
   }
 
   function handleRespawn(p: Respawn): void {
@@ -1598,6 +1681,11 @@ export async function startGameScene(
       },
     });
 
+    statsPanel = mountStatsPanel(root, (stat) => {
+      const pkt: AllocStatRequest = { op: ClientToServerOp.AllocStat, stat };
+      client?.send(pkt);
+    });
+
     touchControls = mountTouchControls(root, {
       onDirDown: (dir) => {
         keysHeld.add(DIR_TO_CODE[dir]);
@@ -1643,6 +1731,7 @@ export async function startGameScene(
       bank?.destroy();
       partyUi?.destroy();
       tradeUi?.destroy();
+      statsPanel?.destroy();
       touchControls?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });
