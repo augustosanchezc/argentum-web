@@ -28,6 +28,10 @@ export enum ClientToServerOp {
   BankWithdrawGold = 0x4a,
   // Stats (Fase 5)
   AllocStat = 0x4c,
+  // Habilidades
+  UseSkill = 0x4d,
+  // Whisper
+  WhisperSend = 0x21,
   // Party (E-4.3)
   PartyInvite = 0x60,
   PartyAccept = 0x61,
@@ -70,6 +74,12 @@ export enum ServerToClientOp {
   TradeUpdate = 0xe1,
   TradeComplete = 0xe2,
   TradeCancelled = 0xe3,
+  // Habilidades
+  SkillEffect = 0xf0,
+  // Whisper / chat privado
+  WhisperReceived = 0xa2,
+  // Criminal
+  CriminalUpdate = 0xb4,
 }
 
 export interface LoginRequest {
@@ -456,6 +466,60 @@ export interface TradeCancelled {
   readonly reason: string;
 }
 
+// -- Habilidades --
+
+// C→S: usar habilidad de clase (tecla 1 por defecto).
+export interface UseSkillRequest {
+  readonly op: ClientToServerOp.UseSkill;
+  readonly skillId: number;
+  readonly targetId?: EntityId; // para skills con objetivo
+}
+
+// S→C: resultado de una habilidad. Broadcast al mapa.
+export interface SkillEffect {
+  readonly op: ServerToClientOp.SkillEffect;
+  readonly skillId: number;
+  readonly casterId: EntityId;
+  readonly targetId?: EntityId;
+  // Para daño / curación: cuánto se aplicó
+  readonly amount?: number;
+  // Maná restante del lanzador (solo se envía al propio lanzador)
+  readonly newCasterMana?: number;
+  // HP del objetivo después del efecto
+  readonly newTargetHp?: number;
+  readonly newTargetMaxHp?: number;
+  // true si el DoT fue aplicado
+  readonly dotApplied?: boolean;
+}
+
+// -- Whisper --
+
+// C→S: mensaje privado a otro jugador.
+export interface WhisperSendRequest {
+  readonly op: ClientToServerOp.WhisperSend;
+  readonly targetName: string;
+  readonly text: string;
+}
+
+// S→C: whisper recibido (se envía tanto al emisor como al receptor).
+export interface WhisperReceived {
+  readonly op: ServerToClientOp.WhisperReceived;
+  readonly fromName: string;
+  readonly toName: string;
+  readonly text: string;
+  readonly outgoing: boolean; // true = lo envié yo, false = lo recibí
+  readonly timestamp: number;
+}
+
+// -- Criminal --
+
+// S→C: estado criminal del propio personaje cambió.
+export interface CriminalUpdate {
+  readonly op: ServerToClientOp.CriminalUpdate;
+  readonly criminal: boolean;
+  readonly expiresAt: number; // epoch ms (0 si no es criminal)
+}
+
 export type ClientPacket =
   | LoginRequest
   | MoveRequest
@@ -482,6 +546,8 @@ export type ClientPacket =
   | TradeConfirmMsg
   | TradeCancelMsg
   | AllocStatRequest
+  | UseSkillRequest
+  | WhisperSendRequest
   | DisconnectRequest;
 export type ServerPacket =
   | LoginResponse
@@ -507,5 +573,8 @@ export type ServerPacket =
   | TradeInviteReceived
   | TradeUpdate
   | TradeComplete
-  | TradeCancelled;
+  | TradeCancelled
+  | SkillEffect
+  | WhisperReceived
+  | CriminalUpdate;
 export type AnyPacket = ClientPacket | ServerPacket;

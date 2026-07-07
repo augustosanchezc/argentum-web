@@ -48,6 +48,11 @@ import {
   type TradeSetGoldMsg,
   type TradeUpdate,
   type UseItemRequest,
+  type UseSkillRequest,
+  type SkillEffect,
+  type WhisperSendRequest,
+  type WhisperReceived,
+  type CriminalUpdate,
   type Vector2,
   getItem,
 } from "@ao/shared";
@@ -90,6 +95,9 @@ import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel } from 
 import { getClass, STAT_POINTS_PER_LEVEL } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { canAttackPlayer } from "../world/zones.js";
+import { executeSkill } from "../world/skills.js";
+import { tickDots } from "../world/dots.js";
+import { setCriminal } from "../world/criminal.js";
 import { broadcastToMap } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import {
@@ -306,6 +314,28 @@ function sendInventoryUpdate(s: Session): void {
 // Usar sendStatsUpdate como callback — funciona porque es función declarada más arriba.
 setInterval(() => tickRegen(sendStatsUpdate), REGEN_INTERVAL_MS);
 
+setInterval(() => {
+  const dotResults = tickDots();
+  for (const r of dotResults) {
+    const target = sessions.getByCharacterId(r.targetId);
+    if (!target) continue;
+    const dmgPkt: Damage = {
+      op: ServerToClientOp.Damage,
+      attackerId: r.casterId as EntityId,
+      targetId: r.targetId as EntityId,
+      amount: r.damage,
+      hp: r.newHp,
+      maxHp: target.maxHp,
+    };
+    broadcastToMap(target.mapId, dmgPkt);
+    if (r.dead) {
+      target.deadUntil = Date.now() + RESPAWN_DELAY_MS;
+      const death: Death = { op: ServerToClientOp.Death, id: r.targetId as EntityId };
+      broadcastToMap(target.mapId, death);
+    }
+  }
+}, 1000);
+
 // eslint-disable-next-line @typescript-eslint/require-await
 export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get("/ws", { websocket: true }, (socket, req) => {
@@ -460,6 +490,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.TradeCancel:
           handleTradeCancel(session);
+          break;
+        case ClientToServerOp.UseSkill:
+          handleUseSkill(session, packet);
+          break;
+        case ClientToServerOp.WhisperSend:
+          handleWhisper(session, packet);
           break;
         default:
           req.log.warn({ op: (packet as { op: number }).op }, "[ws] opcode desconocido");
@@ -619,6 +655,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           id: target.characterId as EntityId,
         };
         broadcastToMap(target.mapId, death);
+        const prog = levelProgress(target.level, target.xp);
+        const xpPenalty = Math.floor(prog.xpIntoLevel * 0.1);
+        if (xpPenalty > 0) {
+          target.xp = Math.max(0, target.xp - xpPenalty);
+          sendStatsUpdate(target);
+        }
+        setCriminal(s);
+        const criminalPkt: CriminalUpdate = {
+          op: ServerToClientOp.CriminalUpdate,
+          criminal: true,
+          expiresAt: s.criminalUntil,
+        };
+        send(s.socket, criminalPkt);
         req.log.info(
           { attacker: s.characterId, victim: target.characterId },
           "[ws] muerte en combate PvP",
@@ -1186,6 +1235,63 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function handleTradeCancel(s: Session): void {
       if (!s.tradeId) return;
       cancelTrade(s.tradeId, "CANCELLED_BY_PLAYER");
+    }
+
+    function handleUseSkill(s: Session, pkt: UseSkillRequest): void {
+      if (s.deadUntil !== 0) return;
+      const targetId = pkt.targetId as unknown as number | undefined;
+      const target = targetId ? (sessions.getByCharacterId(targetId) ?? null) : null;
+      const result = executeSkill(s, target, pkt.skillId);
+      if (!result.ok) return;
+
+      const effect: SkillEffect = {
+        op: ServerToClientOp.SkillEffect,
+        skillId: pkt.skillId,
+        casterId: s.characterId as EntityId,
+        targetId: target ? (target.characterId as EntityId) : undefined,
+        amount: result.amount,
+        newCasterMana: result.newCasterMana,
+        newTargetHp: result.newTargetHp,
+        newTargetMaxHp: result.newTargetMaxHp,
+        dotApplied: result.dotApplied,
+      };
+      broadcastToMap(s.mapId, effect);
+      sendStatsUpdate(s);
+    }
+
+    function handleWhisper(s: Session, pkt: WhisperSendRequest): void {
+      if (s.deadUntil !== 0) return;
+      let targetSession: Session | undefined;
+      for (const sess of sessions.all()) {
+        if (sess.characterName.toLowerCase() === pkt.targetName.toLowerCase()) {
+          targetSession = sess;
+          break;
+        }
+      }
+      if (!targetSession) {
+        const err: ChatError = { op: ServerToClientOp.ChatError, reason: "PLAYER_NOT_FOUND" };
+        send(s.socket, err);
+        return;
+      }
+      const now = Date.now();
+      const outgoing: WhisperReceived = {
+        op: ServerToClientOp.WhisperReceived,
+        fromName: s.characterName,
+        toName: targetSession.characterName,
+        text: pkt.text,
+        outgoing: true,
+        timestamp: now,
+      };
+      send(s.socket, outgoing);
+      const incoming: WhisperReceived = {
+        op: ServerToClientOp.WhisperReceived,
+        fromName: s.characterName,
+        toName: targetSession.characterName,
+        text: pkt.text,
+        outgoing: false,
+        timestamp: now,
+      };
+      send(targetSession.socket, incoming);
     }
 
     function handleChat(s: Session, chat: ChatSend): void {

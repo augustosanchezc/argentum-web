@@ -9,6 +9,7 @@ import {
   type Vector2,
 } from "@ao/shared";
 import { isAdjacent, RESPAWN_DELAY_MS } from "../world/combat.js";
+import { isCriminal } from "../world/criminal.js";
 import { getMap, isWalkable } from "../world/maps.js";
 import { npcs, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
 import { broadcastToMap } from "./broadcast.js";
@@ -98,6 +99,7 @@ function nearestTarget(npc: NpcInstance): Session | null {
   let bestDist = Infinity;
   for (const s of sessions.inMap(npc.mapId)) {
     if (s.deadUntil !== 0) continue;
+    if (npc.type.isGuard && !isCriminal(s)) continue;
     const d = chebyshev(npc.position, s.position);
     if (d <= npc.type.aggroRadius && d < bestDist) {
       best = s;

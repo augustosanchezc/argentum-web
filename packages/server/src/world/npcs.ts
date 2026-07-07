@@ -29,6 +29,8 @@ export interface NpcType {
   readonly hostile: boolean;
   readonly merchant: boolean;
   readonly banker: boolean;
+  // Si true, solo ataca a jugadores criminales (guardias de ciudad)
+  readonly isGuard?: boolean;
   readonly goldMin: number;
   readonly goldMax: number;
   readonly drops: readonly NpcDrop[];
@@ -159,7 +161,17 @@ const NPC_TYPES: Record<string, NpcType> = {
     drops: [{ item: 11, chance: 0.4 }, { item: 15, chance: 0.3 }, { item: 18, chance: 0.25 }],
     shopOffers: [],
   },
-  // ── NPCs de servicio ──────────────────────────────────────────────────────
+  // ── NPCs de servicio y guardias ──────────────────────────────────────────
+  guardia: {
+    key: "guardia", name: "Guardia Real", graphic: 0,
+    bodyId: 1, headId: 2,
+    maxHp: 500, damageMin: 30, damageMax: 50,
+    attackCooldownMs: 800, aggroRadius: 15, moveCooldownMs: 300,
+    xpReward: 0, respawnMs: 0, hostile: true, isGuard: true, merchant: false, banker: false,
+    goldMin: 0, goldMax: 0,
+    drops: [],
+    shopOffers: [],
+  },
   mercader: {
     key: "mercader", name: "Mercader", graphic: 0,
     bodyId: 1, headId: 1,
@@ -213,6 +225,8 @@ const SPAWN_DEFS: Record<number, NpcSpawnDef[]> = {
     { typeKey: "lobo",     at: { x: 32, y: 26 } },
     { typeKey: "mercader", at: { x: 26, y: 25 } },
     { typeKey: "banquero", at: { x: 24, y: 25 } },
+    { typeKey: "guardia",  at: { x: 23, y: 24 } },
+    { typeKey: "guardia",  at: { x: 27, y: 24 } },
   ],
   // Mapa 2 — Sur de Ullathorpe: ratas, víboras, arañas
   2: [

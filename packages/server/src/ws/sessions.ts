@@ -54,9 +54,13 @@ export interface Session {
   partyId: string | null;
   // Trade (E-4.4)
   tradeId: string | null;
+  // Habilidades
+  lastSkillAt: number;
+  // Sistema criminal
+  criminalUntil: number;
 }
 
-class SessionRegistry {
+export class SessionRegistry {
   private readonly bySessionId = new Map<string, Session>();
   private readonly byCharacterId = new Map<number, Session>();
   private nextId = 1;
@@ -125,6 +129,8 @@ class SessionRegistry {
       bankGold: 0,
       partyId: null,
       tradeId: null,
+      lastSkillAt: 0,
+      criminalUntil: 0,
     };
     this.bySessionId.set(id, session);
     this.byCharacterId.set(characterId, session);
