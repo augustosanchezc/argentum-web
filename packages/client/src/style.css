@@ -976,3 +976,95 @@ h3 {
   color: var(--text-dim);
   line-height: 1.3;
 }
+
+/* ── Skill hotbar ── */
+.ao-skill-hotbar {
+  position: absolute;
+  bottom: 72px;
+  left: 16px;
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+.ao-skill-slot {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  background: rgba(10, 8, 5, 0.85);
+  border: 2px solid var(--gold-dim);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: auto;
+  cursor: default;
+}
+.ao-skill-slot--empty {
+  opacity: 0.35;
+}
+.ao-skill-slot__key {
+  position: absolute;
+  top: 3px;
+  left: 5px;
+  font-size: 10px;
+  font-family: Consolas, monospace;
+  color: var(--gold-dim);
+  font-weight: bold;
+  line-height: 1;
+}
+.ao-skill-slot__name {
+  font-size: 8px;
+  font-family: Consolas, monospace;
+  color: var(--parchment);
+  text-align: center;
+  line-height: 1.2;
+  padding: 0 3px;
+  margin-top: 4px;
+  word-break: break-word;
+}
+.ao-skill-slot__cd {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 0%;
+  background: rgba(0, 0, 0, 0.65);
+  pointer-events: none;
+  transition: none;
+}
+.ao-skill-slot--cooling {
+  border-color: var(--text-faint);
+}
+
+/* ── Criminal badge ── */
+.ao-criminal-badge {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--crimson);
+  color: #ffaaaa;
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--crimson-bright);
+  letter-spacing: 1px;
+  pointer-events: none;
+  animation: criminal-pulse 1.5s ease-in-out infinite;
+}
+@keyframes criminal-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+/* ── Whisper messages in chat ── */
+.ao-chat__msg--whisper {
+  color: #c09eff;
+}
+.ao-chat__msg--whisper .ao-chat__name {
+  color: #a07bd8;
+}

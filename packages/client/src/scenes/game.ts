@@ -1,13 +1,20 @@
 import { Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
 import {
   ClientToServerOp,
+  getClassSkill,
   getItem,
   ITEMS,
+  SKILLS,
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AllocStatRequest,
   type AnyPacket,
   type AttackRequest,
+  type CriminalUpdate,
+  type SkillEffect,
+  type UseSkillRequest,
+  type WhisperReceived,
+  type WhisperSendRequest,
   type BankDepositGoldRequest,
   type BankDepositItemRequest,
   type BankOpen,
@@ -65,6 +72,7 @@ import { mountInventory, type InventoryHandle } from "../ui/inventory";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
+import { mountSkillHotbar, type SkillHotbarHandle } from "../ui/skill-hotbar";
 import { mountStatsPanel, type StatsPanelHandle } from "../ui/stats-panel";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
 import { mountTrade, type TradeHandle } from "../ui/trade";
@@ -946,6 +954,8 @@ export async function startGameScene(
   let partyUi: PartyUiHandle | null = null;
   let tradeUi: TradeHandle | null = null;
   let statsPanel: StatsPanelHandle | null = null;
+  let skillHotbar: SkillHotbarHandle | null = null;
+  let classSkillId = 0; // ID de la skill del personaje (0 = sin skill conocida)
   let prevLevel = 1;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
@@ -1125,6 +1135,16 @@ export async function startGameScene(
       if (panel) panel.classList.toggle("ao-stats-panel--open");
       return;
     }
+    if (e.code === "Digit1" && classSkillId > 0) {
+      e.preventDefault();
+      const pkt: UseSkillRequest = {
+        op: ClientToServerOp.UseSkill,
+        skillId: classSkillId,
+        targetId: undefined,
+      };
+      client?.send(pkt);
+      return;
+    }
     const dir = KEY_TO_DIRECTION[e.code];
     if (!dir) return;
     e.preventDefault();
@@ -1281,6 +1301,15 @@ export async function startGameScene(
       case ServerToClientOp.TradeCancelled:
         handleTradeCancelled(packet);
         break;
+      case ServerToClientOp.SkillEffect:
+        handleSkillEffect(packet);
+        break;
+      case ServerToClientOp.WhisperReceived:
+        handleWhisperReceived(packet);
+        break;
+      case ServerToClientOp.CriminalUpdate:
+        handleCriminalUpdate(packet);
+        break;
       default:
         // LoginResponse ya lo consumio el handshake; nada mas que hacer.
         break;
@@ -1410,6 +1439,70 @@ export async function startGameScene(
     tradeUi?.closeTrade();
   }
 
+  function handleSkillEffect(p: SkillEffect): void {
+    const casterId = p.casterId as unknown as number;
+    const targetId = p.targetId as unknown as number | undefined;
+    const isSelfCaster = casterId === character.id;
+
+    // Mostramos floater y activamos cooldown visual cuando somos el lanzador.
+    if (isSelfCaster) {
+      const own = entityVisuals.get(character.id);
+      if (own) spawnFloater(own.renderX, own.renderY - 12, "✦", "#4a8cda");
+      if (classSkillId > 0) {
+        const skillDef = SKILLS[classSkillId];
+        if (skillDef) skillHotbar?.startCooldown(skillDef.cooldownMs);
+      }
+    }
+
+    // Si hay objetivo, mostrar efecto sobre él.
+    if (targetId !== undefined) {
+      const target = entityVisuals.get(targetId);
+      if (target && p.amount !== undefined && p.amount > 0) {
+        const isHeal =
+          p.newTargetHp !== undefined &&
+          p.newTargetHp > target.hp;
+        const color = isHeal ? "#7cfc8a" : "#da9c3f";
+        const label = isHeal ? `+${p.amount.toString()}` : `-${p.amount.toString()}`;
+        spawnFloater(target.renderX, target.renderY, label, color);
+        if (p.newTargetHp !== undefined && p.newTargetMaxHp !== undefined) {
+          target.hp = p.newTargetHp;
+          target.maxHp = p.newTargetMaxHp;
+          drawHpBar(target.hpBar, target.hp, target.maxHp);
+        }
+      }
+      if (p.dotApplied && target) {
+        spawnFloater(target.renderX, target.renderY + 4, "☠", "#7c3dbd");
+      }
+    }
+  }
+
+  function handleWhisperReceived(p: WhisperReceived): void {
+    chat?.appendMessage({
+      fromName: p.outgoing ? `→ ${p.toName}` : `← ${p.fromName}`,
+      text: p.text,
+      timestamp: p.timestamp,
+      isSelf: p.outgoing,
+      kind: "whisper",
+    });
+  }
+
+  // Criminal badge encima del propio personaje.
+  let criminalBadge: HTMLElement | null = null;
+
+  function handleCriminalUpdate(p: CriminalUpdate): void {
+    if (p.criminal) {
+      if (!criminalBadge) {
+        criminalBadge = document.createElement("div");
+        criminalBadge.className = "ao-criminal-badge";
+        criminalBadge.textContent = "CRIMINAL";
+        root.appendChild(criminalBadge);
+      }
+    } else {
+      criminalBadge?.remove();
+      criminalBadge = null;
+    }
+  }
+
   function updateManaHud(mana: number, maxMana: number): void {
     if (maxMana <= 0) {
       mpBarBg.visible = false;
@@ -1461,6 +1554,14 @@ export async function startGameScene(
     if (p.level > prevLevel) {
       showLevelUpPopup(p.level);
       prevLevel = p.level;
+    }
+    // Si la skill de clase no estaba seteada todavía, cargarla ahora.
+    if (p.classId && p.classId !== 0 && classSkillId === 0) {
+      const skill = getClassSkill(p.classId);
+      if (skill) {
+        classSkillId = skill.id;
+        skillHotbar?.setSkill(skill);
+      }
     }
   }
 
@@ -1704,6 +1805,17 @@ export async function startGameScene(
       selfCharacterName: character.name,
       onSend: (text) => {
         if (!client) return;
+        // /w nombre mensaje  →  whisper privado
+        const whisperMatch = /^\/w\s+(\S+)\s+(.+)$/i.exec(text);
+        if (whisperMatch) {
+          const pkt: WhisperSendRequest = {
+            op: ClientToServerOp.WhisperSend,
+            targetName: whisperMatch[1]!,
+            text: whisperMatch[2]!,
+          };
+          client.send(pkt);
+          return;
+        }
         const packet: ChatSend = {
           op: ClientToServerOp.ChatSend,
           text,
@@ -1711,6 +1823,8 @@ export async function startGameScene(
         client.send(packet);
       },
     });
+
+    skillHotbar = mountSkillHotbar(root);
   }
 
   console.log(`[ao-client] sesión iniciada para ${character.name} (id=${character.id})`);
@@ -1732,6 +1846,8 @@ export async function startGameScene(
       partyUi?.destroy();
       tradeUi?.destroy();
       statsPanel?.destroy();
+      skillHotbar?.destroy();
+      criminalBadge?.remove();
       touchControls?.destroy();
       client?.destroy();
       app.destroy(true, { children: true });

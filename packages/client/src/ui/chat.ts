@@ -5,6 +5,7 @@ export interface ChatMessage {
   text: string;
   timestamp: number; // epoch ms (server)
   isSelf: boolean;
+  kind?: "normal" | "whisper";
 }
 
 export interface ChatHandle {
@@ -59,9 +60,8 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
 
   function appendMessage(msg: ChatMessage): void {
     const row = document.createElement("div");
-    row.className = msg.isSelf
-      ? "ao-chat__msg ao-chat__msg--self"
-      : "ao-chat__msg";
+    const extraClass = msg.kind === "whisper" ? " ao-chat__msg--whisper" : msg.isSelf ? " ao-chat__msg--self" : "";
+    row.className = `ao-chat__msg${extraClass}`;
     const time = document.createElement("span");
     time.className = "ao-chat__time";
     time.textContent = fmtTime(msg.timestamp);
