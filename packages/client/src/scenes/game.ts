@@ -1,18 +1,26 @@
-import { Application, Container, Graphics, Sprite, Text, TextStyle } from "pixi.js";
+import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture } from "pixi.js";
 import {
   ClientToServerOp,
+  getAoSpell,
   getClassSkill,
   getItem,
+  isWaterGraphic,
   ITEMS,
-  SKILLS,
   PROTOCOL_VERSION,
   ServerToClientOp,
   type AllocStatRequest,
   type AnyPacket,
   type AttackRequest,
+  type CastSpellRequest,
+  type ConsoleMsg,
+  type CraftRequest,
   type CriminalUpdate,
   type SkillEffect,
+  type SpellsKnown,
   type UseSkillRequest,
+  type RestToggle,
+  type SafeToggleRequest,
+  type WorkRequest,
   type WhisperReceived,
   type WhisperSendRequest,
   type BankDepositGoldRequest,
@@ -28,15 +36,23 @@ import {
   type Death,
   type Direction,
   type DropItemRequest,
+  type EntityAppearance,
   type EntityDespawn,
+  type EntityEffect,
   type EntityId,
   type EntityKind,
   type EntitySpawn,
   type EntityUpdate,
+  type FactionUpdate,
+  type GuildTagUpdate,
+  type MapTileUpdate,
+  type GoHomeRequest,
   type InteractRequest,
   type InventoryReorderRequest,
   type InventoryUpdate,
   type MapData,
+  type MeditateToggle,
+  type MeditateUpdate,
   type MoveRequest,
   type PartyAcceptRequest,
   type PartyDisbanded,
@@ -62,24 +78,41 @@ import {
   type TradeUpdate,
   type UseItemRequest,
   type Vector2,
+  type NpcInfoRequest,
+  type NpcInfoResponse,
+  type PlayerInfoRequest,
+  type PlayerInfoResponse,
 } from "@ao/shared";
 import type { CharacterSummary } from "../api";
+import { audio, SND } from "../audio";
 import { getToken } from "../auth";
 import { ReconnectingClient, type ClientStatus } from "../net/ws";
 import { mountBank, type BankHandle } from "../ui/bank";
 import { mountChat, type ChatHandle } from "../ui/chat";
-import { mountInventory, type InventoryHandle } from "../ui/inventory";
+import { mountCraft, type CraftHandle } from "../ui/craft";
+import { mountInventory, type InventoryHandle, type PanelStats } from "../ui/inventory";
+import { mountKeyConfig, type KeyConfigHandle } from "../ui/key-config";
+import { loadKeymap, type Keymap } from "../ui/keybinds";
+import { mountMacroBar, type MacroBarHandle } from "../ui/macro-bar";
+import { mountMinimap, type MinimapHandle } from "../ui/minimap";
+import { mountWorldMap, type WorldMapHandle } from "../ui/world-map";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
+import { mountQuests, type QuestsHandle } from "../ui/quests";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
-import { mountSkillHotbar, type SkillHotbarHandle } from "../ui/skill-hotbar";
 import { mountStatsPanel, type StatsPanelHandle } from "../ui/stats-panel";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
 import { mountTrade, type TradeHandle } from "../ui/trade";
+import { FxPlayer, type FxHandle } from "../world/fx";
 import { Personajes, type CharDirection } from "../world/personajes";
+import { Equipamiento } from "../world/equipamiento";
 import { Tileset } from "../world/tileset";
 
 const TILE_SIZE = 32;
+// Zoom del mundo: el AO clásico muestra ~17x13 tiles en su viewport. A 1:1
+// en una pantalla moderna se ven ~60 tiles y todo queda diminuto; con 2x
+// la escala del personaje respecto de la pantalla es la del juego original.
+const WORLD_SCALE = 1.25;
 const MOVE_COOLDOWN_MS = 200;
 // Espejo del cooldown autoritativo del server (combat.ts). El cliente lo
 // aplica localmente para no spamear paquetes ni la animación de swing.
@@ -88,9 +121,9 @@ const ATTACK_COOLDOWN_MS = 800;
 const SWING_DURATION_MS = 160;
 const FLOATER_DURATION_MS = 800;
 // Velocidad de interpolacion visual: en cuanto tiempo el sprite recorre 1 tile.
-// Debe ser <= MOVE_COOLDOWN_MS para que el sprite llegue al destino antes
-// del siguiente paso y no se vea "atrasado".
-const TWEEN_DURATION_MS = 180;
+// IGUAL al cooldown de movimiento: así, manteniendo la tecla, el personaje
+// se desliza de tile en tile SIN micro-frenadas (el flow continuo del AO).
+const TWEEN_DURATION_MS = 200;
 
 // Paleta heuristica de FALLBACK. Ya renderizamos el tileset real del AO
 // (ver world/tileset.ts), pero si un tile no tiene textura — grh 0 (vacio)
@@ -116,14 +149,11 @@ function tileColors(graphic: number, blocked: boolean): { base: number; hi: numb
   return { base: 0x1d2a18, hi: 0x2b3f23 }; // tierra / pasto base
 }
 
-const KEY_TO_DIRECTION: Record<string, Direction> = {
-  KeyW: "north",
+// Flechas: SIEMPRE mueven (además de las teclas configurables del keymap).
+const ARROW_TO_DIRECTION: Record<string, Direction> = {
   ArrowUp: "north",
-  KeyS: "south",
   ArrowDown: "south",
-  KeyA: "west",
   ArrowLeft: "west",
-  KeyD: "east",
   ArrowRight: "east",
 };
 
@@ -149,6 +179,23 @@ export interface GameSceneResult {
 
 interface EntityVisual {
   container: Container;
+  // Nombre de la entidad (para las líneas del log de combate).
+  name: string;
+  // Etiqueta de nombre (debajo de los pies). Jugadores: siempre visible,
+  // azul ciudadano / rojo criminal. NPCs: solo al pasar el mouse.
+  label: Text;
+  criminal: boolean;
+  // Facción y clan — arman el tag bajo el nombre (el clan tiene prioridad).
+  faction: number;
+  guild: string | null;
+  // Rol GM (0 jugador · 1 Consejero · 2 Semidiós · 3 Dios) — nombre en verde.
+  role: number;
+  // Habla sobre la cabeza (ChatOverHead del AO).
+  overheadText: Text | null;
+  overheadUntil: number;
+  // Aura de meditación (FX en loop) y estado invisible.
+  meditateFx: FxHandle | null;
+  invisible: boolean;
   // Silueta de fallback: se usa mientras no hay body/head del AO cargados,
   // o cuando el NPC no tiene sprite del sistema de personajes.
   body: Graphics;
@@ -156,6 +203,14 @@ interface EntityVisual {
   // no nulo, ocultamos `body` (fallback) y usamos estos.
   bodySprite: Sprite | null;
   headSprite: Sprite | null;
+  // Overlays de equipo (Armas/Escudos/Cascos): índices de anim + sprites.
+  weaponAnim: number;
+  shieldAnim: number;
+  helmetAnim: number;
+  weaponSprite: Sprite | null;
+  shieldSprite: Sprite | null;
+  helmetSprite: Sprite | null;
+  equipLoadPending: boolean;
   hpBar: Graphics;
   position: Vector2; // tile destino (verdad logica)
   renderX: number;
@@ -177,6 +232,10 @@ interface EntityVisual {
   // Sprite del AO (0 = usa silueta fallback).
   bodyId: number;
   headId: number;
+  // Barra de HP flotante: visible hasta este timestamp (0 = oculta).
+  hpBarUntil: number;
+  // true mientras se bajan los PNGs del body/head (evita ensure duplicados).
+  spriteLoadPending: boolean;
   // Frame actual del walk cycle y timestamp del último avance.
   walkFrame: number;
   lastFrameAt: number;
@@ -189,32 +248,129 @@ interface Floater {
   start: number;
 }
 
+// Color del nombre de un jugador: los GM van en tonos de verde según el rango
+// (Consejero → Semidiós → Dios), el resto azul ciudadano / rojo criminal.
+function nameColor(role: number, criminal: boolean): string {
+  if (role >= 3) return "#2bff2b"; // Dios — verde brillante
+  if (role === 2) return "#57d957"; // Semidiós — verde medio
+  if (role === 1) return "#a6e8a6"; // Consejero — verde claro
+  return criminal ? "#ff4b4b" : "#6e9eff";
+}
+
 export async function startGameScene(
   root: HTMLElement,
   character: CharacterSummary,
   onAuthExpired: () => void,
+  onChangeCharacter: () => void = () => undefined,
 ): Promise<GameSceneResult> {
+  // ── Layout "Arte 1": placa redondeada centrada (más chica que el
+  // navegador) con SEGMENTOS separados. Columna izquierda apilada:
+  // chat (arriba) → mundo → macros (abajo), los tres del mismo ancho.
+  // Columna derecha: inventario/personaje (arriba) → mapa (abajo).
+  const frame = document.createElement("div");
+  frame.className = "ao-frame";
+  const mainCol = document.createElement("div");
+  mainCol.className = "ao-main";
+  const sideCol = document.createElement("div");
+  sideCol.className = "ao-side";
+  // Slots (segmentos) de la columna izquierda, en orden vertical.
+  const chatSlot = document.createElement("div");
+  chatSlot.className = "ao-seg ao-seg--chat";
+  const stageEl = document.createElement("div");
+  stageEl.className = "ao-stage ao-seg";
+  const macroSlot = document.createElement("div");
+  macroSlot.className = "ao-seg ao-seg--macros";
+  mainCol.appendChild(chatSlot);
+  mainCol.appendChild(stageEl);
+  mainCol.appendChild(macroSlot);
+  frame.appendChild(mainCol);
+  frame.appendChild(sideCol);
+  root.appendChild(frame);
+
   const app = new Application();
   await app.init({
-    background: "#0a0805",
-    resizeTo: window,
+    background: "#05070c",
+    resizeTo: stageEl,
     antialias: false,
     autoDensity: true,
     resolution: window.devicePixelRatio || 1,
   });
 
-  root.appendChild(app.canvas);
+  app.canvas.classList.add("ao-viewport");
+  stageEl.appendChild(app.canvas);
+
+  // HUD flotante sobre el mundo (arriba-izquierda): nombre, vida, maná,
+  // mapa y coordenadas — como el overlay del cliente moderno de Arte 1.
+  const hudEl = document.createElement("div");
+  hudEl.className = "ao-hud";
+  hudEl.innerHTML = `
+    <div class="ao-hud__name">—</div>
+    <div class="ao-hud__bar ao-hud__bar--hp"><i></i><span>—</span></div>
+    <div class="ao-hud__bar ao-hud__bar--mp"><i></i><span>—</span></div>
+    <div class="ao-hud__loc">—</div>
+  `;
+  stageEl.appendChild(hudEl);
+  const hudNameEl = hudEl.querySelector<HTMLDivElement>(".ao-hud__name")!;
+  const hudHpFill = hudEl.querySelector<HTMLElement>(".ao-hud__bar--hp i")!;
+  const hudHpLbl = hudEl.querySelector<HTMLElement>(".ao-hud__bar--hp span")!;
+  const hudMpFill = hudEl.querySelector<HTMLElement>(".ao-hud__bar--mp i")!;
+  const hudMpLbl = hudEl.querySelector<HTMLElement>(".ao-hud__bar--mp span")!;
+  const hudLocEl = hudEl.querySelector<HTMLDivElement>(".ao-hud__loc")!;
+  hudNameEl.textContent = character.name;
+  // Color del nombre: se ajusta al estado criminal en handleCriminalUpdate.
+  function updateHudVitals(hp: number, maxHp: number, mp: number, maxMp: number): void {
+    hudHpFill.style.width = `${maxHp > 0 ? Math.round((hp / maxHp) * 100) : 0}%`;
+    hudHpLbl.textContent = `${hp}/${maxHp}`;
+    if (maxMp > 0) {
+      hudEl.classList.remove("ao-hud--nomp");
+      hudMpFill.style.width = `${Math.round((mp / maxMp) * 100)}%`;
+      hudMpLbl.textContent = `${mp}/${maxMp}`;
+    } else {
+      hudEl.classList.add("ao-hud--nomp");
+    }
+  }
+  function updateHudLocation(mapName: string, mapId: number, x: number, y: number): void {
+    hudLocEl.textContent = `${mapName} — Mapa ${mapId} (${x},${y})`;
+  }
+
+  // El stage captura TODOS los clicks del mundo. La detección de qué entidad
+  // se clickeó se hace manualmente en onStagePointerDown (por posición en el
+  // mundo), porque el hit-testing por-sprite de Pixi no es fiable con la cámara
+  // escalada + y-sort de esta escena. Igual que el AO: se clickea por tile.
+  app.stage.eventMode = "static";
+  app.stage.hitArea = app.screen;
+  app.stage.on("pointerdown", (e) => {
+    onStagePointerDown(
+      e as unknown as { global: { x: number; y: number }; target: unknown; altKey?: boolean; shiftKey?: boolean; button?: number },
+    );
+  });
+  // Click derecho: accionar puertas y leer carteles (doble click del AO).
+  app.stage.on("rightdown", (e) => {
+    onStageRightDown(e as unknown as { global: { x: number; y: number } });
+  });
+  app.canvas.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+  });
 
   // Contenedor del mundo: tiles + entidades. Lo movemos para emular camara.
   const world = new Container();
+  world.scale.set(WORLD_SCALE);
   app.stage.addChild(world);
 
+  // Orden de capas del AO: suelo (1) + decoración (2) → items del piso →
+  // entidades + objetos que ocluyen (capa 3, árboles/paredes, y-sort) →
+  // techos (capa 4, se atenúan cuando el jugador está bajo techo).
   const tilesLayer = new Container();
   const groundLayer = new Container();
   const entitiesLayer = new Container();
+  const roofLayer = new Container();
+  // y-sort del AO: dentro de entitiesLayer conviven jugadores, NPCs y los
+  // objetos de la capa 3; el zIndex por Y decide quién tapa a quién.
+  entitiesLayer.sortableChildren = true;
   world.addChild(tilesLayer);
   world.addChild(groundLayer);
   world.addChild(entitiesLayer);
+  world.addChild(roofLayer);
 
   // Overlay de estado durante el handshake. Vive en el stage, no en el world,
   // porque no debe moverse con la camara.
@@ -239,150 +395,94 @@ export async function startGameScene(
   const hud = new Text({ text: "", style: hudStyle });
   hud.x = 12;
   hud.y = 12;
+  // Línea de debug de conexión: la reemplaza el HUD DOM de Arte 1.
+  hud.visible = false;
   app.stage.addChild(hud);
 
-  // -- HUD de combate: barra de HP propia, abajo a la izquierda --
-  const HP_BAR_W = 220;
-  const HP_BAR_H = 18;
-  const hpBarBg = new Graphics();
-  const hpBarFg = new Graphics();
-  const hpBarText = new Text({
-    text: "",
-    style: new TextStyle({
-      fill: "#f5e6c8",
-      fontFamily: "Consolas, monospace",
-      fontSize: 12,
-      fontWeight: "bold",
-      stroke: { color: "#0a0805", width: 3 },
-    }),
-  });
-  hpBarText.anchor.set(0.5);
-  app.stage.addChild(hpBarBg, hpBarFg, hpBarText);
+  // Las barras de HP/MP/XP/hambre/sed viven en el panel lateral DOM
+  // (ui/inventory.ts). Acá solo mantenemos el estado y lo empujamos.
+  const panelStats: PanelStats = {
+    name: character.name,
+    level: 1,
+    xpInto: 0,
+    xpForNext: 1,
+    hp: 0,
+    maxHp: 0,
+    mana: 0,
+    maxMana: 0,
+    hunger: 100,
+    thirst: 100,
+    sta: 100,
+    maxSta: 100,
+    strBonus: 0,
+    agiBonus: 0,
+    buffExpiresAt: 0,
+    str: 0,
+    agi: 0,
+  };
+  function pushPanelStats(): void {
+    inventory?.setStats({ ...panelStats });
+    updateHudVitals(panelStats.hp, panelStats.maxHp, panelStats.mana, panelStats.maxMana);
+  }
 
-  // Barra de maná, justo debajo de la barra de HP (solo visible si maxMana>0).
-  const MP_BAR_H = 10;
-  const mpBarBg = new Graphics();
-  const mpBarFg = new Graphics();
-  const mpBarText = new Text({
-    text: "",
-    style: new TextStyle({
-      fill: "#8ab8f0",
-      fontFamily: "Consolas, monospace",
-      fontSize: 11,
-      fontWeight: "bold",
-      stroke: { color: "#0a0805", width: 2 },
-    }),
-  });
-  mpBarText.anchor.set(0.5);
-  mpBarBg.visible = false;
-  mpBarFg.visible = false;
-  mpBarText.visible = false;
-  app.stage.addChild(mpBarBg, mpBarFg, mpBarText);
-
-  // Barra de XP + nivel, justo encima de la de HP.
-  const XP_BAR_H = 8;
-  const xpBarBg = new Graphics();
-  const xpBarFg = new Graphics();
-  const levelText = new Text({
-    text: "Nivel 1",
-    style: new TextStyle({
-      fill: "#f4d56a",
-      fontFamily: "Consolas, monospace",
-      fontSize: 12,
-      fontWeight: "bold",
-      stroke: { color: "#0a0805", width: 3 },
-    }),
-  });
-  app.stage.addChild(xpBarBg, xpBarFg, levelText);
-
-  // -- Overlay de muerte: gris translucido sobre toda la pantalla --
+  // -- Muerte: velo gris suave (el fantasma sigue viendo y caminando) +
+  // panel DOM con la opción de volver al hogar (sistema /hogar del AO) --
   const deathOverlay = new Graphics();
-  const deathText = new Text({
-    text: "Has muerto",
-    style: new TextStyle({
-      fill: "#e8dfc8",
-      fontFamily: "Georgia, serif",
-      fontSize: 40,
-      fontWeight: "bold",
-      align: "center",
-      stroke: { color: "#0a0805", width: 5 },
-    }),
-  });
-  deathText.anchor.set(0.5);
   deathOverlay.visible = false;
-  deathText.visible = false;
-  app.stage.addChild(deathOverlay, deathText);
+  app.stage.addChild(deathOverlay);
+
+  const deathPanel = document.createElement("div");
+  deathPanel.className = "ao-deathpanel";
+  deathPanel.innerHTML = `
+    <div class="ao-deathpanel__title">☠ Estás muerto</div>
+    <div class="ao-deathpanel__hint">Caminá como fantasma hasta un sacerdote para revivir…</div>
+    <button type="button" class="ao-deathpanel__home">🏠 Volver al hogar (Ullathorpe)</button>
+  `;
+  stageEl.appendChild(deathPanel);
+  const deathHomeBtn = deathPanel.querySelector<HTMLButtonElement>(".ao-deathpanel__home")!;
+  let homeCountdown: ReturnType<typeof setInterval> | null = null;
+  deathHomeBtn.addEventListener("click", () => {
+    client?.send({ op: ClientToServerOp.GoHome } satisfies GoHomeRequest);
+    deathHomeBtn.disabled = true;
+    // Cuenta regresiva en vivo (10s = HOME_TRAVEL_MS del server) para que se
+    // vea que está viajando y no parezca colgado.
+    let secs = 10;
+    deathHomeBtn.textContent = `🏠 Viajando al hogar… ${secs}s`;
+    if (homeCountdown) clearInterval(homeCountdown);
+    homeCountdown = setInterval(() => {
+      secs -= 1;
+      deathHomeBtn.textContent = secs > 0 ? `🏠 Viajando al hogar… ${secs}s` : "🏠 Llegando al hogar…";
+      if (secs <= 0 && homeCountdown) { clearInterval(homeCountdown); homeCountdown = null; }
+    }, 1000);
+  });
 
   function layoutCombatHud(): void {
-    const x = 16;
-    const y = app.screen.height - HP_BAR_H - 16;
-    hpBarBg.x = x;
-    hpBarBg.y = y;
-    hpBarFg.x = x;
-    hpBarFg.y = y;
-    hpBarText.x = x + HP_BAR_W / 2;
-    hpBarText.y = y + HP_BAR_H / 2;
-
-    // Mana bar just below HP bar
-    const mpY = y + HP_BAR_H + 4;
-    mpBarBg.x = x;
-    mpBarBg.y = mpY;
-    mpBarFg.x = x;
-    mpBarFg.y = mpY;
-    mpBarText.x = x + HP_BAR_W / 2;
-    mpBarText.y = mpY + MP_BAR_H / 2;
-
-    const xpY = y - XP_BAR_H - 4;
-    xpBarBg.x = x;
-    xpBarBg.y = xpY;
-    xpBarFg.x = x;
-    xpBarFg.y = xpY;
-    levelText.x = x + HP_BAR_W + 10;
-    levelText.y = xpY - 4;
-
     deathOverlay.clear();
+    // Velo suave: el fantasma tiene que poder ver por dónde camina.
     deathOverlay
       .rect(0, 0, app.screen.width, app.screen.height)
-      .fill({ color: 0x12100b, alpha: 0.55 });
-    deathText.x = app.screen.width / 2;
-    deathText.y = app.screen.height / 2;
+      .fill({ color: 0x12100b, alpha: 0.3 });
   }
 
   function updateSelfHud(): void {
     const own = entityVisuals.get(character.id);
     if (!own) return;
-    const frac = own.maxHp > 0 ? Math.max(0, Math.min(1, own.hp / own.maxHp)) : 0;
-    hpBarBg.clear();
-    hpBarBg.rect(0, 0, HP_BAR_W, HP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
-    hpBarBg.rect(0, 0, HP_BAR_W, HP_BAR_H).stroke({ width: 1, color: 0x4d432d });
-    hpBarFg.clear();
-    const color = frac > 0.5 ? 0x4cb87e : frac > 0.25 ? 0xd4af37 : 0xc93838;
-    if (frac > 0) {
-      hpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, HP_BAR_H - 2).fill({ color });
-    }
-    hpBarText.text = `HP ${own.hp.toString()} / ${own.maxHp.toString()}`;
-  }
-
-  function updateXpHud(level: number, xpInto: number, xpForNext: number): void {
-    levelText.text = `Nivel ${level.toString()}`;
-    xpBarBg.clear();
-    xpBarBg.rect(0, 0, HP_BAR_W, XP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
-    xpBarBg.rect(0, 0, HP_BAR_W, XP_BAR_H).stroke({ width: 1, color: 0x4d432d });
-    xpBarFg.clear();
-    const frac = xpForNext > 0 ? Math.max(0, Math.min(1, xpInto / xpForNext)) : 1;
-    if (frac > 0) {
-      xpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, XP_BAR_H - 2).fill({ color: 0x6b8cff });
-    }
+    panelStats.hp = own.hp;
+    panelStats.maxHp = own.maxHp;
+    pushPanelStats();
   }
 
   function showDeathOverlay(): void {
     deathOverlay.visible = true;
-    deathText.visible = true;
+    deathPanel.classList.add("ao-deathpanel--on");
   }
 
   function hideDeathOverlay(): void {
     deathOverlay.visible = false;
-    deathText.visible = false;
+    deathPanel.classList.remove("ao-deathpanel--on");
+    deathHomeBtn.disabled = false;
+    deathHomeBtn.textContent = "🏠 Volver al hogar (Ullathorpe)";
+    if (homeCountdown) { clearInterval(homeCountdown); homeCountdown = null; }
   }
 
   function centerStatus(): void {
@@ -391,13 +491,20 @@ export async function startGameScene(
   }
   centerStatus();
   layoutCombatHud();
-  updateXpHud(1, 0, 1);
+  // El panel lateral recibe los stats reales con el primer StatsUpdate del
+  // server — no lo tocamos acá porque todavía no está montado (TDZ).
 
   // Tileset clásico del AO. Arrancamos la carga del índice en paralelo con
   // la conexión; renderTiles espera a que esté listo antes de dibujar.
   const tileset = new Tileset();
   const tilesetIndexReady = tileset.loadIndex().catch((err: unknown) => {
     console.warn("[ao-client] no se pudo cargar el tileset, se usa fallback de color", err);
+  });
+
+  // FX del AO (fxs.ini): animaciones de hechizos, meditación, etc.
+  const fxPlayer = new FxPlayer(tileset);
+  void fxPlayer.load().catch((err: unknown) => {
+    console.warn("[ao-client] no se pudieron cargar los FX", err);
   });
 
   // Sistema de sprites de personaje (Personajes.ind / Cabezas.ind del AO).
@@ -411,16 +518,18 @@ export async function startGameScene(
     for (const v of entityVisuals.values()) tryAttachCharSprites(v);
   });
 
-  // Precargamos los PNGs de los items del catálogo para que el inventario
-  // y los ground items los muestren desde el primer render en lugar de
-  // caer al fallback de siglas.
-  const itemGraphicIds = new Set<number>();
-  for (const item of Object.values(ITEMS)) {
-    if (item.graphic > 0) itemGraphicIds.add(item.graphic);
-  }
-  void tilesetIndexReady.then(() => {
-    if (tileset.ready) void tileset.preload(itemGraphicIds);
+  // Overlays de arma/escudo/casco (Armas.dat / Escudos.dat / Cascos.ini).
+  const equip = new Equipamiento(tileset);
+  void equip.load().then(() => {
+    for (const v of entityVisuals.values()) attachEquipSprites(v);
+  }).catch((err: unknown) => {
+    console.warn("[ao-client] no se pudo cargar equipamiento.json", err);
   });
+
+  // Los íconos del inventario se muestran vía CSS (tileset.entry) y no
+  // necesitan precarga. Los sprites de items en el suelo se cargan lazy
+  // por item al aparecer (ver addGroundItemVisual) — con el catálogo real
+  // de 1237 items precargar todo al inicio sería demasiado.
 
   // Overlay de transición de mapa: flash negro que se desvanece en 400 ms.
   const TRANSITION_FLASH_MS = 400;
@@ -436,24 +545,53 @@ export async function startGameScene(
 
   const entityVisuals = new Map<number, EntityVisual>();
   const groundItemVisuals = new Map<number, Container>();
+  // Datos del item en el suelo (para mostrar su nombre al clickearlo — ya no
+  // se dibuja un cartel permanente sobre cada item).
+  const groundItemMeta = new Map<number, { x: number; y: number; item: number; qty: number }>();
   let mapWidth = 0;
   let mapHeight = 0;
   let mapBlocked: ReadonlyArray<number> = [];
+  // Agua por tile (para la predicción de navegación).
+  let mapWater: number[] = [];
+  // Trigger por tile (1/2/4 = bajo techo → atenuar la capa de techos).
+  let mapTrigger: ReadonlyArray<number> = [];
+  // Sprites de la capa 3 (árboles/paredes) que viven en entitiesLayer;
+  // se destruyen al cambiar de mapa sin tocar a las entidades.
+  let mapObjectSprites: Sprite[] = [];
+  // Sprites de capa 3 indexados por tile — para actualizar puertas en vivo.
+  const layer3ByTile = new Map<number, Sprite>();
+  // Tiles animados (agua, lava, costas — GRHs animados del Graficos.ind).
+  // speed = duración del ciclo completo en ms (semántica del TileEngine).
+  let animatedTiles: Array<{ sprite: Sprite; frames: number[]; speed: number }> = [];
+  let tileAnims: Record<string, { frames: number[]; speed: number }> | null = null;
 
-  // Dibuja la barra de HP de una entidad (coordenadas locales al container).
+  // Dibuja la barra de HP de una entidad en el origen local del Graphics;
+  // la posición vertical la decide showEntityHpBar según la altura del sprite.
   function drawHpBar(g: Graphics, hp: number, maxHp: number): void {
     const w = 28;
     const h = 4;
     const x = -w / 2;
-    const y = -30;
     const frac = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
     g.clear();
-    g.rect(x - 1, y - 1, w + 2, h + 2).fill({ color: 0x0a0805, alpha: 0.75 });
+    g.rect(x - 1, -1, w + 2, h + 2).fill({ color: 0x0a0805, alpha: 0.75 });
     // Color por tramos: verde, ambar, rojo.
     const color = frac > 0.5 ? 0x4cb87e : frac > 0.25 ? 0xd4af37 : 0xc93838;
     if (frac > 0) {
-      g.rect(x, y, w * frac, h).fill({ color });
+      g.rect(x, 0, w * frac, h).fill({ color });
     }
+  }
+
+  // El AO original no muestra barras de vida flotantes. Compromiso: la barra
+  // aparece SOLO al recibir daño, por 3 segundos, y siempre por ENCIMA del
+  // sprite (calculado con su altura real — nunca sobre la cara).
+  const HP_BAR_SHOW_MS = 3_000;
+  function showEntityHpBar(v: EntityVisual): void {
+    drawHpBar(v.hpBar, v.hp, v.maxHp);
+    v.hpBar.y = v.bodySprite
+      ? v.bodySprite.y - v.bodySprite.height - 10
+      : -34;
+    v.hpBar.visible = true;
+    v.hpBarUntil = performance.now() + HP_BAR_SHOW_MS;
   }
 
   // Dibuja la figura humana orientada en `facing`. Se llama al crear y cada
@@ -534,41 +672,49 @@ export async function startGameScene(
   function buildEntityVisual(
     name: string,
     isSelf: boolean,
-    hp: number,
-    maxHp: number,
     kind: EntityKind,
     facing: Direction,
-  ): { container: Container; body: Graphics; hpBar: Graphics } {
+  ): { container: Container; body: Graphics; hpBar: Graphics; label: Text } {
     const c = new Container();
     const body = new Graphics();
     drawEntityBody(body, isSelf, kind, facing);
     c.addChild(body);
 
+    // Colores del AO: jugadores azul ciudadano (criminal se pinta rojo al
+    // conocerse el estado); NPCs con tinte por rol (solo visibles al hover).
     const labelFill =
       kind === "merchant" ? "#a7e0c4"
+      : kind === "banker" ? "#9ec2f0"
       : kind === "npc" ? "#e8b3a3"
-      : isSelf ? "#f5e6c8"
-      : "#e8dfc8";
+      : "#6e9eff";
     const label = new Text({
       text: name,
+      // El mundo se escala 2x: el texto se rasteriza a resolución doble
+      // (por el zoom y el devicePixelRatio) para que quede nítido.
+      resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
         fill: labelFill,
-        fontFamily: "Georgia, serif",
-        fontSize: 12,
+        fontFamily: "Verdana, Geneva, sans-serif",
+        fontSize: 10,
         fontWeight: "bold",
         align: "center",
         stroke: { color: "#0a0805", width: 3 },
       }),
     });
-    label.anchor.set(0.5, 1);
-    label.y = -16;
+    // Como el AO original: el nombre va DEBAJO de los pies del personaje,
+    // y las criaturas/NPCs no muestran nombre (solo al pasar el mouse).
+    label.anchor.set(0.5, 0);
+    label.y = 15;
+    if (kind !== "player") label.visible = false;
     c.addChild(label);
 
+    // Oculta por defecto (el AO no muestra barras flotantes); aparece unos
+    // segundos al recibir daño — ver showEntityHpBar.
     const hpBar = new Graphics();
-    drawHpBar(hpBar, hp, maxHp);
+    hpBar.visible = false;
     c.addChild(hpBar);
 
-    return { container: c, body, hpBar };
+    return { container: c, body, hpBar, label };
   }
 
   function entityCenterPx(pos: Vector2): { x: number; y: number } {
@@ -589,43 +735,55 @@ export async function startGameScene(
     facing: Direction,
     bodyId: number,
     headId: number,
+    criminal = false,
+    faction = 0,
+    guild: string | null = null,
+    weaponAnim = 0,
+    shieldAnim = 0,
+    helmetAnim = 0,
+    role = 0,
   ): EntityVisual {
-    const { container, body, hpBar } = buildEntityVisual(name, isSelf, hp, maxHp, kind, facing);
+    const { container, body, hpBar, label } = buildEntityVisual(name, isSelf, kind, facing);
+    if (kind === "player") label.style.fill = nameColor(role, criminal);
+    // NPCs: nombre visible solo al pasar el mouse (como el AO).
+    if (kind !== "player") {
+      container.on("pointerover", () => { label.visible = true; });
+      container.on("pointerout", () => { label.visible = false; });
+    }
     const c = entityCenterPx(pos);
     container.x = c.x;
     container.y = c.y;
     const dead = hp <= 0;
     if (dead) body.alpha = 0.35;
-    // Los demas personajes son clickeables para atacarlos (ademas de Ctrl).
-    // Alt+clic = invitar a party; Shift+clic = proponer trade.
-    if (!isSelf) {
-      container.eventMode = "static";
-      container.cursor = "crosshair";
-      container.on("pointertap", (event) => {
-        const ev = event.nativeEvent as PointerEvent;
-        if (ev.altKey && kind === "player") {
-          const pkt: PartyInviteRequest = {
-            op: ClientToServerOp.PartyInvite,
-            targetId: id as unknown as EntityId,
-          };
-          client?.send(pkt);
-        } else if (ev.shiftKey && kind === "player") {
-          const pkt: TradeRequestMsg = {
-            op: ClientToServerOp.TradeRequest,
-            targetId: id as unknown as EntityId,
-          };
-          client?.send(pkt);
-        } else {
-          clickAttack(id);
-        }
-      });
-    }
+    // Los clicks sobre entidades (atacar, abrir tienda/banco, party/trade,
+    // castear) se resuelven en onStagePointerDown por posición en el mundo:
+    // el hit-testing por-sprite de Pixi no es fiable en esta escena (cámara
+    // escalada + y-sort). Dejamos el container interactivo solo para el cursor.
+    container.eventMode = "static";
+    if (!isSelf) container.cursor = "pointer";
     entitiesLayer.addChild(container);
     const visual: EntityVisual = {
       container,
+      name,
+      label,
+      criminal,
+      faction,
+      guild,
+      role,
+      overheadText: null,
+      overheadUntil: 0,
+      meditateFx: null,
+      invisible: false,
       body,
       bodySprite: null,
       headSprite: null,
+      weaponAnim,
+      shieldAnim,
+      helmetAnim,
+      weaponSprite: null,
+      shieldSprite: null,
+      helmetSprite: null,
+      equipLoadPending: false,
       hpBar,
       position: { x: pos.x, y: pos.y },
       renderX: c.x,
@@ -645,10 +803,13 @@ export async function startGameScene(
       swingDy: 0,
       bodyId,
       headId,
+      hpBarUntil: 0,
+      spriteLoadPending: false,
       walkFrame: 0,
       lastFrameAt: 0,
     };
     entityVisuals.set(id, visual);
+    applyNameTag(visual);
     tryAttachCharSprites(visual);
     return visual;
   }
@@ -663,52 +824,59 @@ export async function startGameScene(
     return d;
   }
 
-  // Los NPCs monstruo (hostiles) usan Personajes.ini (monster bodies) sin
-  // cabeza separada. Los jugadores, comerciantes y humanoides usan
-  // Personajes.ind + Cabezas.ind (body + head compuestos).
-  function isMonsterVisual(v: EntityVisual): boolean {
-    return v.kind === "npc";
-  }
-
   // Si el sistema de personajes está cargado y la entidad tiene bodyId>0,
   // creamos body/head Sprites y ocultamos la silueta Graphics. Idempotente:
   // si ya están creados o el índice todavía no cargó, no hace nada.
+  // Todos los bodies (jugadores, NPCs humanoides, criaturas y ropajes) viven
+  // en el mismo espacio de Personajes.ini; la head se agrega si headId > 0.
   function tryAttachCharSprites(v: EntityVisual): void {
     if (v.bodySprite) return;
     if (!personajes.ready) return;
     if (v.bodyId <= 0) return;
+    if (!personajes.hasBody(v.bodyId)) return;
 
     const dir = toCharDir(v.facing);
-    const monster = isMonsterVisual(v);
-
-    let bodyTex: import("pixi.js").Texture | null = null;
-    if (monster) {
-      if (!personajes.hasMonsterBody(v.bodyId)) return;
-      bodyTex = personajes.monsterBodyFrame(v.bodyId, dir, 0);
-    } else {
-      if (!personajes.hasBody(v.bodyId)) return;
-      bodyTex = personajes.bodyFrame(v.bodyId, dir, 0);
+    const bodyTex = personajes.bodyFrame(v.bodyId, dir, 0);
+    if (!bodyTex) {
+      // El PNG de este body todavía no se bajó: carga on-demand y reintento.
+      if (!v.spriteLoadPending) {
+        v.spriteLoadPending = true;
+        const wantedBody = v.bodyId;
+        void personajes.ensure(v.bodyId, v.headId).then(() => {
+          v.spriteLoadPending = false;
+          // Reintentar solo si la entidad sigue viva y con el mismo body.
+          if (!v.container.destroyed && v.bodyId === wantedBody) {
+            tryAttachCharSprites(v);
+          }
+        });
+      }
+      return;
     }
-    if (!bodyTex) return;
+
+    // Colocación EXACTA del motor original (Draw_Grh con center=1,
+    // TileEngine.bas L1850): centrado horizontal en el tile y con el borde
+    // INFERIOR del frame alineado al borde inferior del tile. La cabeza va a
+    // tile-bottom + HeadOffset — posición FIJA, independiente de la altura
+    // del frame del cuerpo (por eso no "baila" al caminar).
+    const TILE_BOTTOM = TILE_SIZE / 2; // container centrado en el tile
 
     const bodySprite = new Sprite(bodyTex);
-    // Anchor abajo-centro para que el pie apoye en el tile lógico.
     bodySprite.anchor.set(0.5, 1);
-    // El tile lógico del AO es 32x32; el sprite del cuerpo suele ser más alto
-    // (~50-64px), lo ubicamos apoyado un poco por debajo del centro del tile.
-    bodySprite.y = 12;
+    bodySprite.y = TILE_BOTTOM;
     v.bodySprite = bodySprite;
     v.container.addChildAt(bodySprite, 0); // debajo de la barra HP
 
-    // Los monstruos no tienen head separada (ya viene en el body).
-    if (!monster && v.headId > 0 && personajes.hasHead(v.headId)) {
+    // Cabeza separada (jugadores y NPCs humanoides; las criaturas van sin head).
+    // Los frames de cabeza del AO son 17x50 con la cara arriba: alineados al
+    // fondo del tile + offset quedan exactamente sobre los hombros.
+    if (v.headId > 0 && personajes.hasHead(v.headId)) {
       const headTex = personajes.head(v.headId, dir);
       if (headTex) {
         const headSprite = new Sprite(headTex);
         headSprite.anchor.set(0.5, 1);
         const offset = personajes.headOffset(v.bodyId);
         headSprite.x = offset.x;
-        headSprite.y = bodySprite.y - bodySprite.height + offset.y + headTex.height;
+        headSprite.y = TILE_BOTTOM + offset.y;
         v.headSprite = headSprite;
         v.container.addChildAt(headSprite, 1);
       }
@@ -716,20 +884,132 @@ export async function startGameScene(
 
     // Ocultamos la silueta fallback ahora que hay sprite real.
     v.body.visible = false;
+
+    attachEquipSprites(v);
+  }
+
+  // Overlays de arma/escudo/casco sobre el body (draw order del TileEngine:
+  // body → head → casco → arma → escudo). El casco va en la posición de la
+  // cabeza; arma y escudo alineados al fondo del tile como el body.
+  function attachEquipSprites(v: EntityVisual): void {
+    if (!equip.ready || !v.bodySprite || v.kind !== "player") return;
+    const dir = toCharDir(v.facing);
+    const TILE_BOTTOM = TILE_SIZE / 2;
+    const anchorIdx = (): number =>
+      v.container.getChildIndex(v.helmetSprite ?? v.headSprite ?? v.bodySprite!) + 1;
+    let missing = false;
+
+    if (v.helmetAnim > 0 && !v.helmetSprite && equip.hasHelmet(v.helmetAnim) && v.headSprite) {
+      const tex = equip.helmet(v.helmetAnim, dir);
+      if (tex) {
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);
+        sp.x = v.headSprite.x;
+        sp.y = v.headSprite.y;
+        v.helmetSprite = sp;
+        v.container.addChildAt(sp, v.container.getChildIndex(v.headSprite) + 1);
+      } else missing = true;
+    }
+    if (v.weaponAnim > 0 && !v.weaponSprite && equip.hasWeapon(v.weaponAnim)) {
+      const tex = equip.weaponFrame(v.weaponAnim, dir, 0);
+      if (tex) {
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);
+        sp.y = TILE_BOTTOM;
+        v.weaponSprite = sp;
+        v.container.addChildAt(sp, anchorIdx());
+      } else missing = true;
+    }
+    if (v.shieldAnim > 0 && !v.shieldSprite && equip.hasShield(v.shieldAnim)) {
+      const tex = equip.shieldFrame(v.shieldAnim, dir, 0);
+      if (tex) {
+        const sp = new Sprite(tex);
+        sp.anchor.set(0.5, 1);
+        sp.y = TILE_BOTTOM;
+        v.shieldSprite = sp;
+        v.container.addChildAt(sp, (v.weaponSprite ? v.container.getChildIndex(v.weaponSprite) : anchorIdx() - 1) + 1);
+      } else missing = true;
+    }
+
+    // PNGs aún no bajados: precargar y reintentar una vez listos.
+    if (missing && !v.equipLoadPending) {
+      v.equipLoadPending = true;
+      void equip.ensure(v.weaponAnim, v.shieldAnim, v.helmetAnim).then(() => {
+        v.equipLoadPending = false;
+        if (!v.container.destroyed) attachEquipSprites(v);
+      });
+    }
+  }
+
+  function detachEquipSprites(v: EntityVisual): void {
+    for (const key of ["weaponSprite", "shieldSprite", "helmetSprite"] as const) {
+      const sp = v[key];
+      if (sp) {
+        v.container.removeChild(sp);
+        sp.destroy();
+        v[key] = null;
+      }
+    }
   }
 
   // Actualiza texturas del sprite según facing y walkFrame actuales.
   function refreshCharTextures(v: EntityVisual): void {
     if (!v.bodySprite) return;
     const dir = toCharDir(v.facing);
-    const bt = isMonsterVisual(v)
-      ? personajes.monsterBodyFrame(v.bodyId, dir, v.walkFrame)
-      : personajes.bodyFrame(v.bodyId, dir, v.walkFrame);
+    const bt = personajes.bodyFrame(v.bodyId, dir, v.walkFrame);
     if (bt) v.bodySprite.texture = bt;
     if (v.headSprite) {
       const ht = personajes.head(v.headId, dir);
       if (ht) v.headSprite.texture = ht;
     }
+    if (v.weaponSprite) {
+      const wt = equip.weaponFrame(v.weaponAnim, dir, v.walkFrame);
+      if (wt) v.weaponSprite.texture = wt;
+    }
+    if (v.shieldSprite) {
+      const st = equip.shieldFrame(v.shieldAnim, dir, v.walkFrame);
+      if (st) v.shieldSprite.texture = st;
+    }
+    if (v.helmetSprite) {
+      const ct = equip.helmet(v.helmetAnim, dir);
+      if (ct) v.helmetSprite.texture = ct;
+    }
+  }
+
+  // Cambio de ropaje: el server avisa que el body/head visible cambió.
+  // Destruimos los sprites actuales y re-attacheamos con el nuevo body.
+  function setEntityAppearance(
+    v: EntityVisual,
+    bodyId: number,
+    headId: number,
+    weaponAnim = 0,
+    shieldAnim = 0,
+    helmetAnim = 0,
+  ): void {
+    if (
+      v.bodyId === bodyId && v.headId === headId &&
+      v.weaponAnim === weaponAnim && v.shieldAnim === shieldAnim && v.helmetAnim === helmetAnim
+    ) return;
+    v.bodyId = bodyId;
+    v.headId = headId;
+    v.weaponAnim = weaponAnim;
+    v.shieldAnim = shieldAnim;
+    v.helmetAnim = helmetAnim;
+    if (v.bodySprite) {
+      v.container.removeChild(v.bodySprite);
+      v.bodySprite.destroy();
+      v.bodySprite = null;
+    }
+    if (v.headSprite) {
+      v.container.removeChild(v.headSprite);
+      v.headSprite.destroy();
+      v.headSprite = null;
+    }
+    detachEquipSprites(v);
+    // Silueta fallback visible hasta que el attach la reemplace.
+    v.body.visible = true;
+    v.walkFrame = 0;
+    tryAttachCharSprites(v);
   }
 
   // Cambia la direccion en la que mira la entidad y redibuja el body.
@@ -738,8 +1018,9 @@ export async function startGameScene(
     if (v.facing === facing) return;
     v.facing = facing;
     if (v.bodySprite) {
-      // Reset del frame al cambiar de dirección, así arranca desde idle.
-      v.walkFrame = 0;
+      // Girar en movimiento NO reinicia el ciclo de caminata (flow AO);
+      // solo resetea a idle si está quieto.
+      if (v.tweenDuration === 0) v.walkFrame = 0;
       refreshCharTextures(v);
     } else {
       drawEntityBody(v.body, v.isSelf, v.kind, facing);
@@ -780,16 +1061,17 @@ export async function startGameScene(
     entityVisuals.delete(id);
   }
 
-  function addGroundItemVisual(id: number, pos: Vector2, item: number): void {
+  function addGroundItemVisual(id: number, pos: Vector2, item: number, qty = 1): void {
     if (groundItemVisuals.has(id)) return;
     const def = getItem(item);
     const c = new Container();
 
-    // Sprite real del AO si el atlas tiene el grh del item. Si no,
-    // fallback al cuadrado dorado clásico.
-    const sprite = def && def.graphic > 0 ? tileset.get(def.graphic) : null;
-    if (sprite) {
-      const s = new Sprite(sprite);
+    // Sprite real del AO si el atlas ya tiene el grh del item. Si el PNG
+    // todavía no se bajó, mostramos el cuadrado dorado y lo cargamos lazy:
+    // al terminar, si el item sigue en el suelo, se reemplaza por el sprite.
+    const tex = def && def.graphic > 0 ? tileset.get(def.graphic) : null;
+    if (tex) {
+      const s = new Sprite(tex);
       s.anchor.set(0.5);
       c.addChild(s);
     } else {
@@ -798,28 +1080,32 @@ export async function startGameScene(
         .fill({ color: 0xd4af37 })
         .stroke({ width: 1, color: 0xf4d56a });
       c.addChild(g);
+      if (def && def.graphic > 0 && tileset.ready) {
+        void tileset.preload([def.graphic]).then(() => {
+          if (!groundItemVisuals.has(id)) return; // ya lo levantaron
+          const loaded = tileset.get(def.graphic);
+          if (!loaded) return;
+          c.removeChild(g);
+          g.destroy();
+          const s = new Sprite(loaded);
+          s.anchor.set(0.5);
+          c.addChildAt(s, 0);
+        });
+      }
     }
 
-    const label = new Text({
-      text: def ? def.name : `#${item.toString()}`,
-      style: new TextStyle({
-        fill: "#f4d56a",
-        fontFamily: "Consolas, monospace",
-        fontSize: 10,
-        stroke: { color: "#0a0805", width: 2 },
-      }),
-    });
-    label.anchor.set(0.5, 1);
-    label.y = -14;
-    c.addChild(label);
+    // Sin cartel de nombre: el item se ve solo por su sprite. El nombre se
+    // consulta clickeándolo (aparece en el chat) — ver onStagePointerDown.
     const px = entityCenterPx(pos);
     c.x = px.x;
     c.y = px.y;
     groundLayer.addChild(c);
     groundItemVisuals.set(id, c);
+    groundItemMeta.set(id, { x: pos.x, y: pos.y, item, qty });
   }
 
   function removeGroundItemVisual(id: number): void {
+    groundItemMeta.delete(id);
     const c = groundItemVisuals.get(id);
     if (!c) return;
     groundLayer.removeChild(c);
@@ -827,9 +1113,18 @@ export async function startGameScene(
     groundItemVisuals.delete(id);
   }
 
+  // Item en el suelo en un tile (o null). Para mostrar su nombre al clickear.
+  function groundItemAtTile(tx: number, ty: number): { item: number; qty: number } | null {
+    for (const m of groundItemMeta.values()) {
+      if (m.x === tx && m.y === ty) return { item: m.item, qty: m.qty };
+    }
+    return null;
+  }
+
   function clearGroundItems(): void {
     for (const c of groundItemVisuals.values()) c.destroy({ children: true });
     groundItemVisuals.clear();
+    groundItemMeta.clear();
     groundLayer.removeChildren();
   }
 
@@ -838,10 +1133,9 @@ export async function startGameScene(
   function refreshPlayerList(): void {
     if (!playerList) return;
     const names: string[] = [];
-    for (const [id, v] of entityVisuals) {
+    for (const v of entityVisuals.values()) {
       if (v.kind !== "player") continue; // los NPCs no van en la lista de online
-      const label = v.container.children.find((c) => c instanceof Text) as Text | undefined;
-      names.push(label ? label.text : `#${id.toString()}`);
+      names.push(v.name);
     }
     playerList.setPlayers(names);
   }
@@ -849,56 +1143,187 @@ export async function startGameScene(
   function centerCameraOnSelf(): void {
     const own = entityVisuals.get(character.id);
     if (!own) return;
-    world.x = app.screen.width / 2 - own.renderX;
-    world.y = app.screen.height / 2 - own.renderY;
+    // Redondeo a píxel entero: evita el shimmer de subpíxel del pixel-art 2x.
+    // El canvas ES el viewport (hueco de la VentanaPrincipal): centrar simple.
+    world.x = Math.round(app.screen.width / 2 - own.renderX * WORLD_SCALE);
+    world.y = Math.round(app.screen.height / 2 - own.renderY * WORLD_SCALE);
   }
 
-  async function renderTiles(data: MapData): Promise<void> {
+  let mapRenderToken = 0;
+  // El primer mapa (login) se dibuja recién cuando TODOS sus atlas están listos,
+  // para que nunca se vea el terreno en color de fallback. Después ya no.
+  let firstMapDrawn = false;
+
+  // Dibuja las 4 capas con las texturas que YA están en caché; las que falten
+  // quedan como fallback de color. Es reejecutable: se vuelve a llamar cuando la
+  // precarga en segundo plano trae las texturas nuevas (dibujo progresivo).
+  function drawTiles(data: MapData): void {
     tilesLayer.removeChildren();
-    mapWidth = data.width;
-    mapHeight = data.height;
-    mapBlocked = data.blocked;
-
-    // Esperamos el índice del tileset y precargamos los PNGs que usa este
-    // mapa. Si el índice falló (offline / 404), tileset.ready es false y
-    // caemos al fallback de color para todo el mapa.
-    await tilesetIndexReady;
-    if (tileset.ready) {
-      const ids = new Set<number>();
-      for (const g of data.graphic) {
-        if (g) ids.add(g);
-      }
-      await tileset.preload(ids);
+    roofLayer.removeChildren();
+    // Limpiar los objetos de capa 3 del mapa anterior (viven en entitiesLayer).
+    for (const s of mapObjectSprites) {
+      entitiesLayer.removeChild(s);
+      s.destroy();
     }
+    mapObjectSprites = [];
+    layer3ByTile.clear();
+    animatedTiles = [];
 
-    // Fallback de color: un solo Graphics con las celdas que no tienen
-    // textura (grh 0 = vacío, o gráfico sin PNG). PixiJS lo bachea como un
-    // mesh, así que aunque sean miles de celdas se dibuja de una.
+    // Fallback de color: un solo Graphics con las celdas que no tienen textura
+    // (grh 0 = vacío, o PNG todavía no cargado). PixiJS lo bachea como un mesh.
     const fallback = new Graphics();
     tilesLayer.addChild(fallback);
+
+    // Los gráficos de las capas 2-4 pueden ser más grandes que un tile
+    // (árboles de 96x128, techos). El AO los dibuja centrados en X y
+    // apoyados en el borde inferior del tile: anchor (0.5, 1).
+    const placeAnchored = (tex: Texture, x: number, y: number): Sprite => {
+      const sprite = new Sprite(tex);
+      sprite.anchor.set(0.5, 1);
+      sprite.x = x * TILE_SIZE + TILE_SIZE / 2;
+      sprite.y = (y + 1) * TILE_SIZE;
+      return sprite;
+    };
+
+    // Pasada 1: todo el suelo (capa 1). Pasada 2: toda la decoración
+    // (capa 2) — así una decoración más ancha que un tile nunca queda
+    // tapada por el piso del tile vecino.
+    for (let y = 0; y < data.height; y += 1) {
+      for (let x = 0; x < data.width; x += 1) {
+        const idx = y * data.width + x;
+        const g1 = data.graphic[idx] ?? 0;
+        const tex1 = g1 ? tileset.get(g1) : null;
+        if (tex1) {
+          const sprite = new Sprite(tex1);
+          sprite.x = x * TILE_SIZE;
+          sprite.y = y * TILE_SIZE;
+          tilesLayer.addChild(sprite);
+          const anim = tileAnims?.[g1.toString()];
+          if (anim) animatedTiles.push({ sprite, frames: anim.frames, speed: anim.speed });
+        } else {
+          const blocked = (data.blocked[idx] ?? 0) === 1;
+          const { base } = tileColors(g1, blocked);
+          fallback.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color: base });
+        }
+      }
+    }
 
     for (let y = 0; y < data.height; y += 1) {
       for (let x = 0; x < data.width; x += 1) {
         const idx = y * data.width + x;
-        const graphic = data.graphic[idx] ?? 0;
-        const tex = graphic ? tileset.get(graphic) : null;
-        if (tex) {
-          const sprite = new Sprite(tex);
-          sprite.x = x * TILE_SIZE;
-          sprite.y = y * TILE_SIZE;
-          tilesLayer.addChild(sprite);
-        } else {
-          const blocked = (data.blocked[idx] ?? 0) === 1;
-          const { base } = tileColors(graphic, blocked);
-          fallback.rect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE).fill({ color: base });
+
+        // Capa 2: decoración de suelo (alfombras, bordes, detalles).
+        const g2 = data.layer2[idx] ?? 0;
+        if (g2) {
+          const tex = tileset.get(g2);
+          if (tex) {
+            const sprite = placeAnchored(tex, x, y);
+            tilesLayer.addChild(sprite);
+            const anim = tileAnims?.[g2.toString()];
+            if (anim) animatedTiles.push({ sprite, frames: anim.frames, speed: anim.speed });
+          }
+        }
+
+        // Capa 3: objetos que ocluyen entidades (árboles, paredes, carteles).
+        const g3 = data.layer3[idx] ?? 0;
+        if (g3) {
+          const tex = tileset.get(g3);
+          if (tex) {
+            const sprite = placeAnchored(tex, x, y);
+            sprite.zIndex = (y + 1) * TILE_SIZE;
+            entitiesLayer.addChild(sprite);
+            mapObjectSprites.push(sprite);
+            layer3ByTile.set(idx, sprite);
+          }
+        }
+
+        // Capa 4: techos. Se atenúan cuando el jugador está bajo techo.
+        const g4 = data.layer4[idx] ?? 0;
+        if (g4) {
+          const tex = tileset.get(g4);
+          if (tex) roofLayer.addChild(placeAnchored(tex, x, y));
         }
       }
     }
   }
 
+  async function renderTiles(data: MapData): Promise<void> {
+    const token = ++mapRenderToken;
+    mapWidth = data.width;
+    mapHeight = data.height;
+    // Copia mutable: las puertas cambian el bloqueo en vivo (MapTileUpdate).
+    mapBlocked = [...data.blocked];
+    mapTrigger = data.trigger;
+    mapWater = data.graphic.map((g) => (isWaterGraphic(g) ? 1 : 0));
+
+    await tilesetIndexReady;
+    // Animaciones de tiles (mismo animaciones.json que usan los FX). Una sola vez.
+    if (!tileAnims) {
+      try {
+        const res = await fetch("/ao-assets/animaciones.json", { cache: "force-cache" });
+        if (res.ok) tileAnims = (await res.json()) as Record<string, { frames: number[]; speed: number }>;
+      } catch {
+        tileAnims = {};
+      }
+    }
+
+    // Reunir los grh de las 4 capas (+ frames animados de suelo/decoración).
+    const ids = new Set<number>();
+    for (const g of data.graphic) if (g) ids.add(g);
+    for (const g of data.layer2) if (g) ids.add(g);
+    for (const g of data.layer3) if (g) ids.add(g);
+    for (const g of data.layer4) if (g) ids.add(g);
+    if (tileAnims) {
+      for (const g of [...data.graphic, ...data.layer2]) {
+        const anim = g ? tileAnims[g.toString()] : undefined;
+        if (anim) for (const f of anim.frames) ids.add(f);
+      }
+    }
+
+    // SIEMPRE (primer mapa Y cambios de mapa): esperar a que TODOS los atlas del
+    // mapa estén cargados ANTES de dibujar. Así el mundo aparece completo y NUNCA
+    // se ven los tiles en color de fallback ("pastel"). Durante la espera se ve
+    // el mapa anterior + el flash de transición (no el fallback); los PNGs ya
+    // visitados están en caché del browser (Cache-Control immutable) → instantáneo.
+    if (tileset.ready && tileset.missingFileCount(ids) > 0) {
+      if (!firstMapDrawn) {
+        statusText.text = "Cargando el mundo...";
+        statusText.style.fill = "#4cb87e";
+        statusText.visible = true;
+      } else {
+        // Mantener el flash de transición encendido mientras carga el mapa nuevo.
+        transitionFlash.visible = true;
+        transitionFlash.alpha = 1;
+        transitionFlashEnd = performance.now() + TRANSITION_FLASH_MS;
+      }
+      await tileset.preload(ids);
+      if (token !== mapRenderToken) return; // cambió de mapa mientras cargaba
+      // Reiniciar el flash tras la carga para que el fade arranque recién ahora
+      // (si la carga tardó, el flash no quedó "consumido" antes de ver el mapa).
+      if (firstMapDrawn) transitionFlashEnd = performance.now() + TRANSITION_FLASH_MS;
+    }
+
+    // Ya está todo el atlas cargado → dibujar el mapa completo (sin fallback).
+    drawTiles(data);
+    firstMapDrawn = true;
+  }
+
+  // Trigger 1/2/4 del .map original = "bajo techo": los techos se atenúan
+  // para ver el interior (comportamiento del cliente AO clásico).
+  function updateRoofVisibility(): void {
+    if (mapWidth === 0) return;
+    const own = entityVisuals.get(character.id);
+    if (!own) return;
+    const t = mapTrigger[own.position.y * mapWidth + own.position.x] ?? 0;
+    const underRoof = t === 1 || t === 2 || t === 4;
+    roofLayer.alpha = underRoof ? 0.15 : 1;
+  }
+
   function renderEntities(data: MapData): void {
-    entitiesLayer.removeChildren();
+    // Sacamos solo los containers de entidades — los objetos de la capa 3
+    // (árboles) también viven en entitiesLayer y los limpia renderTiles.
     for (const v of entityVisuals.values()) {
+      entitiesLayer.removeChild(v.container);
       v.container.destroy({ children: true });
     }
     entityVisuals.clear();
@@ -906,41 +1331,76 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0);
     }
     updateSelfHud();
   }
 
   async function applyMapData(data: MapData): Promise<void> {
+    playMapMusic(data.music ?? 0);
     const isTransition = currentMapId !== -1 && data.mapId !== currentMapId;
     currentMapId = data.mapId;
 
     if (isTransition) {
       // Reset de estado de input para que no queden teclas "pegadas"
       // ni predicciones pendientes al reconstruir la escena.
-      keysHeld.clear();
+      keysHeld.length = 0;
       lastLocalMoveAt = 0;
       transitionFlash.visible = true;
       transitionFlash.alpha = 1;
       transitionFlashEnd = performance.now() + TRANSITION_FLASH_MS;
+      audio.play(SND.warp, 0.7);
+      chat?.appendMessage({ fromName: "", text: `Has llegado a ${data.name}.`, timestamp: Date.now(), isSelf: false, kind: "global" });
     }
 
     await renderTiles(data);
     renderEntities(data);
     clearGroundItems();
     for (const gi of data.groundItems) {
-      addGroundItemVisual(gi.id as unknown as number, gi.position, gi.item);
+      addGroundItemVisual(gi.id as unknown as number, gi.position, gi.item, gi.qty);
     }
     refreshPlayerList();
     statusText.visible = false;
     centerCameraOnSelf();
+
+    // Minimapa: mapa nuevo → re-render del fondo + posición propia.
+    minimap?.setMap({
+      mapId: data.mapId,
+      name: data.name,
+      width: data.width,
+      height: data.height,
+      graphic: data.graphic,
+      layer3: data.layer3,
+      blocked: data.blocked,
+    });
+    // Ubicación actual (nombre + id de mapa) para el panel y el HUD.
+    currentMapName = data.name;
+    inventory?.setLocation(data.name);
+    const ownV = entityVisuals.get(character.id);
+    if (ownV) {
+      minimap?.setPos(ownV.position.x, ownV.position.y);
+      updateHudLocation(currentMapName, currentMapId, ownV.position.x, ownV.position.y);
+    }
   }
+  let currentMapName = "";
+
+  // Bodies de barco (para saber si estamos navegando por el body visible).
+  const BOAT_BODIES = new Set(
+    Object.values(ITEMS)
+      .filter((d) => d.objType === 31 && (d.bodyId ?? 0) > 0)
+      .map((d) => d.bodyId!),
+  );
 
   // Lookup local de walkability — para la prediccion optimista.
-  // Coincide con la verdad del server (blocked[] viene en MAP_DATA).
+  // Coincide con la verdad del server: bloqueado no; agua solo navegando;
+  // tierra solo a pie.
   function isWalkableLocal(x: number, y: number): boolean {
     if (x < 0 || y < 0 || x >= mapWidth || y >= mapHeight) return false;
-    return mapBlocked[y * mapWidth + x] === 0;
+    const idx = y * mapWidth + x;
+    if (mapBlocked[idx] !== 0) return false;
+    const own = entityVisuals.get(character.id);
+    const navigating = own !== undefined && BOAT_BODIES.has(own.bodyId);
+    return (mapWater[idx] === 1) === navigating;
   }
 
   // -- Movimiento y combate --
@@ -954,12 +1414,31 @@ export async function startGameScene(
   let partyUi: PartyUiHandle | null = null;
   let tradeUi: TradeHandle | null = null;
   let statsPanel: StatsPanelHandle | null = null;
-  let skillHotbar: SkillHotbarHandle | null = null;
+  let macroBar: MacroBarHandle | null = null;
+  // Estado que alimenta el selector de macros (usar/equipar/hechizo).
+  let macroInventory: ReadonlyArray<{ item: number; qty: number }> = [];
+  let macroSpellIds: ReadonlyArray<number> = [];
+  let keyConfig: KeyConfigHandle | null = null;
+  let minimap: MinimapHandle | null = null;
+  let worldMap: WorldMapHandle | null = null;
+  let craftUi: CraftHandle | null = null;
+  let questsUi: QuestsHandle | null = null;
+  // Herramienta armada (modo trabajo): click en el tile objetivo.
+  let armedTool: number | null = null;
   let classSkillId = 0; // ID de la skill del personaje (0 = sin skill conocida)
-  let prevLevel = 1;
+  // Hechizo del libro seleccionado para lanzar (click en objetivo = cast).
+  let selectedSpellId: number | null = null;
+  // Teclas configurables (panel ⚙). Las flechas siempre mueven.
+  let keymap: Keymap = loadKeymap();
+  // Nivel actual del personaje (para detectar subidas reales, no el StatsUpdate
+  // inicial del login).
+  let prevLevel = character.level;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
-  const keysHeld = new Set<string>();
+  // Alternador de sonido de pasos (23/24 como el cliente original).
+  let stepToggle = false;
+  // Orden de pulsación: la última dirección presionada manda (flow del AO).
+  const keysHeld: string[] = [];
   // Direccion a la que mira el personaje (define a quien golpea el ataque).
   let selfFacing: Direction = "south";
   let lastLocalAttackAt = 0;
@@ -967,15 +1446,21 @@ export async function startGameScene(
 
   function tryStep(direction: Direction): void {
     if (!client) return;
-    // El facing se actualiza siempre que se intenta mover, aunque haya
-    // cooldown o pared en frente — asi el ataque apunta a donde miramos.
-    selfFacing = direction;
-    const ownForFacing = entityVisuals.get(character.id);
-    if (ownForFacing) setEntityFacing(ownForFacing, direction);
     const now = performance.now();
-    if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
+    // Paralizado/inmovilizado: no hay predicción local de movimiento.
+    if (selfParalyzedUntil > now || selfImmobilizedUntil > now) return;
     const own = entityVisuals.get(character.id);
-    if (!own || own.dead) return;
+    // Los muertos SÍ caminan (fantasma del AO — para llegar al sacerdote).
+    if (!own) return;
+
+    // Girar es INMEDIATO (responsivo): actualizamos la dirección ya, aunque el
+    // PASO tenga que esperar al cooldown. Antes girábamos recién en el próximo
+    // paso, y cambiar de dirección se sentía trabado (se demoraba hasta 200ms).
+    selfFacing = direction;
+    setEntityFacing(own, direction);
+
+    // El PASO respeta el cooldown (el giro de arriba ya se aplicó).
+    if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
 
     const delta = DELTAS[direction];
     const target: Vector2 = {
@@ -989,6 +1474,10 @@ export async function startGameScene(
 
     lastLocalMoveAt = now;
     moveSequence += 1;
+
+    // Pasos alternados del AO (WAV 23/24).
+    stepToggle = !stepToggle;
+    audio.play(stepToggle ? SND.paso1 : SND.paso2, 0.7);
 
     // Prediccion: movemos el sprite YA (sin esperar el ACK).
     moveEntityTo(character.id, target);
@@ -1011,6 +1500,8 @@ export async function startGameScene(
   function tryAttack(): void {
     if (!client) return;
     const now = performance.now();
+    // Paralizado no pega (sí puede castear Remover Parálisis).
+    if (selfParalyzedUntil > now) return;
     if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
     const own = entityVisuals.get(character.id);
     if (!own || own.dead) return;
@@ -1040,6 +1531,22 @@ export async function startGameScene(
     client.send(packet);
   }
 
+  // Lanza el hechizo armado sobre targetId. Devuelve true si el click se
+  // consumió como casteo. ONE-SHOT como el AO clásico: después de lanzar,
+  // el modo se desarma — hay que volver a «Lanzar» (o macro) para repetir.
+  function castSelectedSpell(targetId: number): boolean {
+    if (selectedSpellId === null || !client) return false;
+    const pkt: CastSpellRequest = {
+      op: ClientToServerOp.CastSpell,
+      spellId: selectedSpellId,
+      targetId: targetId as unknown as EntityId,
+    };
+    client.send(pkt);
+    // Desarmar (la selección de la lista queda para re-lanzar rápido).
+    setArmedSpell(null);
+    return true;
+  }
+
   // Clic sobre una entidad: si es comerciante, abrimos la tienda; si no,
   // atacamos (solo si es adyacente). Giramos hacia el objetivo.
   function clickAttack(targetId: number): void {
@@ -1062,9 +1569,17 @@ export async function startGameScene(
     if (!own || own.dead || target.dead) return;
     const dx = target.position.x - own.position.x;
     const dy = target.position.y - own.position.y;
-    if (Math.abs(dx) + Math.abs(dy) !== 1) return; // no adyacente
+    // Con arco: hasta 8 tiles (rango de proyectiles del AO). Melee: adyacente.
+    if (selfWeaponRanged) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 8) return;
+    } else if (Math.abs(dx) + Math.abs(dy) !== 1) {
+      return; // no adyacente
+    }
 
-    selfFacing = dx === 1 ? "east" : dx === -1 ? "west" : dy === 1 ? "south" : "north";
+    selfFacing =
+      Math.abs(dx) >= Math.abs(dy)
+        ? (dx >= 0 ? "east" : "west")
+        : (dy >= 0 ? "south" : "north");
     lastLocalAttackAt = now;
     playSwing(own, selfFacing);
 
@@ -1078,10 +1593,11 @@ export async function startGameScene(
   function spawnFloater(x: number, y: number, label: string, color: string): void {
     const text = new Text({
       text: label,
+      resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
         fill: color,
         fontFamily: "Consolas, monospace",
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: "bold",
         stroke: { color: "#0a0805", width: 3 },
       }),
@@ -1089,36 +1605,262 @@ export async function startGameScene(
     text.anchor.set(0.5, 1);
     text.x = x;
     text.y = y - 18;
+    // Siempre por encima de árboles y entidades en el y-sort.
+    text.zIndex = 1_000_000;
     entitiesLayer.addChild(text);
     floaters.push({ text, startY: text.y, start: performance.now() });
   }
 
-  function pumpHeldKeys(): void {
-    // Prioridad: vertical antes que horizontal (consistente con AO original).
-    if (keysHeld.has("KeyW") || keysHeld.has("ArrowUp")) { tryStep("north"); return; }
-    if (keysHeld.has("KeyS") || keysHeld.has("ArrowDown")) { tryStep("south"); return; }
-    if (keysHeld.has("KeyA") || keysHeld.has("ArrowLeft")) { tryStep("west"); return; }
-    if (keysHeld.has("KeyD") || keysHeld.has("ArrowRight")) { tryStep("east"); return; }
+  // Dirección para un event.code: flechas fijas + teclas configurables.
+  function codeToDirection(code: string): Direction | null {
+    const arrow = ARROW_TO_DIRECTION[code];
+    if (arrow) return arrow;
+    if (code === keymap.north) return "north";
+    if (code === keymap.south) return "south";
+    if (code === keymap.west) return "west";
+    if (code === keymap.east) return "east";
+    return null;
   }
+
+  function pumpHeldKeys(): void {
+    // Prioridad del AO: gana la ÚLTIMA tecla de dirección presionada que
+    // siga apretada (keysHeld es un array en orden de pulsación).
+    for (let i = keysHeld.length - 1; i >= 0; i -= 1) {
+      const dir = codeToDirection(keysHeld[i]!);
+      if (dir) {
+        tryStep(dir);
+        return;
+      }
+    }
+  }
+
+  // Cartel de modo casteo: visible SOLO mientras hay un hechizo armado.
+  const castBanner = document.createElement("div");
+  castBanner.className = "ao-castbanner";
+  stageEl.appendChild(castBanner);
+
+  // Único punto que arma/desarma el casteo: cursor + cartel + estado.
+  function setArmedSpell(spellId: number | null): void {
+    selectedSpellId = spellId;
+    if (spellId !== null) armedTool = null;
+    app.canvas.style.cursor = spellId !== null ? "crosshair" : "default";
+    if (spellId !== null) {
+      const spell = getAoSpell(spellId);
+      castBanner.textContent = `⚡ Lanzando ${spell?.name ?? "hechizo"} — click en el objetivo · Esc cancela`;
+      castBanner.classList.add("ao-castbanner--on");
+    } else {
+      castBanner.classList.remove("ao-castbanner--on");
+    }
+  }
+
+  // Modo trabajo: herramienta armada → click en el tile (árbol/agua/roca).
+  const TOOL_KIND: Record<number, string> = {
+    127: "árbol", 561: "árbol", 1005: "árbol élfico",
+    187: "yacimiento", 562: "yacimiento",
+    138: "agua", 563: "agua", 543: "agua",
+  };
+
+  function setArmedTool(item: number | null): void {
+    armedTool = item;
+    if (item !== null) selectedSpellId = null;
+    app.canvas.style.cursor = item !== null ? "crosshair" : "default";
+    if (item !== null) {
+      castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · Esc cancela`;
+      castBanner.classList.add("ao-castbanner--on");
+    } else if (selectedSpellId === null) {
+      castBanner.classList.remove("ao-castbanner--on");
+    }
+  }
+
+  function clearSpellSelection(): void {
+    setArmedSpell(null);
+    setArmedTool(null);
+    inventory?.clearSpellSelection();
+  }
+
+  // Entidad viva parada en un tile (para castear por tile, no por píxel).
+  // Prioriza otras entidades sobre uno mismo (hechizos de ataque).
+  function entityAtTile(tx: number, ty: number): number | null {
+    let selfHit: number | null = null;
+    for (const [id, v] of entityVisuals) {
+      if (v.position.x !== tx || v.position.y !== ty || v.dead) continue;
+      if (id === character.id) { selfHit = id; continue; }
+      return id;
+    }
+    return selfHit;
+  }
+
+  // Entidad cuyo SPRITE cubre el punto clickeado (en píxeles del mundo). El
+  // hit-testing por-sprite de Pixi no es fiable en esta escena (cámara escalada
+  // + y-sort), así que lo hacemos a mano: el sprite se ancla en los pies y sube
+  // ~1.75 tiles, ~1 tile de ancho. Prioriza a los demás sobre uno mismo y, entre
+  // varios, al del frente (mayor Y de pies = dibujado encima).
+  function entityAtWorldPoint(wx: number, wy: number): number | null {
+    let best: number | null = null;
+    let bestFeetY = -Infinity;
+    let selfHit: number | null = null;
+    let selfFeetY = -Infinity;
+    for (const [id, v] of entityVisuals) {
+      if (v.dead) continue;
+      const fx = v.position.x * TILE_SIZE + TILE_SIZE / 2;
+      const fy = v.position.y * TILE_SIZE + TILE_SIZE / 2;
+      if (wx < fx - 18 || wx > fx + 18 || wy < fy - 56 || wy > fy + 10) continue;
+      if (id === character.id) {
+        if (fy > selfFeetY) { selfHit = id; selfFeetY = fy; }
+      } else if (fy > bestFeetY) {
+        best = id;
+        bestFeetY = fy;
+      }
+    }
+    return best ?? selfHit;
+  }
+
+  // Estado para detectar doble-click (accionar puertas/carteles como el AO).
+  let lastTapAt = 0;
+  let lastTapX = -1;
+  let lastTapY = -1;
+
+  // Click en el mundo: con hechizo armado castea sobre la entidad del tile
+  // clickeado (tolerante al píxel, como el AO); con herramienta, trabaja.
+  const onStagePointerDown = (
+    e: { global: { x: number; y: number }; target: unknown; altKey?: boolean; shiftKey?: boolean; button?: number },
+  ): void => {
+    if (!client) return;
+    if (e.button !== undefined && e.button !== 0) return; // solo click izquierdo
+    const wx = (e.global.x - world.x) / WORLD_SCALE;
+    const wy = (e.global.y - world.y) / WORLD_SCALE;
+    const tx = Math.floor(wx / TILE_SIZE);
+    const ty = Math.floor(wy / TILE_SIZE);
+    if (tx < 0 || ty < 0 || tx >= mapWidth || ty >= mapHeight) return;
+
+    // Hechizo armado: castea sobre la entidad clickeada (por sprite; si no,
+    // por tile). One-shot como el AO.
+    if (selectedSpellId !== null) {
+      const targetId = entityAtWorldPoint(wx, wy) ?? entityAtTile(tx, ty);
+      if (targetId !== null) castSelectedSpell(targetId);
+      return;
+    }
+
+    // Herramienta armada: trabajar en el tile (árbol/agua/roca).
+    if (armedTool !== null) {
+      const pkt: WorkRequest = { op: ClientToServerOp.Work, item: armedTool, x: tx, y: ty };
+      client.send(pkt);
+      return;
+    }
+
+    // Sin nada armado: ¿se clickeó una entidad? → interactuar. Comerciante abre
+    // tienda, banquero abre banco, sacerdote revive/cura, otros: atacar.
+    // Alt+clic = invitar a party; Shift+clic = proponer trade (solo jugadores).
+    const entId = entityAtWorldPoint(wx, wy);
+    if (entId !== null) {
+      const v = entityVisuals.get(entId);
+      if (v) {
+        const isOther = entId !== character.id;
+        if (isOther && e.altKey && v.kind === "player") {
+          const pkt: PartyInviteRequest = { op: ClientToServerOp.PartyInvite, targetId: entId as unknown as EntityId };
+          client.send(pkt);
+        } else if (isOther && e.shiftKey && v.kind === "player") {
+          const pkt: TradeRequestMsg = { op: ClientToServerOp.TradeRequest, targetId: entId as unknown as EntityId };
+          client.send(pkt);
+        } else if (v.kind === "player") {
+          // Click sobre un personaje (propio u otro): ver su info en el chat.
+          const pkt: PlayerInfoRequest = { op: ClientToServerOp.PlayerInfo, targetId: entId as unknown as EntityId };
+          client.send(pkt);
+        } else if (isOther) {
+          clickAttack(entId);
+        }
+        return;
+      }
+    }
+
+    // Item en el suelo: click muestra su nombre en el chat (ya no hay cartel).
+    const ground = groundItemAtTile(tx, ty);
+    if (ground !== null) {
+      const def = getItem(ground.item);
+      const name = def ? def.name : `#${ground.item.toString()}`;
+      const text = ground.qty > 1 ? `Ves ${name} (x${ground.qty.toString()}).` : `Ves ${name}.`;
+      chat?.appendMessage({ fromName: "", text, timestamp: Date.now(), isSelf: false, kind: "global" });
+      return;
+    }
+
+    // Shift-click de GM sobre zona vacía: teletransportarse a ese tile (mover
+    // por el mapa). Reusa el comando /telep; el server lo valida (sólo role > 0).
+    if (e.shiftKey && (entityVisuals.get(character.id)?.role ?? 0) > 0) {
+      const pkt: ChatSend = { op: ClientToServerOp.ChatSend, text: `/telep ${currentMapId.toString()} ${tx.toString()} ${ty.toString()}` };
+      client.send(pkt);
+      return;
+    }
+
+    // Zona vacía: doble-click acciona la puerta/cartel del tile (el AO clásico
+    // abre puertas con doble-click). Mismo efecto que el click derecho.
+    const now = performance.now();
+    if (now - lastTapAt < 350 && lastTapX === tx && lastTapY === ty) {
+      lastTapAt = 0;
+      const pkt: InteractRequest = {
+        op: ClientToServerOp.Interact,
+        targetId: 0 as EntityId,
+        tile: { x: tx, y: ty },
+      };
+      client.send(pkt);
+      return;
+    }
+    lastTapAt = now;
+    lastTapX = tx;
+    lastTapY = ty;
+  };
+
+  const onStageRightDown = (e: { global: { x: number; y: number } }): void => {
+    if (!client) return;
+    const wx = (e.global.x - world.x) / WORLD_SCALE;
+    const wy = (e.global.y - world.y) / WORLD_SCALE;
+    // Click derecho: detalle (exp, oro, drops) SOLO de criaturas (kind "npc").
+    // Comerciantes/banqueros y personajes no muestran este detalle.
+    const entId = entityAtWorldPoint(wx, wy);
+    if (entId !== null && entId !== character.id) {
+      const v = entityVisuals.get(entId);
+      if (v && v.kind === "npc") {
+        const pkt: NpcInfoRequest = { op: ClientToServerOp.NpcInfo, targetId: entId as EntityId };
+        client.send(pkt);
+        return;
+      }
+    }
+    const tx = Math.floor(wx / TILE_SIZE);
+    const ty = Math.floor(wy / TILE_SIZE);
+    if (tx < 0 || ty < 0 || tx >= mapWidth || ty >= mapHeight) return;
+    const pkt: InteractRequest = {
+      op: ClientToServerOp.Interact,
+      targetId: 0 as EntityId,
+      tile: { x: tx, y: ty },
+    };
+    client.send(pkt);
+  };
 
   const onKeyDown = (e: KeyboardEvent): void => {
     // Si el chat tiene foco, dejamos que el input se quede con todas
-    // las teclas — no movemos al personaje ni capturamos WASD.
+    // las teclas — no movemos al personaje ni capturamos nada.
     if (chat?.isInputFocused()) return;
-    // Ataque: Ctrl golpea al personaje que tenemos en frente.
-    if (e.code === "ControlLeft" || e.code === "ControlRight") {
+    // El panel de configuración captura teclas propias.
+    if (keyConfig?.isOpen()) return;
+
+    // Escape: cerrar el mapa-mundi si está abierto; si no, deseleccionar hechizo.
+    if (e.code === "Escape") {
+      if (worldMap?.isOpen()) worldMap.close();
+      else clearSpellSelection();
+      return;
+    }
+    // Ataque (configurable; Ctrl derecho siempre funciona como alias).
+    if (e.code === keymap.attack || e.code === "ControlRight") {
       e.preventDefault();
       tryAttack();
       return;
     }
-    // G: agarrar item del suelo. I: abrir/cerrar inventario.
-    if (e.code === "KeyG") {
+    if (e.code === keymap.pickup) {
       e.preventDefault();
       const pickup: PickupRequest = { op: ClientToServerOp.Pickup };
       client?.send(pickup);
       return;
     }
-    if (e.code === "KeyI") {
+    if (e.code === keymap.inventory) {
       e.preventDefault();
       inventory?.toggle();
       return;
@@ -1129,39 +1871,113 @@ export async function startGameScene(
       // Si está cerrado, el servidor lo abre al interactuar con el banquero.
       return;
     }
-    if (e.code === "KeyC") {
+    if (e.code === keymap.stats) {
       e.preventDefault();
       const panel = root.querySelector<HTMLElement>(".ao-stats-panel");
       if (panel) panel.classList.toggle("ao-stats-panel--open");
       return;
     }
-    if (e.code === "Digit1" && classSkillId > 0) {
+    // Meditar (recupera maná acelerado; se corta al moverse/atacar).
+    if (e.code === keymap.meditate) {
       e.preventDefault();
-      const pkt: UseSkillRequest = {
-        op: ClientToServerOp.UseSkill,
-        skillId: classSkillId,
-        targetId: undefined,
-      };
+      const pkt: MeditateToggle = { op: ClientToServerOp.Meditate };
       client?.send(pkt);
       return;
     }
-    const dir = KEY_TO_DIRECTION[e.code];
+    // Descansar junto a una fogata (toggle).
+    if (e.code === keymap.rest) {
+      e.preventDefault();
+      const pkt: RestToggle = { op: ClientToServerOp.Rest };
+      client?.send(pkt);
+      return;
+    }
+    const dir = codeToDirection(e.code);
     if (!dir) return;
     e.preventDefault();
-    keysHeld.add(e.code);
+    // Re-pulsación: mover al final (la última presionada manda).
+    holdKey(e.code);
     tryStep(dir);
   };
   const onKeyUp = (e: KeyboardEvent): void => {
-    if (KEY_TO_DIRECTION[e.code]) {
-      keysHeld.delete(e.code);
-    }
+    releaseKey(e.code);
   };
+
+  function holdKey(code: string): void {
+    const i = keysHeld.indexOf(code);
+    if (i !== -1) keysHeld.splice(i, 1);
+    keysHeld.push(code);
+  }
+  function releaseKey(code: string): void {
+    const i = keysHeld.indexOf(code);
+    if (i !== -1) keysHeld.splice(i, 1);
+  }
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
+
+  // ── Música del mapa (MP3 oficiales del AO Libre — MusicNumMp3) ─────────
+  let musicEl: HTMLAudioElement | null = null;
+  let currentMusic = -1;
+  function playMapMusic(music: number): void {
+    if (music === currentMusic) return;
+    currentMusic = music;
+    if (musicEl) {
+      musicEl.pause();
+      musicEl = null;
+    }
+    if (music <= 0) return;
+    const el = new Audio(`/ao-assets/mp3/${music.toString()}.mp3`);
+    el.loop = true;
+    el.volume = 0.3;
+    musicEl = el;
+    // Si el autoplay está bloqueado, el unlock del primer gesto la arranca.
+    void el.play().catch(() => undefined);
+  }
+
+  // ── Lluvia global (/LLUVIA de GM — overlay + loop lluviaout.wav) ───────
+  let rainEl: HTMLDivElement | null = null;
+  let rainAudio: HTMLAudioElement | null = null;
+  function setRaining(raining: boolean): void {
+    if (raining && !rainEl) {
+      rainEl = document.createElement("div");
+      rainEl.className = "ao-rain";
+      root.appendChild(rainEl);
+      rainAudio = new Audio("/ao-assets/wav/lluviaout.wav");
+      rainAudio.loop = true;
+      rainAudio.volume = 0.45;
+      void rainAudio.play().catch(() => undefined);
+      chat?.appendMessage({ fromName: "", text: "Comienza a llover.", timestamp: Date.now(), isSelf: false, kind: "normal" });
+    } else if (!raining && rainEl) {
+      rainEl.remove();
+      rainEl = null;
+      rainAudio?.pause();
+      rainAudio = null;
+      chat?.appendMessage({ fromName: "", text: "Deja de llover.", timestamp: Date.now(), isSelf: false, kind: "normal" });
+    }
+  }
+
+  // Los navegadores bloquean el audio hasta el primer gesto del usuario.
+  const unlockAudio = (): void => {
+    audio.unlock();
+    // Reintentar música/lluvia que el autoplay haya bloqueado.
+    if (musicEl && musicEl.paused) void musicEl.play().catch(() => undefined);
+    if (rainAudio && rainAudio.paused) void rainAudio.play().catch(() => undefined);
+    window.removeEventListener("keydown", unlockAudio);
+    window.removeEventListener("pointerdown", unlockAudio);
+  };
+  window.addEventListener("keydown", unlockAudio);
+  window.addEventListener("pointerdown", unlockAudio);
 
   // -- Ticker: interpolacion + pump de teclas mantenidas --
   const tick = (): void => {
     const now = performance.now();
+    // Tiles animados (agua/lava): frame = reloj global → todas las celdas
+    // del mismo GRH quedan en fase, igual que el TileEngine del AO.
+    for (const at of animatedTiles) {
+      const n = at.frames.length;
+      const idx = Math.floor((now * n) / at.speed) % n;
+      const tex = tileset.get(at.frames[idx]!);
+      if (tex && at.sprite.texture !== tex) at.sprite.texture = tex;
+    }
     for (const v of entityVisuals.values()) {
       if (v.tweenDuration > 0) {
         const t = Math.min(1, (now - v.tweenStart) / v.tweenDuration);
@@ -1198,6 +2014,20 @@ export async function startGameScene(
       }
       v.container.x = v.renderX + ox;
       v.container.y = v.renderY + oy;
+      // y-sort: el zIndex por Y decide la oclusión con los árboles/paredes
+      // de la capa 3 (que usan el pie del objeto como zIndex).
+      v.container.zIndex = v.renderY + TILE_SIZE / 2;
+      // Expirar la barra de HP flotante (solo se ve unos segundos tras daño).
+      if (v.hpBarUntil > 0 && now >= v.hpBarUntil) {
+        v.hpBar.visible = false;
+        v.hpBarUntil = 0;
+      }
+      // Expirar el habla sobre la cabeza.
+      if (v.overheadText && now >= v.overheadUntil) {
+        v.container.removeChild(v.overheadText);
+        v.overheadText.destroy();
+        v.overheadText = null;
+      }
     }
     // Numeros de daño flotantes: suben y se desvanecen, luego se destruyen.
     for (let i = floaters.length - 1; i >= 0; i -= 1) {
@@ -1224,9 +2054,23 @@ export async function startGameScene(
       }
     }
 
+    fxPlayer.update(now);
     pumpHeldKeys();
-    if (mapWidth > 0) centerCameraOnSelf();
+    if (mapWidth > 0) {
+      centerCameraOnSelf();
+      updateRoofVisibility();
+      // Punto del jugador en el minimapa (no-op si no cambió de tile).
+      const ownV = entityVisuals.get(character.id);
+      if (ownV && (ownV.position.x !== hudTileX || ownV.position.y !== hudTileY)) {
+        hudTileX = ownV.position.x;
+        hudTileY = ownV.position.y;
+        minimap?.setPos(ownV.position.x, ownV.position.y);
+        updateHudLocation(currentMapName, currentMapId, ownV.position.x, ownV.position.y);
+      }
+    }
   };
+  let hudTileX = -1;
+  let hudTileY = -1;
   app.ticker.add(tick);
 
   // -- Handlers de paquetes del server --
@@ -1243,6 +2087,9 @@ export async function startGameScene(
         break;
       case ServerToClientOp.EntityDespawn:
         handleEntityDespawn(packet);
+        break;
+      case ServerToClientOp.EntityAppearance:
+        handleEntityAppearance(packet);
         break;
       case ServerToClientOp.ChatBroadcast:
         handleChatBroadcast(packet);
@@ -1262,8 +2109,14 @@ export async function startGameScene(
       case ServerToClientOp.StatsUpdate:
         handleStatsUpdate(packet);
         break;
+      case ServerToClientOp.NpcInfo:
+        showNpcInfo(packet);
+        break;
+      case ServerToClientOp.PlayerInfo:
+        showPlayerInfo(packet);
+        break;
       case ServerToClientOp.GroundItemSpawn:
-        addGroundItemVisual(packet.id as unknown as number, packet.position, packet.item);
+        addGroundItemVisual(packet.id as unknown as number, packet.position, packet.item, packet.qty);
         break;
       case ServerToClientOp.GroundItemDespawn:
         removeGroundItemVisual(packet.id as unknown as number);
@@ -1307,6 +2160,36 @@ export async function startGameScene(
       case ServerToClientOp.WhisperReceived:
         handleWhisperReceived(packet);
         break;
+      case ServerToClientOp.MeditateUpdate:
+        handleMeditateUpdate(packet);
+        break;
+      case ServerToClientOp.SpellsKnown:
+        handleSpellsKnown(packet);
+        break;
+      case ServerToClientOp.EntityEffect:
+        handleEntityEffect(packet);
+        break;
+      case ServerToClientOp.ConsoleMsg:
+        handleConsoleMsg(packet);
+        break;
+      case ServerToClientOp.QuestOffer:
+        questsUi?.showOffer(packet.questId);
+        break;
+      case ServerToClientOp.QuestState:
+        questsUi?.setState(packet.active, packet.done);
+        break;
+      case ServerToClientOp.FactionUpdate:
+        handleFactionUpdate(packet);
+        break;
+      case ServerToClientOp.GuildTagUpdate:
+        handleGuildTagUpdate(packet);
+        break;
+      case ServerToClientOp.MapTileUpdate:
+        handleMapTileUpdate(packet);
+        break;
+      case ServerToClientOp.RainToggle:
+        setRaining(packet.raining);
+        break;
       case ServerToClientOp.CriminalUpdate:
         handleCriminalUpdate(packet);
         break;
@@ -1316,13 +2199,47 @@ export async function startGameScene(
     }
   }
 
+  // Habla sobre la cabeza (ChatOverHead — la marca registrada del AO).
+  // El texto flota sobre el personaje y se desvanece según su largo.
+  function showOverheadText(v: EntityVisual, text: string): void {
+    if (v.overheadText) {
+      v.container.removeChild(v.overheadText);
+      v.overheadText.destroy();
+      v.overheadText = null;
+    }
+    const t = new Text({
+      text,
+      resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
+      style: new TextStyle({
+        fill: "#f2f2f2",
+        fontFamily: "Verdana, Geneva, sans-serif",
+        fontSize: 9,
+        fontWeight: "bold",
+        align: "center",
+        stroke: { color: "#0a0805", width: 3 },
+        wordWrap: true,
+        wordWrapWidth: 110,
+      }),
+    });
+    t.anchor.set(0.5, 1);
+    // Sobre la cabeza: arriba del sprite (o de la silueta fallback).
+    t.y = v.bodySprite ? v.bodySprite.y - v.bodySprite.height - 4 : -36;
+    v.container.addChild(t);
+    v.overheadText = t;
+    // Duración tipo AO: base + tiempo de lectura por caracteres.
+    v.overheadUntil = performance.now() + 2_500 + text.length * 60;
+  }
+
   function handleChatBroadcast(p: ChatBroadcast): void {
+    const fromId = p.fromId as unknown as number;
     chat?.appendMessage({
       fromName: p.fromName,
       text: p.text,
       timestamp: p.timestamp,
-      isSelf: (p.fromId as unknown as number) === character.id,
+      isSelf: fromId === character.id,
     });
+    const v = entityVisuals.get(fromId);
+    if (v) showOverheadText(v, p.text);
   }
 
   function handleChatError(p: ChatError): void {
@@ -1339,11 +2256,47 @@ export async function startGameScene(
     if (target) {
       target.hp = p.hp;
       target.maxHp = p.maxHp;
-      drawHpBar(target.hpBar, target.hp, target.maxHp);
+
+      const combatLine = (line: string): void => {
+        chat?.appendMessage({ fromName: "", text: line, timestamp: Date.now(), isSelf: false, kind: "combate" });
+      };
+      const attacker = entityVisuals.get(attackerId);
+      const who = attacker?.name ?? "Alguien";
+
+      // Fallo o rechazo con escudo (fórmulas de impacto del AO): sin daño.
+      if (p.miss || p.blocked) {
+        audio.play(p.blocked ? SND.escudo : SND.swing, 0.8);
+        const label = p.blocked ? "¡Rechazado!" : "¡Falla!";
+        spawnFloater(target.renderX, target.renderY, label, p.blocked ? "#8ab8f0" : "#9a9a9a");
+        if (attackerIsSelf) {
+          combatLine(p.blocked ? `¡${target.name} rechazó tu ataque con el escudo!` : "¡Has fallado el golpe!");
+        } else if (targetIsSelf) {
+          combatLine(p.blocked ? "¡¡Has rechazado el ataque con el escudo!!" : `¡${who} falló el golpe!`);
+        }
+        return;
+      }
+
+      showEntityHpBar(target);
+      // Golpe que conecta: sonido de impacto del AO.
+      audio.play(SND.impacto, 0.85);
       // Numero de daño sobre el objetivo: rojo si lo recibo yo, verde si
       // lo inflijo yo, neutro si es entre terceros.
       const color = targetIsSelf ? "#ff5555" : attackerIsSelf ? "#7cfc8a" : "#e8dfc8";
       spawnFloater(target.renderX, target.renderY, `-${p.amount.toString()}`, color);
+
+      // Log de combate (pestaña «combate» de la consola).
+      const stabTxt = p.stab ? " ¡Apuñalada!" : "";
+      if (attackerIsSelf) {
+        const line = p.hp === 0
+          ? `¡Has matado a ${target.name}!`
+          : `Le pegaste a ${target.name} por ${p.amount.toString()}.${stabTxt}`;
+        combatLine(line);
+      } else if (targetIsSelf) {
+        const line = p.hp === 0
+          ? `¡${who} te ha matado!`
+          : `${who} te pegó por ${p.amount.toString()}.${stabTxt}`;
+        combatLine(line);
+      }
     }
 
     // Swing del atacante (el propio ya lo animo localmente al enviar).
@@ -1367,16 +2320,32 @@ export async function startGameScene(
     if (v) {
       v.dead = true;
       v.hp = 0;
-      v.body.alpha = 0.35;
-      drawHpBar(v.hpBar, 0, v.maxHp);
+      v.hpBar.visible = false;
+      v.hpBarUntil = 0;
+      audio.play(SND.muerte, 0.8);
+      if (v.kind === "player") {
+        // Los jugadores no desaparecen (fantasma del AO): sólo se atenúan.
+        v.body.alpha = 0.35;
+      } else {
+        // Criaturas/NPCs: desaparecen al morir (reaparecen con el Respawn).
+        // Antes sólo atenuábamos v.body (la silueta fallback, invisible cuando
+        // hay sprite real), así que el gráfico del bicho muerto quedaba dibujado.
+        v.container.visible = false;
+      }
     }
     if (id === character.id) {
       showDeathOverlay();
       updateSelfHud();
+      chat?.appendMessage({ fromName: "", text: "¡Has muerto!", timestamp: Date.now(), isSelf: false, kind: "global" });
     }
   }
 
+  // ¿El arma equipada es a distancia (arco)? — habilita el click-ataque lejano.
+  let selfWeaponRanged = false;
+
   function handleInventoryUpdate(p: InventoryUpdate): void {
+    const wDef = p.equippedWeapon !== null ? getItem(p.equippedWeapon) : undefined;
+    selfWeaponRanged = wDef?.ranged === true;
     inventory?.setData({
       gold: p.gold,
       slots: p.slots,
@@ -1386,7 +2355,9 @@ export async function startGameScene(
       equippedShield: p.equippedShield ?? null,
     });
     bank?.setPlayerInventory(p.slots, p.gold);
+    shop?.setPlayerInventory(p.slots, p.gold);
     tradeUi?.setInventory(p.slots, p.gold);
+    macroInventory = p.slots.filter((s) => s.item > 0);
   }
 
   function handleShopOpen(p: ShopOpen): void {
@@ -1399,13 +2370,10 @@ export async function startGameScene(
 
   function handleBankUpdate(p: BankUpdate): void {
     bank?.update(p.bankInventory, p.bankGold, p.playerInventory, p.playerGold);
-    // También sincronizar el inventario del jugador en el panel de inventario.
-    inventory?.setData({
-      gold: p.playerGold,
-      slots: p.playerInventory,
-      equippedWeapon: null, // se re-enviará con el próximo InventoryUpdate
-      equippedArmor: null,
-    });
+    // Sincronizar oro + slots del jugador SIN pisar el equipo conocido (el
+    // paquete del banco no lo trae; pasar null borraba el resaltado y mostraba
+    // Def/Daño 0 hasta el próximo InventoryUpdate).
+    inventory?.setSlots(p.playerGold, p.playerInventory);
   }
 
   function handlePartyInviteReceived(p: PartyInviteReceived): void {
@@ -1444,14 +2412,19 @@ export async function startGameScene(
     const targetId = p.targetId as unknown as number | undefined;
     const isSelfCaster = casterId === character.id;
 
-    // Mostramos floater y activamos cooldown visual cuando somos el lanzador.
+    // Mostramos floater cuando somos el lanzador, y suena el WAV real
+    // del hechizo (campo WAV de Hechizos.dat).
     if (isSelfCaster) {
       const own = entityVisuals.get(character.id);
       if (own) spawnFloater(own.renderX, own.renderY - 12, "✦", "#4a8cda");
-      if (classSkillId > 0) {
-        const skillDef = SKILLS[classSkillId];
-        if (skillDef) skillHotbar?.startCooldown(skillDef.cooldownMs);
-      }
+    }
+    const spellDef = getAoSpell(p.skillId);
+    if ((spellDef?.wav ?? 0) > 0) audio.play(spellDef!.wav, 0.8);
+
+    // FX visual del hechizo sobre el objetivo (FXgrh + Loops de Hechizos.dat).
+    if (spellDef && spellDef.fxGrh > 0) {
+      const fxTarget = targetId !== undefined ? entityVisuals.get(targetId) : entityVisuals.get(casterId);
+      if (fxTarget) fxPlayer.play(fxTarget.container, spellDef.fxGrh, Math.max(1, spellDef.loops));
     }
 
     // Si hay objetivo, mostrar efecto sobre él.
@@ -1467,11 +2440,102 @@ export async function startGameScene(
         if (p.newTargetHp !== undefined && p.newTargetMaxHp !== undefined) {
           target.hp = p.newTargetHp;
           target.maxHp = p.newTargetMaxHp;
-          drawHpBar(target.hpBar, target.hp, target.maxHp);
+          showEntityHpBar(target);
         }
       }
       if (p.dotApplied && target) {
         spawnFloater(target.renderX, target.renderY + 4, "☠", "#7c3dbd");
+      }
+    }
+  }
+
+  function handleSpellsKnown(p: SpellsKnown): void {
+    inventory?.setSpells([...p.spellIds]);
+    macroSpellIds = [...p.spellIds];
+  }
+
+  // Mensajes de consola del server (trabajos, seguros, avisos).
+  function handleConsoleMsg(p: ConsoleMsg): void {
+    const kind = p.kind === "chat" ? "normal" : p.kind;
+    chat?.appendMessage({ fromName: "", text: p.text, timestamp: Date.now(), isSelf: false, kind });
+    if ((p.wav ?? 0) > 0) audio.play(p.wav!, 0.7);
+  }
+
+  // Meditación: el aura clásica del AO (FX en loop por tamaño según nivel:
+  // FXMEDITARCHICO=4, MEDIANO=5, GRANDE=6, XGRANDE=16, XXGRANDE=34).
+  function meditateFxFor(level: number): number {
+    if (level < 15) return 4;
+    if (level < 30) return 5;
+    if (level < 45) return 6;
+    if (level < 60) return 16;
+    return 34;
+  }
+
+  function handleMeditateUpdate(p: MeditateUpdate): void {
+    const id = p.id as unknown as number;
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    v.meditateFx?.stop();
+    v.meditateFx = null;
+    if (p.meditating) {
+      const level = id === character.id ? panelStats.level : 1;
+      v.meditateFx = fxPlayer.play(v.container, meditateFxFor(level), -1);
+      spawnFloater(v.renderX, v.renderY - 8, "✦ meditando", "#8ab8f0");
+    }
+  }
+
+  // Estados alterados: parálisis/inmovilización (candado de movimiento),
+  // invisibilidad (desaparece para los demás), ceguera y estupidez.
+  let selfParalyzedUntil = 0;
+  let selfImmobilizedUntil = 0;
+
+  const blindOverlay = document.createElement("div");
+  blindOverlay.className = "ao-blind";
+  stageEl.appendChild(blindOverlay);
+
+  function handleEntityEffect(p: EntityEffect): void {
+    const id = p.id as unknown as number;
+    const v = entityVisuals.get(id);
+    const isSelf = id === character.id;
+    const now = performance.now();
+
+    switch (p.effect) {
+      case "paralyzed":
+      case "immobilized": {
+        if (isSelf) {
+          if (p.effect === "paralyzed") selfParalyzedUntil = p.active ? now + (p.durationMs ?? 0) : 0;
+          else selfImmobilizedUntil = p.active ? now + (p.durationMs ?? 0) : 0;
+        }
+        if (v && p.active) {
+          spawnFloater(v.renderX, v.renderY - 10, p.effect === "paralyzed" ? "¡Paralizado!" : "¡Inmovilizado!", "#7fd4e0");
+        }
+        if (isSelf && p.active) {
+          chat?.appendMessage({ fromName: "", text: p.effect === "paralyzed" ? "¡Te han paralizado!" : "¡Te han inmovilizado!", timestamp: Date.now(), isSelf: false, kind: "combate" });
+        }
+        break;
+      }
+      case "invisible": {
+        if (!v) return;
+        v.invisible = p.active;
+        if (isSelf) {
+          // Uno se ve a sí mismo semi-transparente.
+          v.container.alpha = p.active ? 0.45 : 1;
+        } else {
+          v.container.visible = !p.active;
+        }
+        break;
+      }
+      case "blind": {
+        if (!isSelf) return;
+        blindOverlay.classList.toggle("ao-blind--on", p.active);
+        break;
+      }
+      case "dumb": {
+        if (!isSelf) return;
+        if (p.active) {
+          chat?.appendMessage({ fromName: "", text: "¡Te sientes estúpido! No podés concentrarte.", timestamp: Date.now(), isSelf: false, kind: "combate" });
+        }
+        break;
       }
     }
   }
@@ -1490,12 +2554,26 @@ export async function startGameScene(
   let criminalBadge: HTMLElement | null = null;
 
   function handleCriminalUpdate(p: CriminalUpdate): void {
+    const id = p.id as unknown as number;
+    // Color del nombre para todos (azul ciudadano / rojo criminal — AO).
+    const v = entityVisuals.get(id);
+    if (v) {
+      v.criminal = p.criminal;
+      if (v.kind === "player") {
+        // Los GM conservan su verde; el criminal solo pinta a jugadores.
+        v.label.style.fill = nameColor(v.role, p.criminal);
+      }
+    }
+    // Badge solo para el propio personaje.
+    if (id !== character.id) return;
+    // Nombre del HUD flotante en rojo si sos criminal.
+    hudNameEl.classList.toggle("ao-hud__name--criminal", p.criminal);
     if (p.criminal) {
       if (!criminalBadge) {
         criminalBadge = document.createElement("div");
         criminalBadge.className = "ao-criminal-badge";
         criminalBadge.textContent = "CRIMINAL";
-        root.appendChild(criminalBadge);
+        stageEl.appendChild(criminalBadge);
       }
     } else {
       criminalBadge?.remove();
@@ -1503,56 +2581,94 @@ export async function startGameScene(
     }
   }
 
-  function updateManaHud(mana: number, maxMana: number): void {
-    if (maxMana <= 0) {
-      mpBarBg.visible = false;
-      mpBarFg.visible = false;
-      mpBarText.visible = false;
-      return;
-    }
-    mpBarBg.visible = true;
-    mpBarFg.visible = true;
-    mpBarText.visible = true;
-    const frac = Math.max(0, Math.min(1, mana / maxMana));
-    mpBarBg.clear();
-    mpBarBg.rect(0, 0, HP_BAR_W, MP_BAR_H).fill({ color: 0x0a0805, alpha: 0.85 });
-    mpBarBg.rect(0, 0, HP_BAR_W, MP_BAR_H).stroke({ width: 1, color: 0x2a4d6b });
-    mpBarFg.clear();
-    if (frac > 0) {
-      mpBarFg.rect(1, 1, (HP_BAR_W - 2) * frac, MP_BAR_H - 2).fill({ color: 0x4a8cda });
-    }
-    mpBarText.text = `MP ${mana.toString()} / ${maxMana.toString()}`;
+
+  // Popup de detalle de criatura/NPC (click derecho): exp, oro y drops con su
+  // probabilidad. Un solo popup a la vez; se cierra con la ✕ o al reabrir otro.
+  let npcInfoEl: HTMLDivElement | null = null;
+  const escapeHtml = (s: string): string =>
+    s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] ?? c));
+  function showNpcInfo(p: NpcInfoResponse): void {
+    npcInfoEl?.remove();
+    const pct = (c: number): string => `${Math.round(c * 100).toString()}%`;
+    const goldRows = p.gold.length > 0
+      ? p.gold.map((g) => `<div class="ao-npcinfo__row"><span>Oro · ${g.qty.toLocaleString("es")}</span><b>${pct(g.chance)}</b></div>`).join("")
+      : `<div class="ao-npcinfo__row"><span class="ao-npcinfo__faint">Sin oro</span></div>`;
+    const dropRows = p.drops.length > 0
+      ? p.drops.map((d) => {
+          const name = getItem(d.item)?.name ?? `#${d.item.toString()}`;
+          const qty = d.qty > 1 ? ` ×${d.qty.toString()}` : "";
+          return `<div class="ao-npcinfo__row"><span>${escapeHtml(name)}${qty}</span><b>${pct(d.chance)}</b></div>`;
+        }).join("")
+      : `<div class="ao-npcinfo__row"><span class="ao-npcinfo__faint">Sin drops</span></div>`;
+    const el = document.createElement("div");
+    el.className = "ao-npcinfo";
+    el.innerHTML = `
+      <div class="ao-npcinfo__head">
+        <span class="ao-npcinfo__name">${escapeHtml(p.name)}</span>
+        <button class="ao-npcinfo__close" title="Cerrar">✕</button>
+      </div>
+      <div class="ao-npcinfo__sub">#${p.number.toString()} · ${p.maxHp.toLocaleString("es")} HP</div>
+      <div class="ao-npcinfo__stat"><span>Experiencia</span><b>${p.xpReward.toLocaleString("es")}</b></div>
+      <div class="ao-npcinfo__sectitle">Oro <small>(por probabilidad)</small></div>${goldRows}
+      <div class="ao-npcinfo__sectitle">Drops <small>(por probabilidad)</small></div>${dropRows}
+    `;
+    el.querySelector<HTMLButtonElement>(".ao-npcinfo__close")?.addEventListener("click", () => {
+      el.remove();
+      if (npcInfoEl === el) npcInfoEl = null;
+    });
+    root.appendChild(el);
+    npcInfoEl = el;
   }
 
-  function showLevelUpPopup(level: number): void {
-    const popup = document.createElement("div");
-    popup.className = "levelup-popup";
-    popup.textContent = `¡Subiste de nivel! Nivel ${level.toString()}`;
-    root.appendChild(popup);
-    // Trigger animation then remove
-    requestAnimationFrame(() => {
-      popup.classList.add("levelup-popup--visible");
-      setTimeout(() => {
-        popup.classList.remove("levelup-popup--visible");
-        setTimeout(() => popup.remove(), 400);
-      }, 2600);
-    });
+  // Click sobre un personaje: "Ves a {nombre} [{clase}] [Nivel: {nv}] - {estado}"
+  // (Ciudadano azul · Criminal rojo · Game Master verde, en bold). El GM no
+  // muestra clase ni nivel.
+  function showPlayerInfo(p: PlayerInfoResponse): void {
+    let line: string;
+    let color: string;
+    if (p.role > 0) {
+      // Game Master: sin clase ni nivel, verde.
+      line = `Ves a ${p.name}${p.clan ? ` <${p.clan}>` : ""} - Game Master`;
+      color = "#4cd07a";
+    } else {
+      const estado = p.criminal ? "Criminal" : "Ciudadano";
+      color = p.criminal ? "#e5484d" : "#4f8ff0";
+      const cls = p.classN ? ` [${p.classN}]` : "";
+      line = `Ves a ${p.name}${p.clan ? ` <${p.clan}>` : ""}${cls} [Nivel: ${p.level.toString()}] - ${estado}`;
+    }
+    chat?.appendMessage({ fromName: "", text: line, timestamp: Date.now(), isSelf: false, kind: "global", color });
   }
 
   function handleStatsUpdate(p: StatsUpdate): void {
-    // Sincroniza HP propio (p. ej. curación al subir de nivel) y la barra de XP.
+    // Sincroniza HP propio (p. ej. curación al subir de nivel) y las barras.
     const own = entityVisuals.get(character.id);
     if (own) {
       own.hp = p.hp;
       own.maxHp = p.maxHp;
-      drawHpBar(own.hpBar, own.hp, own.maxHp);
-      updateSelfHud();
+      // El HP propio vive en el panel lateral — sin barra flotante.
     }
-    updateXpHud(p.level, p.xp, p.xpForNextLevel);
-    updateManaHud(p.mana ?? 0, p.maxMana ?? 0);
+    panelStats.hp = p.hp;
+    panelStats.maxHp = p.maxHp;
+    panelStats.mana = p.mana ?? 0;
+    panelStats.maxMana = p.maxMana ?? 0;
+    panelStats.level = p.level;
+    panelStats.xpInto = p.xp;
+    panelStats.xpForNext = p.xpForNextLevel;
+    panelStats.hunger = p.hunger ?? 100;
+    panelStats.thirst = p.thirst ?? 100;
+    panelStats.sta = p.sta ?? 100;
+    panelStats.maxSta = p.maxSta ?? 100;
+    panelStats.strBonus = p.strBonus ?? 0;
+    panelStats.agiBonus = p.agiBonus ?? 0;
+    panelStats.buffExpiresAt = p.buffExpiresAt ?? 0;
+    panelStats.str = p.str ?? panelStats.str;
+    panelStats.agi = p.agi ?? panelStats.agi;
+    pushPanelStats();
     statsPanel?.update(p);
     if (p.level > prevLevel) {
-      showLevelUpPopup(p.level);
+      // Subir de nivel: SOLO aviso en el chat (sin cartel/popup en pantalla).
+      audio.play(SND.nivel, 0.9);
+      chat?.appendMessage({ fromName: "", text: `¡Has subido a nivel ${p.level.toString()}!`, timestamp: Date.now(), isSelf: false, kind: "global" });
       prevLevel = p.level;
     }
     // Si la skill de clase no estaba seteada todavía, cargarla ahora.
@@ -1560,7 +2676,8 @@ export async function startGameScene(
       const skill = getClassSkill(p.classId);
       if (skill) {
         classSkillId = skill.id;
-        skillHotbar?.setSkill(skill);
+        // Macro por defecto: la skill de clase en el slot 1 (si está libre).
+        macroBar?.setDefaultSkill(skill.id);
       }
     }
   }
@@ -1573,7 +2690,9 @@ export async function startGameScene(
       v.hp = p.hp;
       v.maxHp = p.maxHp;
       v.body.alpha = 1;
-      drawHpBar(v.hpBar, v.hp, v.maxHp);
+      v.container.visible = true; // criatura oculta al morir vuelve a mostrarse
+      v.hpBar.visible = false;
+      v.hpBarUntil = 0;
       snapEntityTo(id, p.position);
     }
     if (id === character.id) {
@@ -1611,13 +2730,74 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0);
     refreshPlayerList();
+  }
+
+  // Tag bajo el nombre: <Clan> tiene prioridad; si no, <Armada Real>/<Legión Oscura>.
+  function applyNameTag(v: EntityVisual): void {
+    if (v.kind !== "player") return;
+    const tag = v.guild ?? (v.faction > 0 ? (v.faction === 1 ? "Armada Real" : "Legión Oscura") : null);
+    v.label.text = tag ? `${v.name}\n<${tag}>` : v.name;
+  }
+
+  function handleFactionUpdate(p: FactionUpdate): void {
+    const v = entityVisuals.get(p.id as unknown as number);
+    if (!v) return;
+    v.faction = p.faction;
+    applyNameTag(v);
+  }
+
+  function handleGuildTagUpdate(p: GuildTagUpdate): void {
+    const v = entityVisuals.get(p.id as unknown as number);
+    if (!v) return;
+    v.guild = p.guild;
+    applyNameTag(v);
+  }
+
+  // Puertas del AO: el server cambia el GRH de capa 3 y el bloqueo del tile
+  // (y del tile oeste — las puertas ocupan 2 tiles).
+  function handleMapTileUpdate(p: MapTileUpdate): void {
+    if (mapWidth === 0) return;
+    const idx = p.y * mapWidth + p.x;
+    const blockedArr = mapBlocked as number[];
+    blockedArr[idx] = p.blocked ? 1 : 0;
+    if (p.x > 0) blockedArr[idx - 1] = p.blocked ? 1 : 0;
+    const apply = (tex: Texture): void => {
+      const existing = layer3ByTile.get(idx);
+      if (existing) {
+        existing.texture = tex;
+      } else {
+        const sprite = new Sprite(tex);
+        sprite.anchor.set(0.5, 1);
+        sprite.x = p.x * TILE_SIZE + TILE_SIZE / 2;
+        sprite.y = (p.y + 1) * TILE_SIZE;
+        sprite.zIndex = (p.y + 1) * TILE_SIZE;
+        entitiesLayer.addChild(sprite);
+        mapObjectSprites.push(sprite);
+        layer3ByTile.set(idx, sprite);
+      }
+    };
+    const tex = tileset.get(p.grh3);
+    if (tex) apply(tex);
+    else if (tileset.ready) {
+      void tileset.preload([p.grh3]).then(() => {
+        const loaded = tileset.get(p.grh3);
+        if (loaded) apply(loaded);
+      });
+    }
+    if ((p.wav ?? 0) > 0) audio.play(p.wav!, 0.7);
   }
 
   function handleEntityDespawn(p: EntityDespawn): void {
     removeEntity(p.id as unknown as number);
     refreshPlayerList();
+  }
+
+  function handleEntityAppearance(p: EntityAppearance): void {
+    const v = entityVisuals.get(p.id as unknown as number);
+    if (!v) return;
+    setEntityAppearance(v, p.bodyId, p.headId, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0);
   }
 
   const onResize = (): void => {
@@ -1626,6 +2806,7 @@ export async function startGameScene(
     if (mapWidth > 0) centerCameraOnSelf();
   };
   app.renderer.on("resize", onResize);
+  window.addEventListener("resize", onResize);
 
   // Conexion WebSocket
   const token = getToken();
@@ -1675,15 +2856,50 @@ export async function startGameScene(
     });
     void client.start();
 
-    playerList = mountPlayerList(root);
+    // Lista de jugadores online: overlay arriba-derecha del segmento del mundo.
+    playerList = mountPlayerList(stageEl);
 
-    inventory = mountInventory(root, {
+    keyConfig = mountKeyConfig(root, (map) => {
+      keymap = map;
+    });
+
+    craftUi = mountCraft(root, {
+      onCraft: (item) => {
+        const pkt: CraftRequest = { op: ClientToServerOp.Craft, item };
+        client?.send(pkt);
+      },
+    });
+
+    questsUi = mountQuests(root, {
+      onAccept: (questId) => {
+        client?.send({ op: ClientToServerOp.QuestAccept, questId });
+      },
+      onAbandon: (questId) => {
+        client?.send({ op: ClientToServerOp.QuestAbandon, questId });
+      },
+    });
+
+    inventory = mountInventory(sideCol, {
       onUse: (item) => {
+        // Herramientas de trabajo: arman el modo (click en el objetivo).
+        if (item in TOOL_KIND) {
+          setArmedTool(item);
+          return;
+        }
+        // Martillo → ventana de herrería · serrucho → carpintería.
+        if (item === 389 || item === 565) {
+          craftUi?.open("herreria");
+          return;
+        }
+        if (item === 198 || item === 564) {
+          craftUi?.open("carpinteria");
+          return;
+        }
         const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item };
         client?.send(pkt);
       },
       onSell: (item) => {
-        const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item };
+        const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item, qty: 1 };
         client?.send(pkt);
       },
       onReorder: (from, to) => {
@@ -1703,13 +2919,73 @@ export async function startGameScene(
         client?.send(pkt);
       },
       resolveIcon: (grh) => tileset.entry(grh),
+      onSelectSpell: (spellId) => {
+        setArmedSpell(spellId);
+      },
+      onOpenStats: () => {
+        const panel = root.querySelector<HTMLElement>(".ao-stats-panel");
+        if (panel) panel.classList.toggle("ao-stats-panel--open");
+      },
+      onOpenKeys: () => {
+        keyConfig?.open();
+      },
+      onOpenQuests: () => {
+        questsUi?.toggleLog();
+      },
+      onChangeCharacter: () => {
+        onChangeCharacter();
+      },
+      onOpenParty: () => {
+        chat?.appendMessage({ fromName: "", text: "Party: Alt+click en un jugador para invitarlo. /salirparty para salir.", timestamp: Date.now(), isSelf: false, kind: "global" });
+      },
+      onOpenClanes: () => {
+        chat?.appendMessage({ fromName: "", text: "Clanes: /fundarclan <nombre> (nv25+Liderazgo90) · /invitarclan <nombre> · /cmsg <texto> · /onlineclan.", timestamp: Date.now(), isSelf: false, kind: "global" });
+      },
+      onOpenWorldMap: () => {
+        worldMap?.open(currentMapId);
+      },
+    });
+
+    // Minimapa DENTRO del box de vitales del panel (diseño Arte 3).
+    minimap = mountMinimap(inventory.getMinimapSlot());
+    worldMap = mountWorldMap(root);
+
+    macroBar = mountMacroBar(macroSlot, character.name, {
+      resolveIcon: (grh) => tileset.entry(grh),
+      getItems: () => macroInventory,
+      getSpells: () => macroSpellIds,
+      onTrigger: (slot) => {
+        if (slot.kind === "item") {
+          const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item: slot.id };
+          client?.send(pkt);
+        } else if (slot.kind === "skill") {
+          const pkt: UseSkillRequest = {
+            op: ClientToServerOp.UseSkill,
+            skillId: slot.id,
+            targetId: undefined,
+          };
+          client?.send(pkt);
+        } else if (slot.kind === "command") {
+          // Acción custom: se envía como chat/comando (ej. /meditar).
+          const text = slot.command?.trim();
+          if (text) client?.send({ op: ClientToServerOp.ChatSend, text } satisfies ChatSend);
+        } else {
+          // Hechizo: armar el modo casteo (click en el objetivo lanza).
+          setArmedSpell(slot.id);
+        }
+      },
     });
 
     shop = mountShop(root, {
-      onBuy: (item) => {
-        const pkt: ShopBuyRequest = { op: ClientToServerOp.ShopBuy, item };
+      onBuy: (item, qty) => {
+        const pkt: ShopBuyRequest = { op: ClientToServerOp.ShopBuy, item, qty };
         client?.send(pkt);
       },
+      onSell: (item, qty) => {
+        const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item, qty };
+        client?.send(pkt);
+      },
+      resolveIcon: (grh) => tileset.entry(grh),
     });
 
     bank = mountBank(root, {
@@ -1743,9 +3019,12 @@ export async function startGameScene(
         };
         client?.send(pkt);
       },
+      resolveIcon: (grh) => tileset.entry(grh),
     });
 
-    partyUi = mountPartyUi(root, {
+    // El toast de invitación se monta en el stage (flota sobre el mundo); el
+    // panel de party lo relocalizamos al slot del panel derecho (Arte 1).
+    partyUi = mountPartyUi(stageEl, {
       onAcceptInvite: () => {
         const pkt: PartyAcceptRequest = { op: ClientToServerOp.PartyAccept };
         client?.send(pkt);
@@ -1758,6 +3037,8 @@ export async function startGameScene(
         client?.send(pkt);
       },
     });
+    const partyPanelEl = stageEl.querySelector<HTMLElement>(".ao-party");
+    if (partyPanelEl && inventory) inventory.getPartySlot().appendChild(partyPanelEl);
 
     tradeUi = mountTrade(root, {
       onAccept: () => {
@@ -1780,6 +3061,7 @@ export async function startGameScene(
         const pkt: TradeCancelMsg = { op: ClientToServerOp.TradeCancel };
         client?.send(pkt);
       },
+      resolveIcon: (grh) => tileset.entry(grh),
     });
 
     statsPanel = mountStatsPanel(root, (stat) => {
@@ -1789,11 +3071,11 @@ export async function startGameScene(
 
     touchControls = mountTouchControls(root, {
       onDirDown: (dir) => {
-        keysHeld.add(DIR_TO_CODE[dir]);
+        holdKey(DIR_TO_CODE[dir]);
         tryStep(dir);
       },
       onDirUp: (dir) => {
-        keysHeld.delete(DIR_TO_CODE[dir]);
+        releaseKey(DIR_TO_CODE[dir]);
       },
       onAttack: () => {
         tryAttack();
@@ -1801,10 +3083,81 @@ export async function startGameScene(
     });
 
     chat = mountChat({
-      parent: root,
+      parent: chatSlot,
       selfCharacterName: character.name,
       onSend: (text) => {
         if (!client) return;
+        // Comandos del AO clásico.
+        const cmd = text.trim().toLowerCase();
+        if (cmd === "/seg") {
+          client.send({ op: ClientToServerOp.SafeToggle } satisfies SafeToggleRequest);
+          return;
+        }
+        if (cmd === "/descansar") {
+          client.send({ op: ClientToServerOp.Rest } satisfies RestToggle);
+          return;
+        }
+        if (cmd === "/meditar") {
+          client.send({ op: ClientToServerOp.Meditate } satisfies MeditateToggle);
+          return;
+        }
+        if (cmd === "/hogar") {
+          client.send({ op: ClientToServerOp.GoHome } satisfies GoHomeRequest);
+          return;
+        }
+        // Clanes (modGuilds.bas)
+        if (cmd === "/aceptarclan") {
+          client.send({ op: ClientToServerOp.GuildAccept });
+          return;
+        }
+        if (cmd === "/salirclan") {
+          client.send({ op: ClientToServerOp.GuildLeave });
+          return;
+        }
+        if (cmd === "/onlineclan") {
+          client.send({ op: ClientToServerOp.GuildOnline });
+          return;
+        }
+        const guildCreate = /^\/fundarclan\s+(.+)$/i.exec(text.trim());
+        if (guildCreate) {
+          client.send({ op: ClientToServerOp.GuildCreate, name: guildCreate[1]! });
+          return;
+        }
+        const guildInvite = /^\/invitarclan\s+(\S+)$/i.exec(text.trim());
+        if (guildInvite) {
+          client.send({ op: ClientToServerOp.GuildInvite, targetName: guildInvite[1]! });
+          return;
+        }
+        const guildMsg = /^\/cmsg\s+(.+)$/i.exec(text);
+        if (guildMsg) {
+          client.send({ op: ClientToServerOp.GuildMessage, text: guildMsg[1]! });
+          return;
+        }
+        // Ocultarse (skill del AO)
+        if (cmd === "/ocultarse") {
+          client.send({ op: ClientToServerOp.Hide });
+          return;
+        }
+        // Domar animales (junto a la criatura, radio 2)
+        if (cmd === "/domar") {
+          client.send({ op: ClientToServerOp.Tame });
+          return;
+        }
+        // Amigos
+        if (cmd === "/amigos") {
+          client.send({ op: ClientToServerOp.FriendList });
+          return;
+        }
+        const friendAdd = /^\/addamigo\s+(\S+)$/i.exec(text.trim());
+        if (friendAdd) {
+          client.send({ op: ClientToServerOp.FriendAdd, name: friendAdd[1]! });
+          return;
+        }
+        const friendDel = /^\/delamigo\s+(\S+)$/i.exec(text.trim());
+        if (friendDel) {
+          client.send({ op: ClientToServerOp.FriendRemove, name: friendDel[1]! });
+          return;
+        }
         // /w nombre mensaje  →  whisper privado
         const whisperMatch = /^\/w\s+(\S+)\s+(.+)$/i.exec(text);
         if (whisperMatch) {
@@ -1824,7 +3177,6 @@ export async function startGameScene(
       },
     });
 
-    skillHotbar = mountSkillHotbar(root);
   }
 
   console.log(`[ao-client] sesión iniciada para ${character.name} (id=${character.id})`);
@@ -1846,7 +3198,21 @@ export async function startGameScene(
       partyUi?.destroy();
       tradeUi?.destroy();
       statsPanel?.destroy();
-      skillHotbar?.destroy();
+      macroBar?.destroy();
+      keyConfig?.destroy();
+      minimap?.destroy();
+      worldMap?.destroy();
+      castBanner.remove();
+      deathPanel.remove();
+      blindOverlay.remove();
+      npcInfoEl?.remove();
+      musicEl?.pause();
+      rainAudio?.pause();
+      rainEl?.remove();
+      window.removeEventListener("resize", onResize);
+      frame.remove();
+      craftUi?.destroy();
+      questsUi?.destroy();
       criminalBadge?.remove();
       touchControls?.destroy();
       client?.destroy();

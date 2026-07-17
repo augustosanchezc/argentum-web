@@ -1,13 +1,17 @@
-import { getItem } from "@ao/shared";
-import type { InventorySlot } from "@ao/shared";
+import { getItem, type InventorySlot } from "@ao/shared";
+import { createItemCell, type IconResolver } from "./item-cell";
 
-// Ventana de banco del banquero (E-4.2).
+// Ventana de banco del AO Libre (frmBancoObj): fondo con el arte original
+// (Boveda.jpg 462×532) y, encima, las dos grillas — bóveda a la izquierda, tu
+// inventario a la derecha —, la fila de oro (depositar/retirar con monto), las
+// flechas de mover items y la placa de info. Geometría del .frm (twips ÷ 15).
 
 export interface BankCallbacks {
   onDepositItem(item: number, qty: number): void;
   onWithdrawItem(item: number, qty: number): void;
   onDepositGold(amount: number): void;
   onWithdrawGold(amount: number): void;
+  resolveIcon: IconResolver;
 }
 
 export interface BankHandle {
@@ -24,136 +28,169 @@ export interface BankHandle {
   destroy(): void;
 }
 
+type Selection = { side: "bank" | "inv"; item: number; qty: number } | null;
+
 export function mountBank(parent: HTMLElement, cb: BankCallbacks): BankHandle {
   const wrap = document.createElement("div");
-  wrap.className = "ao-bank";
+  wrap.className = "ao-bank ao-vp";
   wrap.innerHTML = `
-    <div class="ao-bank__header">
-      <span class="ao-bank__title">Banco de Ullathorpe</span>
-      <button class="ao-bank__close" aria-label="Cerrar">✕</button>
-    </div>
-    <div class="ao-bank__body">
-      <div class="ao-bank__section">
-        <div class="ao-bank__section-title">Inventario del banco</div>
-        <ul class="ao-bank__list ao-bank__list--bank"></ul>
-        <div class="ao-bank__gold-row">
-          <span class="ao-bank__gold-label">Oro en banco: <strong class="ao-bank__gold-bank">0</strong></span>
-          <input class="ao-bank__gold-input" type="number" min="1" placeholder="cant." />
-          <button class="ao-bank__btn ao-bank__btn--withdraw-gold">Retirar</button>
+    <div class="ao-vp__win">
+      <div class="ao-vp__head">
+        <span class="ao-vp__title">Banco</span>
+        <button class="ao-vp__close" type="button" title="Cerrar">✕</button>
+      </div>
+      <div class="ao-vp__cols">
+        <div class="ao-vp__col">
+          <div class="ao-vp__label">Bóveda</div>
+          <div class="ao-vp__grid ao-bank__bankgrid"></div>
+        </div>
+        <div class="ao-vp__col">
+          <div class="ao-vp__label">Tu inventario</div>
+          <div class="ao-vp__grid ao-bank__invgrid"></div>
         </div>
       </div>
-      <div class="ao-bank__section">
-        <div class="ao-bank__section-title">Inventario del jugador</div>
-        <ul class="ao-bank__list ao-bank__list--player"></ul>
-        <div class="ao-bank__gold-row">
-          <span class="ao-bank__gold-label">Oro en mano: <strong class="ao-bank__gold-player">0</strong></span>
-          <input class="ao-bank__gold-input2" type="number" min="1" placeholder="cant." />
-          <button class="ao-bank__btn ao-bank__btn--deposit-gold">Depositar</button>
-        </div>
+      <div class="ao-vp__info"><span class="ao-bank__info">&nbsp;</span></div>
+      <div class="ao-vp__foot">
+        <label class="ao-vp__qtylbl">Cantidad
+          <input class="ao-vp__field ao-bank__itemqty" type="number" min="1" value="1" />
+        </label>
+        <button class="ao-vp__btn ao-vp__btn--primary ao-bank__dep" type="button" title="Depositar el item seleccionado de tu inventario">◀ Depositar</button>
+        <button class="ao-vp__btn ao-bank__wit" type="button" title="Retirar el item seleccionado de la bóveda">Retirar ▶</button>
+      </div>
+      <div class="ao-vp__goldrow">
+        <span class="ao-vp__goldinfo">🪙 Bóveda: <b class="ao-bank__goldbank">0</b> · En mano: <b class="ao-bank__goldyou">0</b></span>
+        <input class="ao-vp__field ao-bank__goldqty" type="number" min="1" placeholder="0" />
+        <button class="ao-vp__btn ao-bank__depgold" type="button">Depositar oro</button>
+        <button class="ao-vp__btn ao-bank__witgold" type="button">Retirar oro</button>
       </div>
     </div>
   `;
   parent.appendChild(wrap);
 
-  const bankList = wrap.querySelector<HTMLUListElement>(".ao-bank__list--bank")!;
-  const playerList = wrap.querySelector<HTMLUListElement>(".ao-bank__list--player")!;
-  const goldBankEl = wrap.querySelector<HTMLElement>(".ao-bank__gold-bank")!;
-  const goldPlayerEl = wrap.querySelector<HTMLElement>(".ao-bank__gold-player")!;
-  const goldInputBank = wrap.querySelector<HTMLInputElement>(".ao-bank__gold-input")!;
-  const goldInputPlayer = wrap.querySelector<HTMLInputElement>(".ao-bank__gold-input2")!;
-  const closeBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__close")!;
-  const withdrawGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__btn--withdraw-gold")!;
-  const depositGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__btn--deposit-gold")!;
+  const bankGrid = wrap.querySelector<HTMLDivElement>(".ao-bank__bankgrid")!;
+  const invGrid = wrap.querySelector<HTMLDivElement>(".ao-bank__invgrid")!;
+  const goldYouEl = wrap.querySelector<HTMLElement>(".ao-bank__goldyou")!;
+  const goldBankEl = wrap.querySelector<HTMLElement>(".ao-bank__goldbank")!;
+  const goldQtyEl = wrap.querySelector<HTMLInputElement>(".ao-bank__goldqty")!;
+  const itemQtyEl = wrap.querySelector<HTMLInputElement>(".ao-bank__itemqty")!;
+  const infoEl = wrap.querySelector<HTMLElement>(".ao-bank__info")!;
+  const closeBtn = wrap.querySelector<HTMLButtonElement>(".ao-vp__close")!;
+  const depGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__depgold")!;
+  const witGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__witgold")!;
+  const depBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__dep")!;
+  const witBtn = wrap.querySelector<HTMLButtonElement>(".ao-bank__wit")!;
 
   let open = false;
-  let currentBank: ReadonlyArray<InventorySlot> = [];
-  let currentPlayer: ReadonlyArray<InventorySlot> = [];
-  let currentBankGold = 0;
-  let currentPlayerGold = 0;
+  let bankSlots: ReadonlyArray<InventorySlot> = [];
+  let invSlots: ReadonlyArray<InventorySlot> = [];
+  let bankGold = 0;
+  let playerGold = 0;
+  let selected: Selection = null;
 
-  function setOpen(v: boolean): void {
-    open = v;
-    wrap.classList.toggle("ao-bank--open", open);
+  function itemQty(): number {
+    const n = Math.floor(Number(itemQtyEl.value));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 10000) : 1;
+  }
+  function goldAmount(): number {
+    const n = Math.floor(Number(goldQtyEl.value));
+    return Number.isFinite(n) && n > 0 ? n : 0;
   }
 
-  closeBtn.addEventListener("click", () => setOpen(false));
+  function renderInfo(): void {
+    if (!selected) { infoEl.innerHTML = "&nbsp;"; return; }
+    const def = getItem(selected.item);
+    infoEl.textContent = def ? `${def.name} (${selected.qty.toString()})` : " ";
+  }
 
-  function renderItems(
-    list: HTMLUListElement,
-    slots: ReadonlyArray<InventorySlot>,
-    action: "deposit" | "withdraw",
-  ): void {
-    list.replaceChildren();
-    for (const slot of slots) {
-      const def = getItem(slot.item);
-      if (!def) continue;
-      const li = document.createElement("li");
-      li.className = "ao-bank__item";
+  function select(side: "bank" | "inv", item: number, qty: number, cell: HTMLElement): void {
+    selected = { side, item, qty };
+    wrap.querySelectorAll(".ao-cell--sel").forEach((c) => { c.classList.remove("ao-cell--sel"); });
+    cell.classList.add("ao-cell--sel");
+    renderInfo();
+  }
 
-      const info = document.createElement("span");
-      info.className = "ao-bank__item-name";
-      info.textContent = `${def.name} x${slot.qty.toString()}`;
-      li.appendChild(info);
-
-      const btn = document.createElement("button");
-      btn.className = "ao-bank__btn";
-      btn.textContent = action === "deposit" ? "Depositar" : "Retirar";
-      btn.addEventListener("click", () => {
-        if (action === "deposit") {
-          cb.onDepositItem(slot.item, slot.qty);
-        } else {
-          cb.onWithdrawItem(slot.item, slot.qty);
-        }
+  function fillGrid(grid: HTMLElement, side: "bank" | "inv", slots: ReadonlyArray<InventorySlot>): void {
+    grid.replaceChildren();
+    const items = slots.filter((s): s is InventorySlot => !!s && s.item > 0);
+    const count = Math.max(30, Math.ceil(items.length / 5) * 5);
+    for (let i = 0; i < count; i++) {
+      const s = items[i];
+      if (!s) {
+        const empty = document.createElement("div");
+        empty.className = "ao-cell ao-cell--empty";
+        grid.appendChild(empty);
+        continue;
+      }
+      const cell = createItemCell({
+        item: s.item,
+        qty: s.qty,
+        resolveIcon: cb.resolveIcon,
+        onClick: () => { select(side, s.item, s.qty, cell); },
       });
-      li.appendChild(btn);
-      list.appendChild(li);
+      if (selected && selected.side === side && selected.item === s.item) cell.classList.add("ao-cell--sel");
+      grid.appendChild(cell);
     }
   }
 
   function refresh(): void {
-    renderItems(bankList, currentBank, "withdraw");
-    renderItems(playerList, currentPlayer, "deposit");
-    goldBankEl.textContent = currentBankGold.toString();
-    goldPlayerEl.textContent = currentPlayerGold.toString();
+    fillGrid(bankGrid, "bank", bankSlots);
+    fillGrid(invGrid, "inv", invSlots);
+    goldYouEl.textContent = playerGold.toLocaleString("es");
+    goldBankEl.textContent = bankGold.toLocaleString("es");
+    // Si el item seleccionado ya no existe en su lado, limpiar.
+    if (selected) {
+      const src = selected.side === "bank" ? bankSlots : invSlots;
+      if (!src.some((s) => s && s.item === selected!.item)) { selected = null; renderInfo(); }
+    }
   }
 
-  withdrawGoldBtn.addEventListener("click", () => {
-    const amount = parseInt(goldInputBank.value, 10);
-    if (!isNaN(amount) && amount > 0) {
-      cb.onWithdrawGold(amount);
-      goldInputBank.value = "";
-    }
-  });
+  function setOpen(v: boolean): void {
+    open = v;
+    wrap.classList.toggle("ao-bank--open", v);
+    if (!v) { selected = null; renderInfo(); }
+  }
 
-  depositGoldBtn.addEventListener("click", () => {
-    const amount = parseInt(goldInputPlayer.value, 10);
-    if (!isNaN(amount) && amount > 0) {
-      cb.onDepositGold(amount);
-      goldInputPlayer.value = "";
-    }
+  closeBtn.addEventListener("click", () => { setOpen(false); });
+  depBtn.addEventListener("click", () => {
+    if (selected?.side === "inv") cb.onDepositItem(selected.item, itemQty());
+  });
+  witBtn.addEventListener("click", () => {
+    if (selected?.side === "bank") cb.onWithdrawItem(selected.item, itemQty());
+  });
+  depGoldBtn.addEventListener("click", () => {
+    const a = goldAmount();
+    if (a > 0) cb.onDepositGold(a);
+  });
+  witGoldBtn.addEventListener("click", () => {
+    const a = goldAmount();
+    if (a > 0) cb.onWithdrawGold(a);
   });
 
   return {
-    open: (bankInventory, bankGold) => {
-      currentBank = bankInventory;
-      currentBankGold = bankGold;
+    open: (bankInventory, bankGoldAmt) => {
+      bankSlots = bankInventory;
+      bankGold = bankGoldAmt;
+      selected = null;
+      itemQtyEl.value = "1";
+      goldQtyEl.value = "";
       refresh();
+      renderInfo();
       setOpen(true);
     },
-    update: (bankInventory, bankGold, playerInventory, playerGold) => {
-      currentBank = bankInventory;
-      currentBankGold = bankGold;
-      currentPlayer = playerInventory;
-      currentPlayerGold = playerGold;
+    update: (bankInventory, bankGoldAmt, playerInventory, playerGoldAmt) => {
+      bankSlots = bankInventory;
+      bankGold = bankGoldAmt;
+      invSlots = playerInventory;
+      playerGold = playerGoldAmt;
       if (open) refresh();
     },
-    close: () => setOpen(false),
+    close: () => { setOpen(false); },
     isOpen: () => open,
     setPlayerInventory: (slots, gold) => {
-      currentPlayer = slots;
-      currentPlayerGold = gold;
+      invSlots = slots;
+      playerGold = gold;
       if (open) refresh();
     },
-    destroy: () => wrap.remove(),
+    destroy: () => { wrap.remove(); },
   };
 }

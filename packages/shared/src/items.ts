@@ -1,66 +1,143 @@
-// Catálogo de items del AO web. Expandido fielmente desde el AO original.
-// Los `graphic` son GrhIndex del AO clásico (obj.dat / Graficos.ind).
+// Catálogo de items del AO: los 1237 objetos reales de obj.dat (AO Libre).
+// El catálogo vive en items.generated.ts — lo produce
+// packages/server/scripts/parse-ao-dat.mjs a partir de Dat/obj.dat.
 
-import type { WeaponSubtype, ArmorSubtype } from "./classes.js";
-export type { WeaponSubtype, ArmorSubtype };
-
-export type ItemType = "weapon" | "armor" | "helmet" | "shield" | "potion";
+export type ItemType =
+  | "weapon"
+  | "armor"
+  | "helmet"
+  | "shield"
+  | "potion"
+  | "food"
+  | "drink"
+  | "arrow"
+  | "misc";
 
 export interface ItemDef {
   readonly id: number;
   readonly name: string;
   readonly type: ItemType;
+  // ObjType crudo del AO (4 árbol · 22 yacimiento · 27 yunque · 28 fragua ·
+  // 15 fogata · 6 puerta · 8 cartel · 36 árbol élfico ...)
+  readonly objType: number;
   readonly value: number;
+  // GrhIndex del AO (graficos.json / Graficos.ind)
   readonly graphic: number;
-  // Arma: daño base que suma a la fórmula de combate
+  // Arma / flecha: rango de daño real del obj.dat
+  readonly minHit?: number;
+  readonly maxHit?: number;
   readonly damageBonus?: number;
-  readonly weaponSubtype?: WeaponSubtype;
-  // Armadura / casco / escudo: defensa que reduce daño recibido
+  // Arma: Apunala=1 (permite apuñalar), Proyectil=1 (arco/arrojadiza),
+  // Municion=1 (consume flechas del inventario)
+  readonly stabs?: boolean;
+  readonly ranged?: boolean;
+  readonly needsAmmo?: boolean;
+  // Báculo: bonus de daño mágico del AO (dano × (StaffDamageBonus+70)/100).
+  readonly staffDamageBonus?: number;
+  // Casco/anillo antimagia: resta RandomNumber(min,max) al daño de hechizo recibido.
+  readonly magicDefMin?: number;
+  readonly magicDefMax?: number;
+  // Armadura / casco / escudo: defensa que reduce daño recibido. En el AO se
+  // tira RandomNumber(MinDef, MaxDef) en cada golpe; `defense` es el promedio
+  // (para mostrar/back-compat), min/max son el rango real de obj.dat.
   readonly defense?: number;
-  readonly armorSubtype?: ArmorSubtype;
-  // Poción: cantidad de HP / MP que restaura
+  readonly defenseMin?: number;
+  readonly defenseMax?: number;
+  // Armadura: NumRopaje — body de Personajes.ini que muestra el personaje
+  // al equiparla (sistema de ropaje del AO).
+  readonly bodyId?: number;
+  // Poción: HP / MP que restaura. El AO tira RandomNumber(MinMod, MaxMod);
+  // `heal` = promedio, healMin/Max = rango real. La poción azul (maná) NO usa
+  // modificador: aplica una fórmula propia → `restoresMana` la marca.
   readonly heal?: number;
+  readonly healMin?: number;
+  readonly healMax?: number;
+  readonly restoresMana?: boolean;
   readonly manaHeal?: number;
-  // Nivel mínimo para equipar
-  readonly minLevel?: number;
+  readonly curesPoison?: boolean;
+  // Drogas del AO: Poción Amarilla (+AGI) y Verde (+STR), con duración. El bonus
+  // real es RandomNumber(Min, Max); *Boost = promedio, min/max = rango.
+  readonly agiBoost?: number;
+  readonly agiBoostMin?: number;
+  readonly agiBoostMax?: number;
+  readonly strBoost?: number;
+  readonly strBoostMin?: number;
+  readonly strBoostMax?: number;
+  readonly boostSeconds?: number;
+  // Comida / bebida: cuánto HAM / SED restaura (MinHAM de comida, MinAgu de
+  // bebida en obj.dat). Las bebidas además dan energía (MinST → stamina).
+  readonly hunger?: number;
+  readonly thirst?: number;
+  readonly stamina?: number;
+  // Item de newbie (intransferible en el AO original)
+  readonly newbie?: boolean;
+  // Clases que NO pueden equipar este item (CP1..CPn de obj.dat, mapeadas a las
+  // 6 clases del port: 1 Guerrero · 2 Mago · 3 Clérigo · 4 Cazador · 5 Asesino ·
+  // 6 Druida). Se valida al equipar en handleUseItem.
+  readonly forbiddenClasses?: readonly number[];
+  // Herrería: skill mínima y lingotes (hierro/plata/oro) para construirlo
+  readonly skHerreria?: number;
+  readonly lingH?: number;
+  readonly lingP?: number;
+  readonly lingO?: number;
+  // Carpintería: madera necesaria y skill mínima
+  readonly madera?: number;
+  readonly skCarpinteria?: number;
+  // Yacimientos: item de mineral que producen al minarlos
+  readonly mineralIndex?: number;
+  // Barcos: skill de Navegación mínima (el body va en bodyId)
+  readonly minSkillNav?: number;
+  // Arma/escudo/casco: índice de animación de overlay (Armas.dat /
+  // Escudos.dat / Cascos.ini del cliente AO).
+  readonly anim?: number;
+  // Carteles (objType 8): texto que muestran al interactuar.
+  readonly texto?: string;
+  // Puertas (objType 6): estado y contrapartes abierta/cerrada + llave.
+  readonly cerrada?: boolean;
+  readonly llave?: number;
+  readonly indexAbierta?: number;
+  readonly indexCerrada?: number;
 }
 
-export const ITEMS: Record<number, ItemDef> = {
-  // ── POCIONES ──────────────────────────────────────────────────────────────
-  1:  { id: 1,  name: "Poción menor",   type: "potion",  value: 10,  graphic: 542, heal: 15 },
-  21: { id: 21, name: "Poción mayor",   type: "potion",  value: 30,  graphic: 543, heal: 45 },
-  22: { id: 22, name: "Poción de maná", type: "potion",  value: 25,  graphic: 544, manaHeal: 25 },
+// Agua del AO clásico (rangos de GRH de agua) — compartido entre el server
+// (movimiento/pesca) y el cliente (predicción).
+export function isWaterGraphic(g: number): boolean {
+  return (g >= 1505 && g <= 1520) || (g >= 5665 && g <= 5680) || (g >= 13547 && g <= 13562);
+}
 
-  // ── ARMAS ─────────────────────────────────────────────────────────────────
-  2:  { id: 2,  name: "Daga",           type: "weapon",  value: 25,  graphic: 510, damageBonus: 3,  weaponSubtype: "dagger" },
-  6:  { id: 6,  name: "Espada corta",   type: "weapon",  value: 55,  graphic: 503, damageBonus: 5,  weaponSubtype: "sword" },
-  3:  { id: 3,  name: "Espada larga",   type: "weapon",  value: 80,  graphic: 504, damageBonus: 7,  weaponSubtype: "sword" },
-  7:  { id: 7,  name: "Hacha de batalla", type: "weapon", value: 150, graphic: 511, damageBonus: 10, weaponSubtype: "axe",   minLevel: 3 },
-  8:  { id: 8,  name: "Bastón de mago", type: "weapon",  value: 70,  graphic: 516, damageBonus: 4,  weaponSubtype: "staff" },
-  9:  { id: 9,  name: "Arco de caza",   type: "weapon",  value: 100, graphic: 520, damageBonus: 6,  weaponSubtype: "bow" },
-  10: { id: 10, name: "Maza de hierro", type: "weapon",  value: 80,  graphic: 515, damageBonus: 5,  weaponSubtype: "mace" },
-  11: { id: 11, name: "Espada real",    type: "weapon",  value: 250, graphic: 506, damageBonus: 13, weaponSubtype: "sword", minLevel: 5 },
+export { ITEMS } from "./items.generated.js";
+import { ITEMS as _ITEMS } from "./items.generated.js";
 
-  // ── ARMADURAS (cuerpo) ────────────────────────────────────────────────────
-  12: { id: 12, name: "Túnica",             type: "armor", value: 15,  graphic: 525, defense: 0, armorSubtype: "robe" },
-  4:  { id: 4,  name: "Armadura de cuero",  type: "armor", value: 40,  graphic: 526, defense: 2, armorSubtype: "light" },
-  13: { id: 13, name: "Cuero tachado",      type: "armor", value: 60,  graphic: 527, defense: 3, armorSubtype: "light" },
-  14: { id: 14, name: "Cota de malla",      type: "armor", value: 130, graphic: 528, defense: 5, armorSubtype: "medium", minLevel: 3 },
-  15: { id: 15, name: "Armadura de placas", type: "armor", value: 320, graphic: 529, defense: 8, armorSubtype: "heavy",  minLevel: 6 },
-
-  // ── CASCOS ────────────────────────────────────────────────────────────────
-  16: { id: 16, name: "Capucha",         type: "helmet", value: 10,  graphic: 558, defense: 0, armorSubtype: "robe" },
-  17: { id: 17, name: "Casco de cuero",  type: "helmet", value: 30,  graphic: 560, defense: 1, armorSubtype: "light" },
-  5:  { id: 5,  name: "Casco de hierro", type: "helmet", value: 20,  graphic: 559, defense: 1, armorSubtype: "medium" },
-  18: { id: 18, name: "Yelmo de acero",  type: "helmet", value: 220, graphic: 562, defense: 3, armorSubtype: "heavy",  minLevel: 5 },
-
-  // ── ESCUDOS ───────────────────────────────────────────────────────────────
-  19: { id: 19, name: "Escudo de madera",  type: "shield", value: 20,  graphic: 533, defense: 1, armorSubtype: "light" },
-  20: { id: 20, name: "Escudo de hierro",  type: "shield", value: 110, graphic: 534, defense: 3, armorSubtype: "medium", minLevel: 3 },
-};
+// ── Overrides editables (panel de administración) ─────────────────────────
+// El catálogo base (items.generated) es el balance original de AO Libre y NO
+// se toca. El admin puede sobreescribir campos por id; getItem() mergea el
+// override sobre la base. En el server los overrides se cargan de un JSON; en
+// el cliente se piden al server al arrancar (GET /item-overrides). Así el
+// balance original queda intacto y los cambios son reversibles.
+const _itemOverrides = new Map<number, Partial<ItemDef>>();
 
 export function getItem(id: number): ItemDef | undefined {
-  return ITEMS[id];
+  const base = _ITEMS[id];
+  if (!base) return undefined;
+  const ov = _itemOverrides.get(id);
+  return ov ? { ...base, ...ov } : base;
+}
+
+// Reemplaza todos los overrides (al arrancar el server o el cliente).
+export function loadItemOverrides(obj: Record<string, Partial<ItemDef>>): void {
+  _itemOverrides.clear();
+  for (const [k, v] of Object.entries(obj)) _itemOverrides.set(Number(k), v);
+}
+
+// Aplica/mergea un override sobre un item (al editar desde el panel).
+export function setItemOverride(id: number, patch: Partial<ItemDef>): void {
+  _itemOverrides.set(id, { ...(_itemOverrides.get(id) ?? {}), ...patch });
+}
+
+export function getItemOverrides(): Record<string, Partial<ItemDef>> {
+  const out: Record<string, Partial<ItemDef>> = {};
+  for (const [k, v] of _itemOverrides) out[k.toString()] = v;
+  return out;
 }
 
 // Una posición de inventario: un item y su cantidad (para apilables como pociones).

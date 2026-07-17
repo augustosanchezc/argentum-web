@@ -1,7 +1,13 @@
-import { getItem } from "@ao/shared";
-import type { InventorySlot, TradeOfferData } from "@ao/shared";
+import { getItem, type InventorySlot, type TradeOfferData } from "@ao/shared";
+import { createItemCell, type IconResolver } from "./item-cell";
 
-// Ventana de trade jugador-jugador (E-4.4).
+// Ventana de comercio jugador-jugador del AO Libre (frmComerciarUsu): fondo con
+// el arte original (VentanaComercioUsuario.jpg 665×592) y, encima, mi inventario
+// (izq), mi oferta y la oferta del otro (der), los oros, el campo de cantidad
+// con la flecha Agregar, y los botones Confirmar / Cancelar. Geometría del .frm
+// (twips ÷ 15). El server soporta: agregar item, poner oro, confirmar, cancelar
+// (una sola confirmación; no hay "quitar" ni chat), así que esas zonas del arte
+// quedan informativas.
 
 export interface TradeCallbacks {
   onAccept(): void;
@@ -9,6 +15,7 @@ export interface TradeCallbacks {
   onSetGold(amount: number): void;
   onConfirm(): void;
   onCancel(): void;
+  resolveIcon: IconResolver;
 }
 
 export interface TradeHandle {
@@ -23,7 +30,7 @@ export interface TradeHandle {
 }
 
 export function mountTrade(parent: HTMLElement, cb: TradeCallbacks): TradeHandle {
-  // Invitación recibida.
+  // Invitación recibida (toast chico, aparte de la ventana).
   const inviteToast = document.createElement("div");
   inviteToast.className = "ao-trade-invite";
   inviteToast.innerHTML = `
@@ -33,40 +40,40 @@ export function mountTrade(parent: HTMLElement, cb: TradeCallbacks): TradeHandle
   `;
   parent.appendChild(inviteToast);
 
-  // Ventana de trade.
   const wrap = document.createElement("div");
-  wrap.className = "ao-trade";
+  wrap.className = "ao-trade ao-vp";
   wrap.innerHTML = `
-    <div class="ao-trade__header">
-      <span class="ao-trade__title">Comercio con <strong class="ao-trade__their-name">?</strong></span>
-      <button class="ao-trade__cancel-btn">Cancelar</button>
-    </div>
-    <div class="ao-trade__body">
-      <div class="ao-trade__side ao-trade__side--mine">
-        <div class="ao-trade__side-title">Mi oferta</div>
-        <ul class="ao-trade__offer-list ao-trade__offer-list--mine"></ul>
-        <div class="ao-trade__gold-row">
-          <span>Oro: </span>
-          <input class="ao-trade__gold-input" type="number" min="0" value="0" />
-          <button class="ao-trade__btn ao-trade__btn--set-gold">Actualizar</button>
-        </div>
-        <div class="ao-trade__add-item-row">
-          <select class="ao-trade__item-select"></select>
-          <button class="ao-trade__btn ao-trade__btn--add-item">Agregar</button>
-        </div>
-        <span class="ao-trade__confirmed-mine ao-trade__confirmed--no">Pendiente</span>
+    <div class="ao-vp__win">
+      <div class="ao-vp__head">
+        <span class="ao-vp__title">Comercio con <span class="ao-trade__their-name">?</span></span>
+        <button class="ao-vp__close" type="button" title="Cerrar">✕</button>
       </div>
-      <div class="ao-trade__side ao-trade__side--theirs">
-        <div class="ao-trade__side-title">Su oferta (<span class="ao-trade__their-name2">?</span>)</div>
-        <ul class="ao-trade__offer-list ao-trade__offer-list--theirs"></ul>
-        <div class="ao-trade__gold-row">
-          <span>Oro: <strong class="ao-trade__their-gold">0</strong></span>
+      <div class="ao-vp__cols">
+        <div class="ao-vp__col">
+          <div class="ao-vp__label">Tu inventario</div>
+          <div class="ao-vp__grid ao-trade__myinv"></div>
         </div>
-        <span class="ao-trade__confirmed-theirs ao-trade__confirmed--no">Pendiente</span>
+        <div class="ao-vp__col">
+          <div class="ao-vp__label">Tu oferta</div>
+          <div class="ao-vp__grid ao-trade__myoffer"></div>
+        </div>
+        <div class="ao-vp__col">
+          <div class="ao-vp__label">Oferta de <span class="ao-trade__their-name">?</span></div>
+          <div class="ao-vp__grid ao-trade__theiroffer"></div>
+        </div>
       </div>
-    </div>
-    <div class="ao-trade__footer">
-      <button class="ao-trade__btn ao-trade__btn--confirm">Confirmar</button>
+      <div class="ao-vp__info"><span class="ao-trade__info">&nbsp;</span></div>
+      <div class="ao-vp__goldrow">
+        <span class="ao-vp__goldinfo">🪙 Tu oro: <b class="ao-trade__mygold">0</b> · Ofrecés: <b class="ao-trade__myoffergold">0</b> · Te ofrecen: <b class="ao-trade__theiroffergold">0</b></span>
+        <input class="ao-vp__field ao-trade__qty" type="number" min="1" value="1" />
+        <button class="ao-vp__btn ao-trade__add" type="button" title="Agregar el item seleccionado a tu oferta">Agregar ▶</button>
+        <button class="ao-vp__btn ao-trade__setgold" type="button" title="Ofertar la cantidad de oro indicada">Ofertar oro</button>
+      </div>
+      <div class="ao-vp__foot">
+        <span class="ao-trade__status"></span>
+        <button class="ao-vp__btn ao-vp__btn--primary ao-trade__confirm" type="button">Confirmar</button>
+        <button class="ao-vp__btn ao-trade__cancel" type="button">Cancelar</button>
+      </div>
     </div>
   `;
   parent.appendChild(wrap);
@@ -75,27 +82,72 @@ export function mountTrade(parent: HTMLElement, cb: TradeCallbacks): TradeHandle
   const acceptInvBtn = inviteToast.querySelector<HTMLButtonElement>(".ao-trade-invite__accept")!;
   const declineInvBtn = inviteToast.querySelector<HTMLButtonElement>(".ao-trade-invite__decline")!;
 
-  const theirNameEl = wrap.querySelector<HTMLElement>(".ao-trade__their-name")!;
-  const theirName2El = wrap.querySelector<HTMLElement>(".ao-trade__their-name2")!;
-  const myList = wrap.querySelector<HTMLUListElement>(".ao-trade__offer-list--mine")!;
-  const theirList = wrap.querySelector<HTMLUListElement>(".ao-trade__offer-list--theirs")!;
-  const theirGoldEl = wrap.querySelector<HTMLElement>(".ao-trade__their-gold")!;
-  const goldInput = wrap.querySelector<HTMLInputElement>(".ao-trade__gold-input")!;
-  const setGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__btn--set-gold")!;
-  const itemSelect = wrap.querySelector<HTMLSelectElement>(".ao-trade__item-select")!;
-  const addItemBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__btn--add-item")!;
-  const confirmBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__btn--confirm")!;
-  const cancelBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__cancel-btn")!;
-  const confirmedMine = wrap.querySelector<HTMLElement>(".ao-trade__confirmed-mine")!;
-  const confirmedTheirs = wrap.querySelector<HTMLElement>(".ao-trade__confirmed-theirs")!;
+  const theirNameEls = [...wrap.querySelectorAll<HTMLElement>(".ao-trade__their-name")];
+  const setTheirName = (name: string): void => { for (const el of theirNameEls) el.textContent = name; };
+  const myInvGrid = wrap.querySelector<HTMLDivElement>(".ao-trade__myinv")!;
+  const myOfferGrid = wrap.querySelector<HTMLDivElement>(".ao-trade__myoffer")!;
+  const theirOfferGrid = wrap.querySelector<HTMLDivElement>(".ao-trade__theiroffer")!;
+  const myGoldEl = wrap.querySelector<HTMLElement>(".ao-trade__mygold")!;
+  const myOfferGoldEl = wrap.querySelector<HTMLElement>(".ao-trade__myoffergold")!;
+  const theirOfferGoldEl = wrap.querySelector<HTMLElement>(".ao-trade__theiroffergold")!;
+  const qtyEl = wrap.querySelector<HTMLInputElement>(".ao-trade__qty")!;
+  const addBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__add")!;
+  const setGoldBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__setgold")!;
+  const infoEl = wrap.querySelector<HTMLElement>(".ao-trade__info")!;
+  const statusEl = wrap.querySelector<HTMLElement>(".ao-trade__status")!;
+  const confirmBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__confirm")!;
+  const cancelBtn = wrap.querySelector<HTMLButtonElement>(".ao-trade__cancel")!;
+  const closeBtn = wrap.querySelector<HTMLButtonElement>(".ao-vp__close")!;
 
   let open = false;
   let myInventory: ReadonlyArray<InventorySlot> = [];
   let myGold = 0;
+  let selectedItem: number | null = null;
+
+  function qty(): number {
+    const n = Math.floor(Number(qtyEl.value));
+    return Number.isFinite(n) && n > 0 ? Math.min(n, 10000) : 1;
+  }
 
   function setOpen(v: boolean): void {
     open = v;
-    wrap.classList.toggle("ao-trade--open", open);
+    wrap.classList.toggle("ao-trade--open", v);
+    if (!v) { selectedItem = null; }
+  }
+
+  function fillGrid(grid: HTMLElement, slots: ReadonlyArray<InventorySlot>, clickable: boolean): void {
+    grid.replaceChildren();
+    const items = slots.filter((s): s is InventorySlot => !!s && s.item > 0);
+    for (let i = 0; i < 30; i++) {
+      const s = items[i];
+      if (!s) {
+        const empty = document.createElement("div");
+        empty.className = "ao-cell ao-cell--empty";
+        grid.appendChild(empty);
+        continue;
+      }
+      const cell = createItemCell({
+        item: s.item,
+        qty: s.qty,
+        resolveIcon: cb.resolveIcon,
+        onClick: clickable
+          ? () => {
+              selectedItem = s.item;
+              grid.querySelectorAll(".ao-cell--sel").forEach((c) => { c.classList.remove("ao-cell--sel"); });
+              cell.classList.add("ao-cell--sel");
+              const def = getItem(s.item);
+              infoEl.textContent = def ? def.name : " ";
+            }
+          : undefined,
+      });
+      if (clickable && selectedItem === s.item) cell.classList.add("ao-cell--sel");
+      grid.appendChild(cell);
+    }
+  }
+
+  function renderMyInv(): void {
+    fillGrid(myInvGrid, myInventory, true);
+    myGoldEl.textContent = myGold.toLocaleString("es");
   }
 
   acceptInvBtn.addEventListener("click", () => {
@@ -105,88 +157,50 @@ export function mountTrade(parent: HTMLElement, cb: TradeCallbacks): TradeHandle
   declineInvBtn.addEventListener("click", () => {
     inviteToast.classList.remove("ao-trade-invite--visible");
   });
-  cancelBtn.addEventListener("click", () => cb.onCancel());
-  confirmBtn.addEventListener("click", () => cb.onConfirm());
+  cancelBtn.addEventListener("click", () => { cb.onCancel(); });
+  closeBtn.addEventListener("click", () => { cb.onCancel(); });
+  confirmBtn.addEventListener("click", () => { cb.onConfirm(); });
+  addBtn.addEventListener("click", () => {
+    if (selectedItem !== null) cb.onAddItem(selectedItem, qty());
+  });
+  // Ofertar oro: la cantidad indicada en el campo (acotada a lo que tenés).
   setGoldBtn.addEventListener("click", () => {
-    const amount = parseInt(goldInput.value, 10);
-    if (!isNaN(amount) && amount >= 0 && amount <= myGold) {
-      cb.onSetGold(amount);
-    }
+    const amount = qty();
+    if (amount >= 0 && amount <= myGold) cb.onSetGold(amount);
   });
-  addItemBtn.addEventListener("click", () => {
-    const val = itemSelect.value;
-    if (!val) return;
-    const item = parseInt(val, 10);
-    if (!isNaN(item)) cb.onAddItem(item, 1);
-  });
-
-  function refreshInventorySelect(): void {
-    itemSelect.replaceChildren();
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "— item —";
-    itemSelect.appendChild(placeholder);
-    for (const slot of myInventory) {
-      const def = getItem(slot.item);
-      if (!def) continue;
-      const opt = document.createElement("option");
-      opt.value = slot.item.toString();
-      opt.textContent = `${def.name} x${slot.qty.toString()}`;
-      itemSelect.appendChild(opt);
-    }
-  }
-
-  function renderOfferList(
-    list: HTMLUListElement,
-    offer: TradeOfferData,
-  ): void {
-    list.replaceChildren();
-    for (const slot of offer.items) {
-      const def = getItem(slot.item);
-      if (!def) continue;
-      const li = document.createElement("li");
-      li.textContent = `${def.name} x${slot.qty.toString()}`;
-      list.appendChild(li);
-    }
-  }
 
   return {
     showInvite: (initiatorName) => {
       inviteText.textContent = `${initiatorName} quiere comerciar con vos`;
       inviteToast.classList.add("ao-trade-invite--visible");
     },
-    hideInvite: () => {
-      inviteToast.classList.remove("ao-trade-invite--visible");
-    },
+    hideInvite: () => { inviteToast.classList.remove("ao-trade-invite--visible"); },
     openTrade: (name) => {
-      theirNameEl.textContent = name;
-      theirName2El.textContent = name;
+      setTheirName(name);
+      selectedItem = null;
+      qtyEl.value = "1";
+      renderMyInv();
       setOpen(true);
     },
     updateTrade: (myOffer, theirOffer, name) => {
-      theirNameEl.textContent = name;
-      theirName2El.textContent = name;
-      renderOfferList(myList, myOffer);
-      renderOfferList(theirList, theirOffer);
-      theirGoldEl.textContent = theirOffer.gold.toString();
-      goldInput.value = myOffer.gold.toString();
-      confirmedMine.textContent = myOffer.confirmed ? "Confirmado ✓" : "Pendiente";
-      confirmedMine.className = `ao-trade__confirmed-mine ${myOffer.confirmed ? "ao-trade__confirmed--yes" : "ao-trade__confirmed--no"}`;
-      confirmedTheirs.textContent = theirOffer.confirmed ? "Confirmado ✓" : "Pendiente";
-      confirmedTheirs.className = `ao-trade__confirmed-theirs ${theirOffer.confirmed ? "ao-trade__confirmed--yes" : "ao-trade__confirmed--no"}`;
+      setTheirName(name);
+      renderMyInv();
+      fillGrid(myOfferGrid, myOffer.items, false);
+      fillGrid(theirOfferGrid, theirOffer.items, false);
+      myOfferGoldEl.textContent = myOffer.gold.toLocaleString("es");
+      theirOfferGoldEl.textContent = theirOffer.gold.toLocaleString("es");
+      const me = myOffer.confirmed ? "confirmaste ✓" : "pendiente";
+      const them = theirOffer.confirmed ? "confirmó ✓" : "pendiente";
+      statusEl.textContent = `Vos: ${me}  ·  ${name}: ${them}`;
+      confirmBtn.classList.toggle("ao-trade__btn--on", myOffer.confirmed);
     },
-    closeTrade: () => {
-      setOpen(false);
-    },
+    closeTrade: () => { setOpen(false); },
     isOpen: () => open,
     setInventory: (slots, gold) => {
       myInventory = slots;
       myGold = gold;
-      if (open) refreshInventorySelect();
+      if (open) renderMyInv();
     },
-    destroy: () => {
-      wrap.remove();
-      inviteToast.remove();
-    },
+    destroy: () => { wrap.remove(); inviteToast.remove(); },
   };
 }

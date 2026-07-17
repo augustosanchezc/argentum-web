@@ -8,7 +8,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "lint": "echo \"(client: lint se agrega en T-007 con la CI)\""
+    "lint": "echo \"(client: lint se agrega en T-007 con la CI)\"",
+    "parse-ao": "node scripts/parse-ao-assets.mjs",
+    "download-ao": "node scripts/download-ao-graficos.mjs",
+    "color-key": "node scripts/apply-color-key.mjs"
   },
   "dependencies": {
     "@ao/shared": "workspace:*",
@@ -17,6 +20,7 @@
     "pixi.js": "^8.6.0"
   },
   "devDependencies": {
+    "sharp": "^0.35.3",
     "typescript": "^5.6.3",
     "vite": "^5.4.11"
   }

@@ -1,8 +1,11 @@
-// Sistema de zonas seguras (AO-like).
-// Mapa 1 = Ullathorpe = ciudad = sin PvP.
+// Sistema de zonas seguras del AO: las ciudades (Pk=1 en su MapaN.dat
+// original — Ullathorpe, Nix, Banderbill, etc.) no permiten PvP.
+// La verdad vive en MapState.safeZone, cargada de los .dat reales.
+
+import { getMap } from "./maps.js";
 
 export function isSafeZone(mapId: number): boolean {
-  return mapId === 1;
+  return getMap(mapId)?.safeZone ?? false;
 }
 
 // Devuelve true si el atacante puede atacar al defensor.

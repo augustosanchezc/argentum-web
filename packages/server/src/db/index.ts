@@ -3,10 +3,11 @@ import pkg from "pg";
 import { env } from "../config/env.js";
 import * as accounts from "./schema/accounts.js";
 import * as characters from "./schema/characters.js";
+import * as guilds from "./schema/guilds.js";
 
 const { Pool } = pkg;
 
-const schema = { ...accounts, ...characters };
+const schema = { ...accounts, ...characters, ...guilds };
 
 export const pool = new Pool({
   connectionString: env.database.url,

@@ -20,9 +20,10 @@ export function tickDots(): DotTickResult[] {
       continue;
     }
 
-    const remaining: { damage: number; ticksLeft: number; casterId: number }[] = [];
+    const remaining: { damage: number; ticksLeft: number; casterId: number; poison?: boolean }[] = [];
     for (const dot of dots) {
-      const dmg = Math.max(1, dot.damage);
+      // Veneno del AO: RandomNumber(1,5) por tick; el resto usa su daño fijo.
+      const dmg = dot.poison ? 1 + Math.floor(Math.random() * 5) : Math.max(1, dot.damage);
       target.hp = Math.max(0, target.hp - dmg);
       results.push({
         targetId: targetCharId,
@@ -32,8 +33,13 @@ export function tickDots(): DotTickResult[] {
         casterId: dot.casterId,
       });
 
-      const next = dot.ticksLeft - 1;
-      if (next > 0) remaining.push({ ...dot, ticksLeft: next });
+      // El veneno persiste hasta curarse/morir; los DoTs de skill decrementan.
+      if (dot.poison) {
+        remaining.push({ ...dot });
+      } else {
+        const next = dot.ticksLeft - 1;
+        if (next > 0) remaining.push({ ...dot, ticksLeft: next });
+      }
     }
 
     if (remaining.length > 0) {

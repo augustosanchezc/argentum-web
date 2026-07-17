@@ -55,6 +55,9 @@ data/
 *.bak
 .cache/
 
+# Capturas de prueba / QA (artefactos de desarrollo, no viajan con el repo)
+Screen de chequeo/
+
 # Insumo del script fetch-ulla-assets (se baja aparte, no es asset de runtime).
 # El cliente solo necesita graficos.json + los PNGs, que si viajan con el repo.
 packages/client/public/ao-assets/Graficos.ind

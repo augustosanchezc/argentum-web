@@ -1,13 +1,15 @@
-import { getItem, type InventorySlot } from "@ao/shared";
+import { getAoSpell, getItem, type InventorySlot } from "@ao/shared";
 
-// Panel de inventario (E-3.7). Grilla drag-and-drop 4x5.
-//   - Click derecho o botón "Vender": vender al comerciante (si hay tienda abierta).
-//   - Doble click: usar / equipar.
-//   - Drag → otro slot: reordenar (server autoritativo).
-//   - Drag → zona "Tirar": soltar al piso, encima del personaje.
-// Se abre/cierra con la tecla I.
+// Panel lateral clásico del AO (siempre visible, tecla I lo oculta):
+//   - Cabecera: nombre, nivel, oro.
+//   - Barras: HP, maná, hambre, sed, XP. Chips de drogas activas.
+//   - Botones: switch Inventario/Hechizos, Estadísticas, Teclas.
+//   - Tab Inventario: grilla drag-and-drop + zona de tirar.
+//   - Tab Hechizos: libro real (Hechizos.dat); click = seleccionar para
+//     lanzar (después click en el objetivo); drag → barra de macros.
 
-const SLOT_COUNT = 20;
+// 24 slots en grilla de 6 columnas (densidad del cliente AO clásico).
+const SLOT_COUNT = 24;
 
 export interface InventoryData {
   gold: number;
@@ -16,6 +18,27 @@ export interface InventoryData {
   equippedArmor: number | null;
   equippedHelmet?: number | null;
   equippedShield?: number | null;
+}
+
+export interface PanelStats {
+  name: string;
+  level: number;
+  xpInto: number;
+  xpForNext: number;
+  hp: number;
+  maxHp: number;
+  mana: number;
+  maxMana: number;
+  hunger: number;
+  thirst: number;
+  sta: number;
+  maxSta: number;
+  strBonus: number;
+  agiBonus: number;
+  buffExpiresAt: number;
+  // Atributos base (para los chips FUE/AGI del panel).
+  str: number;
+  agi: number;
 }
 
 // Coordenadas de un sprite dentro del atlas del AO. Devuelto por Tileset.entry
@@ -33,21 +56,39 @@ export interface InventoryCallbacks {
   onSell(item: number): void;
   onReorder(from: number, to: number): void;
   onDrop(slot: number, qty: number): void;
-  // Devuelve las bounds del sprite del ítem dentro del atlas del AO.
-  // null si el grh no está disponible (usa fallback: siglas).
   resolveIcon(graphicId: number): IconRect | null;
+  // Hechizo seleccionado para lanzar (null = deseleccionado).
+  onSelectSpell(spellId: number | null): void;
+  onOpenStats(): void;
+  onOpenKeys(): void;
+  onOpenQuests(): void;
+  // Volver a la pantalla de selección de personajes.
+  onChangeCharacter(): void;
+  // Botones Party / Clanes del box de vitales.
+  onOpenParty(): void;
+  onOpenClanes(): void;
+  // Click en el minimapa → abre el mapa-mundi.
+  onOpenWorldMap(): void;
 }
 
 export interface InventoryHandle {
   setData(data: InventoryData): void;
+  setSlots(gold: number, slots: InventoryData["slots"]): void;
+  setStats(stats: PanelStats): void;
+  setSpells(spellIds: ReadonlyArray<number>): void;
+  clearSpellSelection(): void;
+  // Texto de zona actual (nombre del mapa) en el box de vitales.
+  setLocation(text: string): void;
+  // Contenedor donde se aloja el panel de party (integrado al panel derecho).
+  getPartySlot(): HTMLElement;
+  // Contenedor donde el juego monta el minimapa (sección inferior del panel).
+  getMinimapSlot(): HTMLElement;
   toggle(): void;
   isOpen(): boolean;
   destroy(): void;
 }
 
 function itemColor(item: number): string {
-  // Sin sprites de items todavía: color por type + hash del id para
-  // distinguir dagas de espadas etc. Suficiente hasta E-4.
   const def = getItem(item);
   if (!def) return "#333";
   const hue = (def.id * 47) % 360;
@@ -55,28 +96,320 @@ function itemColor(item: number): string {
   return `hsl(${hue.toString()}, 55%, ${l.toString()}%)`;
 }
 
+const TYPE_LABEL: Record<string, string> = {
+  weapon: "Arma", armor: "Armadura", helmet: "Casco", shield: "Escudo",
+  arrow: "Munición", potion: "Poción", food: "Comida", drink: "Bebida", misc: "Objeto",
+};
+
+// Rango "a-b" o "a" si min==max; "" si ambos indefinidos.
+function range(min: number | undefined, max: number | undefined): string {
+  const lo = min ?? max ?? 0;
+  const hi = max ?? min ?? 0;
+  if (hi <= 0 && lo <= 0) return "";
+  return lo === hi ? lo.toString() : `${lo.toString()}-${hi.toString()}`;
+}
+
+// Filas de stats de un item, para el tooltip de inspección (click).
+function itemStatsRows(def: ReturnType<typeof getItem>): string {
+  if (!def) return "";
+  const rows: Array<[string, string]> = [];
+  if (def.type === "weapon") {
+    const dmg = range(def.minHit, def.maxHit);
+    if (dmg) rows.push(["Ataque", dmg]);
+    if (def.staffDamageBonus) rows.push(["Daño mágico báculo", `+${def.staffDamageBonus.toString()}%`]);
+    if (def.stabs) rows.push(["Apuñala", "sí"]);
+    if (def.ranged) rows.push(["A distancia", def.needsAmmo ? "sí (munición)" : "sí"]);
+  } else if (def.type === "arrow") {
+    const dmg = range(def.minHit, def.maxHit);
+    if (dmg) rows.push(["Daño flecha", `+${dmg}`]);
+  } else if (def.type === "armor" || def.type === "helmet" || def.type === "shield") {
+    const d = range(def.defenseMin, def.defenseMax);
+    if (d) rows.push(["Defensa", d]);
+    const md = range(def.magicDefMin, def.magicDefMax);
+    if (md) rows.push(["Defensa mágica", md]);
+  } else if (def.type === "potion") {
+    const h = range(def.healMin, def.healMax);
+    if (h) rows.push(["Cura", `+${h} HP`]);
+    if (def.restoresMana) rows.push(["Restaura", "maná"]);
+    const ag = range(def.agiBoostMin, def.agiBoostMax);
+    if (ag) rows.push(["Agilidad", `+${ag} (${(def.boostSeconds ?? 0).toString()}s)`]);
+    const st = range(def.strBoostMin, def.strBoostMax);
+    if (st) rows.push(["Fuerza", `+${st} (${(def.boostSeconds ?? 0).toString()}s)`]);
+    if (def.curesPoison) rows.push(["Efecto", "cura veneno"]);
+  } else if (def.type === "food") {
+    if (def.hunger) rows.push(["Hambre", `+${def.hunger.toString()}`]);
+  } else if (def.type === "drink") {
+    if (def.thirst) rows.push(["Sed", `+${def.thirst.toString()}`]);
+    if (def.stamina) rows.push(["Energía", `+${def.stamina.toString()}`]);
+  }
+  if (def.value > 0) rows.push(["Valor", `${def.value.toLocaleString("es")} oro`]);
+  // NUNCA se muestra el código del item (solo sus funciones).
+  return rows.map(([k, v]) => `<div class="ao-inv__d-row"><span>${k}</span><b>${v}</b></div>`).join("");
+}
+
+// HTML del detalle de un item (nombre + tipo + stats), para el panel estático.
+function itemDetailHtml(def: ReturnType<typeof getItem>): string {
+  if (!def) return "";
+  return (
+    `<div class="ao-inv__d-name">${def.name}</div>` +
+    `<div class="ao-inv__d-type">${TYPE_LABEL[def.type] ?? def.type}</div>` +
+    `<div class="ao-inv__d-rows">${itemStatsRows(def)}</div>`
+  );
+}
+
 export function mountInventory(
   parent: HTMLElement,
   cb: InventoryCallbacks,
 ): InventoryHandle {
   const wrap = document.createElement("div");
-  wrap.className = "ao-inv";
+  wrap.className = "ao-inv ao-inv--open";
+
+  // Detalle de item ESTÁTICO: al hacer click en un objeto, sus funciones se
+  // muestran en un área fija del panel (nunca como popup ni con el código).
+  const detailHintHtml = `<span class="ao-inv__detail-hint">Click en un objeto para ver sus detalles</span>`;
+  function showDetail(itemId: number): void {
+    const el = wrap.querySelector<HTMLDivElement>(".ao-inv__detail");
+    const def = getItem(itemId);
+    if (!el) return;
+    el.innerHTML = def ? itemDetailHtml(def) : detailHintHtml;
+  }
+  // Orden del cliente AO clásico (referencia del usuario): nombre + nivel →
+  // barra de XP → pestañas → inventario/conjuros → barras HP/MP/HAM/SED con
+  // oro → drogas activas → minimapa con zona y coordenadas.
+  // Estructura del cliente moderno (referencia "Arte 1" del usuario):
+  // badge de nivel + nombre → tabs → grilla → FUE/AGI → retrato+ubicación →
+  // SALUD/MANÁ con números → energía/hambre/sed → oro → party → acciones.
+  // Diseño "Arte 3": panel en 3 recuadros con esquinas curvas.
+  //  Box 1 = identidad (badge nivel + nombre + config + experiencia)
+  //  Box 2 = inventario/hechizos + botón Lanzar amarillo
+  //  Box 3 = vitales (vida/maná + minimapa + party/clanes + oro/def/daño + drogas)
   wrap.innerHTML = `
-    <div class="ao-inv__title">Inventario <span class="ao-inv__gold">0 oro</span></div>
-    <div class="ao-inv__grid" role="grid"></div>
-    <div class="ao-inv__trash" data-role="trash">Arrastrá acá para tirar al suelo</div>
-    <div class="ao-inv__hint">I abrir/cerrar · G recoger · doble click usar/equipar · click derecho vender</div>
+    <div class="ao-box ao-box--id">
+      <div class="ao-id__row">
+        <div class="ao-panel__lvlbadge"><b class="ao-panel__level">1</b><small>NIVEL</small></div>
+        <div class="ao-id__col">
+          <span class="ao-panel__tag">PERSONAJE</span>
+          <span class="ao-panel__name">—</span>
+        </div>
+        <button type="button" class="ao-id__cfg" data-role="cfg" title="Configuración" aria-label="Configuración">⚙</button>
+      </div>
+      <div class="ao-id__xprow"><span class="ao-id__xplbl">EXPERIENCIA</span><span class="ao-id__xppct">—</span></div>
+      <div class="ao-bar ao-bar--xp"><i></i></div>
+      <div class="ao-id__menu" hidden>
+        <button type="button" data-role="keys">⚙ Configurar teclas</button>
+        <button type="button" data-role="stats">📊 Estadísticas</button>
+        <button type="button" data-role="quests">📜 Misiones</button>
+        <button type="button" data-role="changechar">↺ Cambiar personaje</button>
+      </div>
+    </div>
+
+    <div class="ao-box ao-box--items">
+      <div class="ao-panel__buttons">
+        <button type="button" class="ao-panel__tabbtn ao-panel__tabbtn--active" data-tab="inv">Inventario</button>
+        <button type="button" class="ao-panel__tabbtn" data-tab="spells">Hechizos</button>
+      </div>
+      <div class="ao-panel__tab" data-tabpane="inv">
+        <div class="ao-inv__grid" role="grid"></div>
+        <div class="ao-inv__detail" data-role="detail"><span class="ao-inv__detail-hint">Click en un objeto para ver sus detalles</span></div>
+        <div class="ao-inv__trash" data-role="trash">Arrastrá acá para tirar al suelo</div>
+      </div>
+      <div class="ao-panel__tab" data-tabpane="spells" hidden>
+        <div class="ao-spells__list"></div>
+      </div>
+      <button type="button" class="ao-spells__cast">Lanzar</button>
+    </div>
+
+    <div class="ao-box ao-box--vitals">
+      <div class="ao-panel__zone">—</div>
+      <div class="ao-vitals__main">
+        <div class="ao-vitals__bars">
+          <div class="ao-bar ao-bar--hp ao-bar--big"><i></i><span>VIDA</span></div>
+          <div class="ao-bar ao-bar--mp ao-bar--big"><i></i><span>MANÁ</span></div>
+        </div>
+        <div class="ao-vitals__map">
+          <div class="ao-panel__minimap-slot" title="Click: ver mapa del mundo"></div>
+          <button type="button" class="ao-vitals__mapbtn" data-role="worldmap">🗺 Ver mapa</button>
+        </div>
+      </div>
+      <div class="ao-vitals__pbtns">
+        <button type="button" class="ao-vitals__pbtn" data-role="party">👥 Party</button>
+        <button type="button" class="ao-vitals__pbtn" data-role="clanes">🛡 Clanes</button>
+      </div>
+      <div class="ao-panel__party-slot"></div>
+      <div class="ao-vitals__stats">
+        <span class="ao-stat" title="Oro">🪙 <b class="ao-inv__gold">0</b></span>
+        <span class="ao-stat" title="Defensa"><span class="ao-stat__ic">🛡</span> <b class="ao-stat__def">0</b></span>
+        <span class="ao-stat" title="Daño"><span class="ao-stat__ic">⚔</span> <b class="ao-stat__dmg">0/0</b></span>
+      </div>
+      <div class="ao-vitals__drugs">
+        <span class="ao-drug ao-drug--str" title="Fuerza (poción verde)" hidden>💪 <b>+0</b> <em>0s</em></span>
+        <span class="ao-drug ao-drug--agi" title="Agilidad (poción amarilla)" hidden>🏃 <b>+0</b> <em>0s</em></span>
+      </div>
+    </div>
   `;
   parent.appendChild(wrap);
 
-  const goldEl = wrap.querySelector<HTMLSpanElement>(".ao-inv__gold")!;
+  const nameEl = wrap.querySelector<HTMLSpanElement>(".ao-panel__name")!;
+  const levelEl = wrap.querySelector<HTMLElement>(".ao-panel__level")!;
+  const goldEl = wrap.querySelector<HTMLElement>(".ao-inv__gold")!;
+  const minimapSlot = wrap.querySelector<HTMLDivElement>(".ao-panel__minimap-slot")!;
   const gridEl = wrap.querySelector<HTMLDivElement>(".ao-inv__grid")!;
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
+  const spellsEl = wrap.querySelector<HTMLDivElement>(".ao-spells__list")!;
+  const zoneEl = wrap.querySelector<HTMLDivElement>(".ao-panel__zone")!;
+  const xpFill = wrap.querySelector<HTMLElement>(".ao-bar--xp i")!;
+  const xpPctEl = wrap.querySelector<HTMLElement>(".ao-id__xppct")!;
+  const defEl = wrap.querySelector<HTMLElement>(".ao-stat__def")!;
+  const dmgEl = wrap.querySelector<HTMLElement>(".ao-stat__dmg")!;
+  const drugStrEl = wrap.querySelector<HTMLElement>(".ao-drug--str")!;
+  const drugAgiEl = wrap.querySelector<HTMLElement>(".ao-drug--agi")!;
 
-  let open = false;
+  const bar = (cls: string): { fill: HTMLElement; label: HTMLElement } => {
+    const root = wrap.querySelector<HTMLDivElement>(`.ao-bar--${cls}`)!;
+    return { fill: root.querySelector("i")!, label: root.querySelector("span")! };
+  };
+  const bars = { hp: bar("hp"), mp: bar("mp") };
+
+  let open = true;
   let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null, equippedHelmet: null, equippedShield: null };
+  let stats: PanelStats | null = null;
+  let spellIds: ReadonlyArray<number> = [];
+  let selectedSpell: number | null = null;
   let draggingFrom: number | null = null;
 
+  // ── Tabs ──────────────────────────────────────────────────────────────────
+  const tabBtns = [...wrap.querySelectorAll<HTMLButtonElement>(".ao-panel__tabbtn")];
+  const tabPanes = [...wrap.querySelectorAll<HTMLDivElement>(".ao-panel__tab")];
+  for (const btn of tabBtns) {
+    btn.addEventListener("click", () => {
+      for (const b of tabBtns) b.classList.toggle("ao-panel__tabbtn--active", b === btn);
+      for (const pane of tabPanes) pane.hidden = pane.dataset.tabpane !== btn.dataset.tab;
+    });
+  }
+  // Engranaje de configuración: despliega un menú con teclas/stats/misiones/cambiar.
+  const cfgMenu = wrap.querySelector<HTMLDivElement>(".ao-id__menu")!;
+  wrap.querySelector<HTMLButtonElement>('[data-role="cfg"]')!.addEventListener("click", (e) => {
+    e.stopPropagation();
+    cfgMenu.hidden = !cfgMenu.hidden;
+  });
+  // Cierra el menú de config al clickear afuera. Handler nombrado para poder
+  // removerlo en destroy() — si no, queda colgado en `document` reteniendo el
+  // subárbol del inventario en cada remonte de sesión (leak acumulativo).
+  const onDocClick = (e: MouseEvent): void => {
+    if (!cfgMenu.hidden && !wrap.querySelector(".ao-box--id")!.contains(e.target as Node)) cfgMenu.hidden = true;
+  };
+  document.addEventListener("click", onDocClick);
+  const menuAction = (role: string, fn: () => void): void => {
+    wrap.querySelector<HTMLButtonElement>(`.ao-id__menu [data-role="${role}"]`)!.addEventListener("click", () => {
+      cfgMenu.hidden = true;
+      fn();
+    });
+  };
+  menuAction("keys", () => cb.onOpenKeys());
+  menuAction("stats", () => cb.onOpenStats());
+  menuAction("quests", () => cb.onOpenQuests());
+  menuAction("changechar", () => cb.onChangeCharacter());
+
+  // Botones Party / Clanes y minimapa (click abre el mapa-mundi).
+  wrap.querySelector<HTMLButtonElement>('[data-role="party"]')!.addEventListener("click", () => cb.onOpenParty());
+  wrap.querySelector<HTMLButtonElement>('[data-role="clanes"]')!.addEventListener("click", () => cb.onOpenClanes());
+  minimapSlot.addEventListener("click", () => cb.onOpenWorldMap());
+  wrap.querySelector<HTMLButtonElement>('[data-role="worldmap"]')!.addEventListener("click", () => cb.onOpenWorldMap());
+
+  // «Lanzar»: arma el modo casteo. Si no elegiste ninguno, toma el primero
+  // de la lista (para una sola magia, apretar Lanzar siempre la arma).
+  wrap.querySelector<HTMLButtonElement>(".ao-spells__cast")!.addEventListener("click", () => {
+    if (selectedSpell === null && spellIds.length > 0) {
+      selectedSpell = spellIds[0]!;
+      renderSpells();
+    }
+    if (selectedSpell !== null) cb.onSelectSpell(selectedSpell);
+  });
+
+  // ── Barras y buffs ───────────────────────────────────────────────────────
+  function setBar(b: { fill: HTMLElement; label: HTMLElement }, val: number, max: number, text: string): void {
+    const frac = max > 0 ? Math.max(0, Math.min(1, val / max)) : 0;
+    b.fill.style.width = `${(frac * 100).toFixed(1)}%`;
+    b.label.textContent = text;
+  }
+
+  let buffTimer: ReturnType<typeof setInterval> | null = null;
+
+  function renderStats(): void {
+    if (!stats) return;
+    nameEl.textContent = stats.name;
+    levelEl.textContent = stats.level.toString();
+    setBar(bars.hp, stats.hp, stats.maxHp, `VIDA ${stats.hp.toString()}/${stats.maxHp.toString()}`);
+    if (stats.maxMana > 0) {
+      bars.mp.fill.parentElement!.style.display = "";
+      setBar(bars.mp, stats.mana, stats.maxMana, `MANÁ ${stats.mana.toString()}/${stats.maxMana.toString()}`);
+    } else {
+      bars.mp.fill.parentElement!.style.display = "none";
+    }
+    // Experiencia: barra + "32% (3.572.131 / 11.328.807)".
+    const pct = stats.xpForNext > 0 ? Math.floor((stats.xpInto / stats.xpForNext) * 100) : 100;
+    xpFill.style.width = `${(stats.xpForNext > 0 ? Math.min(100, (stats.xpInto / stats.xpForNext) * 100) : 100).toFixed(1)}%`;
+    xpPctEl.textContent = `${pct.toString()}% (${stats.xpInto.toLocaleString("es")} / ${stats.xpForNext.toLocaleString("es")})`;
+    renderDrugs();
+  }
+
+  // Drogas activas (poción verde = Fuerza · amarilla = Agilidad) con timer.
+  function renderDrugs(): void {
+    if (!stats) return;
+    const now = Date.now();
+    const secs = Math.max(0, Math.ceil((stats.buffExpiresAt - now) / 1000));
+    const showStr = stats.buffExpiresAt > now && stats.strBonus > 0;
+    const showAgi = stats.buffExpiresAt > now && stats.agiBonus > 0;
+    drugStrEl.hidden = !showStr;
+    drugAgiEl.hidden = !showAgi;
+    if (showStr) drugStrEl.innerHTML = `💪 <b>+${stats.strBonus.toString()}</b> <em>${secs.toString()}s</em>`;
+    if (showAgi) drugAgiEl.innerHTML = `🏃 <b>+${stats.agiBonus.toString()}</b> <em>${secs.toString()}s</em>`;
+    if ((showStr || showAgi) && !buffTimer) {
+      buffTimer = setInterval(renderDrugs, 1000);
+    } else if (!showStr && !showAgi && buffTimer) {
+      clearInterval(buffTimer);
+      buffTimer = null;
+    }
+  }
+
+  // ── Hechizos ─────────────────────────────────────────────────────────────
+  function renderSpells(): void {
+    spellsEl.replaceChildren();
+    if (spellIds.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "ao-spells__empty";
+      empty.textContent = "Tu clase no usa magia.";
+      spellsEl.appendChild(empty);
+      return;
+    }
+    for (const id of spellIds) {
+      const spell = getAoSpell(id);
+      if (!spell) continue;
+      const row = document.createElement("div");
+      row.className = "ao-spells__row";
+      if (selectedSpell === id) row.classList.add("ao-spells__row--selected");
+      row.draggable = true;
+      row.title = `«${spell.magicWords}» — maná ${spell.manaCost.toString()}`;
+      row.innerHTML = `
+        <span class="ao-spells__name">${spell.name}</span>
+        <span class="ao-spells__mana">${spell.manaCost.toString()} MP</span>
+      `;
+      // Click en el hechizo = seleccionar Y armar el modo casteo directo
+      // (aparece el crosshair; después click en el objetivo lo lanza). Es una
+      // acción deliberada, no hover — así que respeta el flujo del AO.
+      row.addEventListener("click", () => {
+        selectedSpell = id;
+        renderSpells();
+        cb.onSelectSpell(id);
+      });
+      row.addEventListener("dragstart", (ev) => {
+        ev.dataTransfer?.setData("text/plain", `spell:${id.toString()}`);
+      });
+      spellsEl.appendChild(row);
+    }
+  }
+
+  // ── Inventario (grilla) ──────────────────────────────────────────────────
   function isEquipped(item: number): boolean {
     return (
       last.equippedWeapon === item ||
@@ -86,8 +419,23 @@ export function mountInventory(
     );
   }
 
+  // Info de Defensa y Daño (arte 3): defensa total (armadura+casco+escudo) y
+  // daño del arma equipada (min/max hit).
+  function renderDefDmg(): void {
+    const defOf = (id: number | null | undefined): number =>
+      id !== null && id !== undefined ? getItem(id)?.defense ?? 0 : 0;
+    const totalDef = defOf(last.equippedArmor) + defOf(last.equippedHelmet) + defOf(last.equippedShield);
+    defEl.textContent = totalDef.toString();
+    const w = last.equippedWeapon !== null ? getItem(last.equippedWeapon) : undefined;
+    dmgEl.textContent =
+      w && w.type === "weapon"
+        ? `${(w.minHit ?? 0).toString()}/${(w.maxHit ?? 0).toString()}`
+        : "0/0";
+  }
+
   function render(): void {
-    goldEl.textContent = `${last.gold.toString()} oro`;
+    goldEl.textContent = last.gold.toLocaleString("es");
+    renderDefDmg();
     gridEl.replaceChildren();
     for (let i = 0; i < SLOT_COUNT; i += 1) {
       const cell = document.createElement("div");
@@ -104,7 +452,6 @@ export function mountInventory(
           cell.title = `${def.name}${slot.qty > 1 ? ` x${slot.qty.toString()}` : ""}${isEquipped(def.id) ? " (equipada)" : ""}`;
           cell.draggable = true;
 
-          // Sprite real del AO si el atlas ya lo tiene cargado. Si no, siglas.
           const icon = def.graphic > 0 ? cb.resolveIcon(def.graphic) : null;
           if (icon) {
             const img = document.createElement("div");
@@ -128,20 +475,22 @@ export function mountInventory(
             cell.appendChild(qty);
           }
 
-          // Doble click: usar/equipar (mismo efecto que el botón "Usar" viejo).
+          cell.addEventListener("click", () => {
+            showDetail(def.id);
+          });
           cell.addEventListener("dblclick", () => {
             cb.onUse(def.id);
           });
-          // Click derecho: vender (mantiene compat con la venta del viejo).
           cell.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
             cb.onSell(def.id);
           });
-          // Drag start guarda el slot origen.
           cell.addEventListener("dragstart", (ev) => {
             draggingFrom = i;
             cell.classList.add("ao-inv__cell--dragging");
-            ev.dataTransfer?.setData("text/plain", i.toString());
+            // "item:ID" para que la barra de macros lo acepte; el reorden
+            // interno usa draggingFrom.
+            ev.dataTransfer?.setData("text/plain", `item:${def.id.toString()}`);
             if (ev.dataTransfer) ev.dataTransfer.effectAllowed = "move";
           });
           cell.addEventListener("dragend", () => {
@@ -151,7 +500,6 @@ export function mountInventory(
         }
       }
 
-      // Drop target: cualquier cell recibe drops (para reordenar).
       cell.addEventListener("dragover", (ev) => {
         if (draggingFrom !== null) {
           ev.preventDefault();
@@ -167,7 +515,6 @@ export function mountInventory(
         cell.classList.remove("ao-inv__cell--drop-target");
         if (draggingFrom === null) return;
         if (draggingFrom === i) return;
-        // El server valida rangos y slots vacios de acuerdo a su verdad.
         cb.onReorder(draggingFrom, i);
       });
 
@@ -175,7 +522,6 @@ export function mountInventory(
     }
   }
 
-  // Trash zone: drop de un item lo tira al suelo del jugador.
   trashEl.addEventListener("dragover", (ev) => {
     if (draggingFrom !== null) {
       ev.preventDefault();
@@ -192,8 +538,6 @@ export function mountInventory(
     if (draggingFrom === null) return;
     const slot = last.slots[draggingFrom];
     if (!slot) return;
-    // Tiramos toda la pila al piso (para pociones/oro apilables se puede
-    // afinar mas adelante con un dialogo de cantidad; para MVP tirar todo).
     cb.onDrop(draggingFrom, slot.qty);
   });
 
@@ -207,11 +551,43 @@ export function mountInventory(
       last = data;
       render();
     },
+    // Actualiza solo oro + slots, preservando el equipo conocido. Lo usa el
+    // banco (su paquete no trae el equipo) para no borrar el resaltado de
+    // equipados ni mostrar Def/Daño 0 hasta el próximo InventoryUpdate.
+    setSlots: (gold, slots) => {
+      last = { ...last, gold, slots };
+      render();
+    },
+    setStats: (s) => {
+      stats = s;
+      renderStats();
+    },
+    setSpells: (ids) => {
+      spellIds = ids;
+      if (selectedSpell !== null && !ids.includes(selectedSpell)) {
+        selectedSpell = null;
+        cb.onSelectSpell(null);
+      }
+      renderSpells();
+    },
+    clearSpellSelection: () => {
+      if (selectedSpell !== null) {
+        selectedSpell = null;
+        renderSpells();
+      }
+    },
+    setLocation: (text) => {
+      zoneEl.textContent = text;
+    },
+    getPartySlot: () => wrap.querySelector<HTMLDivElement>(".ao-panel__party-slot")!,
+    getMinimapSlot: () => minimapSlot,
     toggle: () => {
       setOpen(!open);
     },
     isOpen: () => open,
     destroy: () => {
+      if (buffTimer) clearInterval(buffTimer);
+      document.removeEventListener("click", onDocClick);
       wrap.remove();
     },
   };

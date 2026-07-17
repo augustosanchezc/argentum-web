@@ -2,10 +2,11 @@
   --bg: #0a0805;
   --bg-soft: #15110b;
   --bg-card: #1a140d;
-  --gold: #d4af37;
-  --gold-bright: #f4d56a;
-  --gold-dim: #a08428;
-  --gold-soft: rgba(212, 175, 55, 0.15);
+  /* "gold" repurposed a AZUL (arte 4) — el proyecto no usa amarillo en la UI. */
+  --gold: #4f8ff0;
+  --gold-bright: #7ab0ff;
+  --gold-dim: #2f6fd6;
+  --gold-soft: rgba(79, 143, 240, 0.16);
   --parchment: #f5e6c8;
   --text: #e8dfc8;
   --text-dim: #a89c80;
@@ -43,10 +44,10 @@ body {
 
 canvas {
   display: block;
-  position: absolute;
-  top: 0;
-  left: 0;
 }
+/* El canvas del mundo se posiciona con .ao-viewport; los demás canvas
+   (retrato, minimapa) van en flujo normal. La vieja regla global
+   position:absolute hacía que el retrato llenara todo el panel. */
 
 h1,
 h2,
@@ -404,31 +405,31 @@ h3 {
 }
 
 /* ============ CHAT OVERLAY ============ */
+/* Consola ARRIBA del área de juego, como el cliente AO clásico. */
 .ao-chat {
   position: fixed;
-  left: 12px;
-  bottom: 12px;
-  width: min(480px, calc(100vw - 24px));
+  left: 0;
+  top: 0;
+  width: calc(100vw - 244px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
   pointer-events: none;
   font-family: "Segoe UI", system-ui, sans-serif;
   z-index: 100;
 }
 .ao-chat__messages {
   pointer-events: auto;
-  max-height: 240px;
+  height: 96px;
   overflow-y: auto;
-  padding: 8px 10px;
-  background: rgba(10, 8, 5, 0.55);
-  border: 1px solid rgba(212, 175, 55, 0.15);
-  border-radius: 4px;
+  padding: 6px 10px;
+  background: rgba(6, 5, 3, 0.82);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.25);
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 12px;
+  line-height: 1.35;
   color: var(--text);
   scrollbar-width: thin;
   scrollbar-color: var(--gold-dim) transparent;
@@ -498,10 +499,10 @@ h3 {
 /* Panel de jugadores online (T-047) */
 .ao-players {
   position: fixed;
-  top: 12px;
-  right: 12px;
+  top: 108px; /* debajo de la consola superior */
+  left: 12px;
   width: 180px;
-  max-height: 50vh;
+  max-height: 40vh;
   overflow-y: auto;
   padding: 8px 10px;
   background: rgba(10, 8, 5, 0.55);
@@ -585,22 +586,28 @@ h3 {
 }
 
 /* Inventario (E-3.2/3.7) y tienda (E-3.4) */
+/* Panel lateral derecho fijo, como la ventana principal del AO clásico:
+   el juego a la izquierda, inventario + hechizos siempre visibles a la derecha. */
 .ao-inv {
   position: fixed;
-  top: 12px;
-  left: 12px;
-  width: 236px;
-  padding: 10px 12px;
-  background: rgba(10, 8, 5, 0.82);
-  border: 1px solid var(--gold-soft);
-  border-radius: 4px;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 244px;
+  /* Deja lugar abajo para la sección Hechizos (skill hotbar dockeado). */
+  padding: 12px 12px 110px;
+  background: linear-gradient(180deg, rgba(16, 12, 7, 0.96), rgba(10, 8, 5, 0.96));
+  border-left: 2px solid var(--gold-soft);
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   color: var(--text);
   z-index: 110;
   display: none;
+  overflow-y: auto;
 }
 .ao-inv--open { display: block; }
+.ao-inv::-webkit-scrollbar { width: 6px; }
+.ao-inv::-webkit-scrollbar-thumb { background: var(--gold-soft); border-radius: 3px; }
 .ao-inv__title {
   color: var(--gold-bright);
   font-weight: 600;
@@ -613,9 +620,9 @@ h3 {
 .ao-inv__gold { color: var(--gold); }
 .ao-inv__grid {
   display: grid;
-  grid-template-columns: repeat(4, 48px);
-  grid-auto-rows: 48px;
-  gap: 4px;
+  grid-template-columns: repeat(6, 35px);
+  grid-auto-rows: 35px;
+  gap: 2px;
   justify-content: center;
 }
 .ao-inv__cell {
@@ -687,37 +694,66 @@ h3 {
 }
 .ao-inv__hint { margin-top: 8px; color: var(--text-faint); font-size: 11px; }
 
-.ao-shop {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 320px;
-  max-height: 70vh;
-  overflow-y: auto;
-  padding: 14px 16px;
-  background: rgba(10, 8, 5, 0.94);
-  border: 1px solid var(--gold);
-  border-radius: 6px;
+/* ══════════════════════════════════════════════════════════════════════
+   Popups de vendedor / banco / trade — diseño "arte 4": navy homogéneo,
+   recuadros redondeados por item y los colores/texto del panel de inventario.
+   Clases compartidas .ao-vp__* para que las tres ventanas sean idénticas.
+   ══════════════════════════════════════════════════════════════════════ */
+.ao-vp {
+  position: fixed; inset: 0; z-index: 130; display: none;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6);
   font-family: "Segoe UI", system-ui, sans-serif;
-  font-size: 14px;
-  color: var(--text);
-  z-index: 130;
-  display: none;
 }
-.ao-shop--open { display: block; }
-.ao-shop__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.ao-shop__title { color: var(--gold-bright); font-weight: 700; font-size: 16px; }
-.ao-shop__close {
-  background: transparent; border: none; color: var(--text-dim);
-  font-size: 18px; cursor: pointer;
+.ao-shop--open, .ao-bank--open, .ao-trade--open { display: flex; }
+.ao-vp__win {
+  background: #14131c; border: 1px solid #2b2938; border-radius: 14px;
+  padding: 14px 16px; color: #d2cee2; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  max-height: 92vh; overflow: auto;
 }
-.ao-shop__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.ao-shop__item { display: flex; align-items: center; gap: 8px; }
-.ao-shop__name { flex: 1; }
-.ao-shop__hint { margin-top: 10px; color: var(--text-faint); font-size: 11px; }
+.ao-vp__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 16px; }
+.ao-vp__title { font-size: 16px; font-weight: 800; color: #f1f0f6; letter-spacing: 0.3px; }
+.ao-vp__close {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de; font-size: 13px; cursor: pointer; line-height: 1;
+}
+.ao-vp__close:hover { background: #2a2838; color: #fff; }
+.ao-vp__cols { display: flex; gap: 14px; align-items: flex-start; }
+.ao-vp__col { display: flex; flex-direction: column; gap: 6px; }
+.ao-vp__label { font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a86a4; font-weight: 700; }
+.ao-vp__grid {
+  display: grid; grid-template-columns: repeat(5, 44px); grid-auto-rows: 44px; gap: 5px;
+  padding: 7px; background: #0d0c13; border: 1px solid #2a2836; border-radius: 10px;
+  max-height: 270px; overflow-y: auto; align-content: start;
+}
+.ao-vp .ao-cell { width: 44px; height: 44px; background: #16151e; border: 1px solid #2b2a38; border-radius: 8px; }
+.ao-vp .ao-cell--empty { background: #131219; }
+.ao-vp .ao-cell--clickable:hover { border-color: #46445c; background: #1c1b28; }
+.ao-vp .ao-cell--sel { border-color: #2f6fd6; background: rgba(47, 111, 214, 0.22); box-shadow: inset 0 0 0 1px #2f6fd6; }
+.ao-vp .ao-cell__icon { width: 40px; height: 40px; }
+.ao-vp .ao-cell__qty { color: #7ab0ff; font-size: 11px; font-weight: 700; }
+.ao-vp__info {
+  margin-top: 12px; min-height: 20px; display: flex; align-items: center; gap: 12px;
+  padding: 8px 11px; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
+}
+.ao-vp__info .ao-shop__iname { font-size: 13px; font-weight: 700; color: #e8e6f2; }
+.ao-vp__info .ao-shop__iprice { font-size: 13px; font-weight: 700; color: #7ab0ff; }
+.ao-vp__info .ao-shop__istat { font-size: 11px; color: #9a96b4; margin-left: auto; }
+.ao-vp__foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.ao-vp__qtylbl { font-size: 11px; color: #8a86a4; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.ao-vp__field {
+  width: 66px; text-align: center; font-size: 13px; font-weight: 700; color: #e8e6f2;
+  background: #0d0c13; border: 1px solid #33313f; border-radius: 7px; padding: 6px 4px;
+}
+.ao-vp__btn {
+  padding: 9px 18px; font-size: 13px; font-weight: 700; color: #d2cee2;
+  background: #1a1826; border: 1px solid #33313f; border-radius: 9px; cursor: pointer;
+}
+.ao-vp__btn:hover { background: #252336; color: #fff; }
+.ao-vp__btn--primary { background: linear-gradient(#3f7fe0, #2f6fd6); border-color: #4f8ff0; color: #fff; }
+.ao-vp__btn--primary:hover { background: linear-gradient(#4f8ff0, #3f7fe0); }
+.ao-shop__buy { margin-left: auto; }
 
-.ao-inv__btn, .ao-shop__btn {
+.ao-inv__btn {
   background: linear-gradient(135deg, var(--gold), var(--gold-dim));
   color: var(--bg);
   border: none;
@@ -734,41 +770,20 @@ h3 {
 }
 
 /* ── Banco (E-4.2) ── */
-.ao-bank {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--bg-card);
-  border: 1px solid var(--gold-dim);
-  border-radius: 6px;
-  padding: 14px;
-  min-width: 580px;
-  max-width: 96vw;
-  max-height: 80vh;
-  overflow-y: auto;
-  z-index: 150;
-  display: none;
+/* ── Banco: usa el diseño compartido .ao-vp; sólo la fila de oro es propia. */
+.ao-bank { z-index: 150; }
+.ao-vp__goldrow {
+  display: flex; align-items: center; gap: 10px; margin-top: 10px;
+  padding: 8px 11px; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
 }
-.ao-bank--open { display: block; }
-.ao-bank__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.ao-bank__title { color: var(--gold-bright); font-weight: 700; font-size: 16px; }
-.ao-bank__close { background: transparent; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer; }
-.ao-bank__body { display: flex; gap: 16px; }
-.ao-bank__section { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.ao-bank__section-title { color: var(--gold); font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--gold-soft); padding-bottom: 4px; }
-.ao-bank__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; min-height: 60px; }
-.ao-bank__item { display: flex; align-items: center; gap: 8px; }
-.ao-bank__item-name { flex: 1; font-size: 13px; }
-.ao-bank__gold-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
-.ao-bank__gold-input, .ao-bank__gold-input2 { width: 60px; background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; }
-.ao-bank__btn { background: linear-gradient(135deg, var(--gold), var(--gold-dim)); color: var(--bg); border: none; border-radius: 3px; padding: 3px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ao-vp__goldinfo { font-size: 12px; color: #b8b4cc; font-weight: 600; margin-right: auto; }
+.ao-vp__goldinfo b { color: #7ab0ff; }
 
 /* ── Party (E-4.3) ── */
 .ao-party {
   position: fixed;
-  top: 60px;
-  right: 12px;
+  bottom: 12px;
+  left: 12px;
   background: var(--bg-card);
   border: 1px solid var(--gold-soft);
   border-radius: 6px;
@@ -808,37 +823,9 @@ h3 {
 .ao-party-invite__decline { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 
 /* ── Trade (E-4.4) ── */
-.ao-trade {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--bg-card);
-  border: 1px solid var(--gold-dim);
-  border-radius: 6px;
-  padding: 14px;
-  min-width: 520px;
-  max-width: 96vw;
-  z-index: 155;
-  display: none;
-}
-.ao-trade--open { display: block; }
-.ao-trade__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.ao-trade__title { color: var(--gold-bright); font-weight: 700; font-size: 15px; }
-.ao-trade__cancel-btn { background: transparent; border: 1px solid var(--crimson); color: var(--crimson-bright); border-radius: 3px; padding: 3px 8px; font-size: 12px; cursor: pointer; }
-.ao-trade__body { display: flex; gap: 16px; margin-bottom: 12px; }
-.ao-trade__side { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-.ao-trade__side-title { color: var(--gold); font-weight: 600; font-size: 13px; border-bottom: 1px solid var(--gold-soft); padding-bottom: 4px; }
-.ao-trade__offer-list { list-style: none; margin: 0; padding: 0; min-height: 50px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
-.ao-trade__gold-row { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
-.ao-trade__gold-input { width: 70px; background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; }
-.ao-trade__add-item-row { display: flex; align-items: center; gap: 6px; }
-.ao-trade__item-select { background: var(--bg-soft); border: 1px solid var(--gold-soft); color: var(--text); border-radius: 3px; padding: 2px 4px; font-size: 12px; flex: 1; }
-.ao-trade__btn { background: linear-gradient(135deg, var(--gold), var(--gold-dim)); color: var(--bg); border: none; border-radius: 3px; padding: 3px 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
-.ao-trade__btn--confirm { width: 100%; padding: 8px; font-size: 14px; }
-.ao-trade__footer { text-align: center; }
-.ao-trade__confirmed--yes { color: var(--emerald-bright); font-size: 12px; font-weight: 600; }
-.ao-trade__confirmed--no { color: var(--text-faint); font-size: 12px; }
+/* ── Trade jugador-jugador: usa el diseño compartido .ao-vp. ── */
+.ao-trade { z-index: 155; }
+.ao-trade__status { font-size: 12px; color: #9a96b4; font-weight: 600; margin-right: auto; }
 
 .ao-trade-invite {
   position: fixed;
@@ -860,48 +847,78 @@ h3 {
 .ao-trade-invite__decline { background: transparent; border: 1px solid var(--text-dim); color: var(--text-dim); border-radius: 3px; padding: 3px 10px; cursor: pointer; font-size: 12px; }
 
 /* ── Stats Panel (Fase 5) ── */
+/* ── Panel de Estadísticas (arte 4, azul homogéneo) ── */
 .ao-stats-panel {
   position: fixed;
   top: 60px;
   left: 12px;
-  background: var(--bg-card);
-  border: 1px solid var(--gold-soft);
-  border-radius: 6px;
-  padding: 10px 12px;
-  min-width: 200px;
+  background: #14131c;
+  border: 1px solid #2b2938;
+  border-radius: 10px;
+  padding: 12px 14px;
+  width: 250px;
   z-index: 120;
   display: none;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
 }
 .ao-stats-panel--open { display: flex; }
-.ao-stats-panel__title {
-  color: var(--gold-bright);
+.ao-sp__head {
+  border-bottom: 1px solid #2b2938;
+  padding-bottom: 8px;
+  margin-bottom: 4px;
+}
+.ao-sp__title {
+  color: #f1f0f6;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.3px;
+}
+.ao-sp__sub { color: #8a86a4; font-size: 12px; margin-top: 2px; }
+.ao-sp__lvlrow { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 3px; }
+.ao-sp__lvl { color: #4f8ff0; font-weight: 700; font-size: 14px; }
+.ao-sp__gold { color: #7ab0ff; font-weight: 700; font-size: 12px; }
+.ao-sp__xptxt { color: #8a86a4; font-size: 11px; text-align: right; margin-top: 2px; margin-bottom: 2px; }
+.ao-sp__sectitle {
+  color: #b8b4cc;
   font-weight: 700;
-  font-size: 14px;
-  border-bottom: 1px solid var(--gold-soft);
-  padding-bottom: 6px;
-  margin-bottom: 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-top: 8px;
+  margin-bottom: 3px;
+  border-top: 1px solid #211f2c;
+  padding-top: 7px;
 }
-.ao-stats-panel__rows { display: flex; flex-direction: column; gap: 4px; }
-.ao-stats-panel__footer { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; border-top: 1px solid var(--gold-soft); padding-top: 6px; }
-.stat-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
+.ao-sp__sectitle small { text-transform: none; letter-spacing: 0; color: #6f6b86; font-weight: 500; }
+.ao-sp__pts { color: #7ab0ff; float: right; text-transform: none; letter-spacing: 0; }
+.ao-sp__vital { margin-bottom: 4px; }
+.ao-sp__row { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.ao-sp__k { flex: 1; color: #d2cee2; }
+.ao-sp__v { font-weight: 700; color: #f1f0f6; min-width: 28px; text-align: right; }
+.ao-sp__v--buff { color: #5fd06f; }
+.ao-sp__v small { color: #8a86a4; font-weight: 500; }
+.ao-sp__faint { color: #6f6b86; }
+.ao-sp__bar {
+  height: 6px;
+  background: #0d0c13;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 3px;
+  border: 1px solid #211f2c;
 }
-.stat-label { flex: 1; color: var(--text-dim); }
-.stat-value { font-weight: 600; color: var(--parchment); min-width: 28px; text-align: right; }
-.stat-alloc-btn {
-  background: linear-gradient(135deg, var(--gold), var(--gold-dim));
-  color: var(--bg);
+.ao-sp__barfill { height: 100%; border-radius: 4px; transition: width 0.25s ease; }
+.ao-sp__skills { display: flex; flex-direction: column; gap: 2px; max-height: 160px; overflow-y: auto; }
+.ao-sp__alloc {
+  background: linear-gradient(135deg, #4f8ff0, #2f6fd6);
+  color: #fff;
   border: none;
-  border-radius: 3px;
+  border-radius: 5px;
   width: 20px;
   height: 20px;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
   line-height: 1;
   padding: 0;
@@ -909,38 +926,12 @@ h3 {
   align-items: center;
   justify-content: center;
 }
-.stat-alloc-btn:hover { filter: brightness(1.2); }
-.stat-row--hp .stat-value { color: #4cb87e; }
-.stat-row--mp .stat-value { color: #4a8cda; }
+.ao-sp__alloc:hover { filter: brightness(1.15); }
 
 /* ── Mana bar (bajo HP bar) ── */
 /* Rendered in PixiJS, styles here are for reference only */
 
 /* ── Level Up Popup ── */
-.levelup-popup {
-  position: fixed;
-  top: 40%;
-  left: 50%;
-  transform: translateX(-50%) translateY(-20px);
-  background: linear-gradient(135deg, #2a1f00, #1a1208);
-  border: 2px solid var(--gold-bright);
-  border-radius: 8px;
-  color: var(--gold-bright);
-  font-family: Georgia, serif;
-  font-size: 22px;
-  font-weight: bold;
-  padding: 14px 28px;
-  text-align: center;
-  z-index: 300;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.levelup-popup--visible {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
 /* ── Class Selector (Creación de personaje) ── */
 .class-selector {
   display: grid;
@@ -977,14 +968,28 @@ h3 {
   line-height: 1.3;
 }
 
-/* ── Skill hotbar ── */
+/* ── Skill hotbar — sección "Hechizos" del panel lateral derecho ── */
 .ao-skill-hotbar {
-  position: absolute;
-  bottom: 72px;
-  left: 16px;
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  width: 220px;
   display: flex;
   gap: 6px;
   pointer-events: none;
+  z-index: 120;
+  padding-top: 22px;
+  border-top: 1px solid var(--gold-soft);
+}
+.ao-skill-hotbar::before {
+  content: "Hechizos";
+  position: absolute;
+  top: 2px;
+  left: 0;
+  color: var(--gold-bright);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
 }
 .ao-skill-slot {
   position: relative;
@@ -1068,3 +1073,1997 @@ h3 {
 .ao-chat__msg--whisper .ao-chat__name {
   color: #a07bd8;
 }
+
+/* ── Panel lateral AO: cabecera, barras, buffs, tabs ── */
+.ao-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  color: var(--gold-bright);
+  font-weight: 600;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 5px;
+  margin-bottom: 8px;
+}
+.ao-panel__name b { color: var(--parchment); font-weight: 700; }
+.ao-panel__bars { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.ao-bar {
+  position: relative;
+  height: 15px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.ao-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0%;
+  transition: width 0.25s ease;
+}
+.ao-bar--hp i  { background: linear-gradient(180deg, #c94a3a, #8c2f24); }
+.ao-bar--mp i  { background: linear-gradient(180deg, #4a8cda, #2c5a96); }
+.ao-bar--ham i { background: linear-gradient(180deg, #c98a3a, #8c5c24); }
+.ao-bar--sed i { background: linear-gradient(180deg, #3ab0c9, #24758c); }
+.ao-bar--xp i  { background: linear-gradient(180deg, #6b8cff, #3d55b0); }
+.ao-bar span {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  line-height: 15px;
+  color: #f5e6c8;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+.ao-panel__buffs { display: flex; gap: 4px; flex-wrap: wrap; min-height: 4px; margin-bottom: 4px; }
+.ao-buff {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.ao-buff--str { background: rgba(201, 74, 58, 0.25); color: #ff9d8a; border: 1px solid rgba(201, 74, 58, 0.5); }
+.ao-buff--agi { background: rgba(58, 176, 201, 0.25); color: #8adfff; border: 1px solid rgba(58, 176, 201, 0.5); }
+.ao-panel__buttons { display: flex; gap: 4px; margin-bottom: 8px; }
+.ao-panel__tabbtn {
+  flex: 1;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid var(--gold-soft);
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 0;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ao-panel__tabbtn--active {
+  background: rgba(212, 175, 55, 0.28);
+  color: var(--gold-bright);
+  font-weight: 700;
+}
+.ao-panel__minibtn {
+  width: 30px;
+  background: rgba(212, 175, 55, 0.08);
+  border: 1px solid var(--gold-soft);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.ao-panel__minibtn:hover, .ao-panel__tabbtn:hover { border-color: var(--gold-bright); }
+
+/* ── Libro de hechizos ── */
+.ao-spells__list { display: flex; flex-direction: column; gap: 3px; }
+.ao-spells__row {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 8px;
+  background: rgba(212, 175, 55, 0.06);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 3px;
+  cursor: pointer;
+  user-select: none;
+}
+.ao-spells__row:hover { border-color: var(--gold); }
+.ao-spells__row--selected {
+  background: rgba(74, 140, 218, 0.25);
+  border-color: #4a8cda;
+}
+.ao-spells__name { color: var(--parchment); font-size: 12px; }
+.ao-spells__mana { color: #8ab8f0; font-family: Consolas, monospace; font-size: 11px; }
+.ao-spells__empty { color: var(--text-faint); font-size: 12px; text-align: center; padding: 12px 0; }
+.ao-spells__help { margin-top: 8px; color: var(--text-faint); font-size: 10px; line-height: 1.5; }
+
+/* ── Barra de macros (1-6) ── */
+.ao-macrobar {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(calc(-50% - 122px));
+  display: flex;
+  gap: 5px;
+  z-index: 115;
+}
+.ao-macrobar__slot {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  background: rgba(10, 8, 5, 0.85);
+  border: 2px solid var(--gold-soft);
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  cursor: pointer;
+}
+.ao-macrobar__slot--filled { border-color: var(--gold); }
+.ao-macrobar__slot--hover { border-color: var(--gold-bright); background: rgba(212, 175, 55, 0.25); }
+.ao-macrobar__key {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  font-size: 9px;
+  font-family: Consolas, monospace;
+  color: var(--gold-dim);
+  font-weight: bold;
+}
+.ao-macrobar__name {
+  font-size: 8px;
+  color: var(--parchment);
+  text-align: center;
+  padding: 0 2px;
+  line-height: 1.2;
+  word-break: break-word;
+}
+.ao-macrobar__icon { background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
+
+/* ── Configuración de teclas ── */
+.ao-keyconfig {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 300;
+}
+.ao-keyconfig--open { display: flex; }
+.ao-keyconfig__box {
+  width: 340px;
+  background: linear-gradient(180deg, rgba(20, 15, 9, 0.98), rgba(12, 9, 6, 0.98));
+  border: 2px solid var(--gold-soft);
+  border-radius: 6px;
+  padding: 14px;
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+}
+.ao-keyconfig__title {
+  display: flex;
+  justify-content: space-between;
+  color: var(--gold-bright);
+  font-weight: 700;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 6px;
+  margin-bottom: 10px;
+}
+.ao-keyconfig__close { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 14px; }
+.ao-keyconfig__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+}
+.ao-keyconfig__key {
+  min-width: 120px;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid var(--gold-soft);
+  color: var(--parchment);
+  border-radius: 3px;
+  padding: 3px 8px;
+  cursor: pointer;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+.ao-keyconfig__key--capturing { border-color: var(--gold-bright); color: var(--gold-bright); }
+.ao-keyconfig__footer { margin-top: 10px; display: flex; justify-content: space-between; align-items: center; }
+.ao-keyconfig__reset {
+  background: rgba(201, 56, 56, 0.15);
+  border: 1px solid rgba(201, 56, 56, 0.4);
+  color: #ff9d8a;
+  border-radius: 3px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.ao-keyconfig__hint { color: var(--text-faint); font-size: 10px; }
+
+/* ── Panel: nivel, fila de oro y minimapa (layout referencia AO clásico) ── */
+.ao-panel__level {
+  background: rgba(212, 175, 55, 0.18);
+  border: 1px solid var(--gold-soft);
+  color: var(--gold-bright);
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+}
+.ao-panel__bars--xp { margin-bottom: 6px; }
+.ao-panel__gold-row {
+  margin-top: 8px;
+  padding: 4px 8px;
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid var(--gold-soft);
+  border-radius: 3px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+.ao-panel__gold-row .ao-inv__gold {
+  color: var(--gold-bright);
+  font-weight: 700;
+  font-family: Consolas, monospace;
+}
+.ao-panel__bars { margin-top: 6px; }
+.ao-minimap { margin-top: 10px; }
+.ao-minimap__zone {
+  text-align: center;
+  color: var(--gold-bright);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 0;
+  background: rgba(212, 175, 55, 0.1);
+  border: 1px solid var(--gold-soft);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ao-minimap__frame {
+  position: relative;
+  border: 1px solid var(--gold-soft);
+  line-height: 0;
+}
+.ao-minimap__canvas {
+  width: 100%;
+  image-rendering: pixelated;
+}
+.ao-minimap__dot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: -2px 0 0 -2px;
+  background: #fff;
+  border: 1px solid #000;
+  border-radius: 50%;
+  box-shadow: 0 0 4px #fff;
+}
+.ao-minimap__coords {
+  text-align: center;
+  color: var(--text-dim);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  padding: 3px 0;
+  border: 1px solid var(--gold-soft);
+  border-top: none;
+  border-radius: 0 0 3px 3px;
+}
+
+/* ── Botón Lanzar del libro de conjuros ── */
+.ao-spells__cast {
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 0;
+  background: linear-gradient(180deg, rgba(74, 140, 218, 0.35), rgba(44, 90, 150, 0.35));
+  border: 1px solid #4a8cda;
+  border-radius: 3px;
+  color: #cfe4ff;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ao-spells__cast:hover { filter: brightness(1.25); }
+
+/* ── Pestañas de la consola (chat | combate | global) ── */
+.ao-chat__tabs {
+  pointer-events: auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px 8px;
+  background: rgba(6, 5, 3, 0.82);
+  border-bottom: 2px solid rgba(212, 175, 55, 0.35);
+}
+.ao-chat__tab {
+  background: rgba(212, 175, 55, 0.06);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-bottom: none;
+  color: var(--text-dim);
+  font-size: 11px;
+  padding: 2px 12px;
+  border-radius: 3px 3px 0 0;
+  cursor: pointer;
+}
+.ao-chat__tab--active {
+  background: rgba(212, 175, 55, 0.22);
+  color: var(--gold-bright);
+  font-weight: 700;
+}
+/* Filtrado por pestaña */
+.ao-chat--tab-chat .ao-chat__msg:not([data-cat="chat"]) { display: none; }
+.ao-chat--tab-combate .ao-chat__msg:not([data-cat="combate"]) { display: none; }
+.ao-chat--tab-global .ao-chat__msg:not([data-cat="global"]) { display: none; }
+/* Colores por categoría */
+.ao-chat__msg--combate .ao-chat__text { color: #e8a95c; }
+.ao-chat__msg--global .ao-chat__text { color: #7fd4e0; }
+.ao-chat__msg--whisper .ao-chat__text { color: #c9a6e8; font-style: italic; }
+
+/* ── Fila de equipamiento (arma/armadura/casco/escudo) ── */
+.ao-panel__equip {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+.ao-equip__cell {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 3px;
+  font-size: 12px;
+  overflow: hidden;
+}
+.ao-equip__cell--on { border-color: var(--gold); background: rgba(212, 175, 55, 0.1); }
+.ao-equip__ph { opacity: 0.45; font-size: 13px; }
+.ao-equip__icon { background-repeat: no-repeat; image-rendering: pixelated; flex-shrink: 0; }
+.ao-equip__val {
+  color: var(--parchment);
+  font-family: Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+/* ── Marco ornamentado del panel (estilo cliente clásico) ── */
+.ao-inv {
+  border-left: 2px solid var(--gold-dim);
+  box-shadow:
+    inset 2px 0 0 rgba(0, 0, 0, 0.6),
+    inset 4px 0 12px rgba(0, 0, 0, 0.4),
+    -6px 0 18px rgba(0, 0, 0, 0.55);
+  background:
+    linear-gradient(90deg, rgba(212, 175, 55, 0.04), transparent 12px),
+    linear-gradient(180deg, #16100a 0%, #0d0906 30%, #0d0906 70%, #16100a 100%);
+}
+.ao-panel__head {
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.16), rgba(212, 175, 55, 0.05));
+  border: 1px solid var(--gold-dim);
+  border-radius: 3px;
+  padding: 6px 8px;
+  margin: -2px -2px 8px;
+  box-shadow: inset 0 1px 0 rgba(244, 213, 106, 0.25);
+}
+.ao-panel__tab {
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 3px;
+  padding: 6px;
+}
+.ao-inv__cell {
+  border-radius: 2px;
+}
+.ao-macrobar__slot {
+  box-shadow: inset 0 1px 0 rgba(244, 213, 106, 0.15), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Cartel de modo casteo (visible SOLO con hechizo armado) ── */
+.ao-castbanner {
+  position: fixed;
+  top: 130px;
+  left: calc((100vw - 244px) / 2);
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  background: rgba(20, 40, 70, 0.9);
+  border: 1px solid #4a8cda;
+  border-radius: 4px;
+  color: #cfe4ff;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  z-index: 150;
+  display: none;
+  pointer-events: none;
+}
+.ao-castbanner--on { display: block; }
+
+/* ── Panel de muerte (fantasma) ── */
+.ao-deathpanel {
+  position: fixed;
+  top: 150px;
+  left: calc((100vw - 244px) / 2);
+  transform: translateX(-50%);
+  width: 320px;
+  padding: 14px;
+  background: rgba(14, 10, 8, 0.92);
+  border: 2px solid var(--crimson);
+  border-radius: 6px;
+  text-align: center;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  z-index: 160;
+  display: none;
+}
+.ao-deathpanel--on { display: block; }
+.ao-deathpanel__title {
+  color: var(--crimson-bright);
+  font-family: Georgia, serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.ao-deathpanel__hint { color: var(--text-dim); font-size: 12px; margin-bottom: 10px; }
+.ao-deathpanel__home {
+  width: 100%;
+  padding: 8px 0;
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.3), rgba(160, 132, 40, 0.3));
+  border: 1px solid var(--gold);
+  border-radius: 4px;
+  color: var(--gold-bright);
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ao-deathpanel__home:hover:not(:disabled) { filter: brightness(1.25); }
+.ao-deathpanel__home:disabled { opacity: 0.6; cursor: default; }
+
+/* Barra de energía (stamina) */
+.ao-bar--sp i { background: linear-gradient(180deg, #d9c24a, #96842c); }
+
+/* ── Ceguera: pantalla negra (hechizo Ceguera del AO) ── */
+.ao-blind {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.4s ease;
+  z-index: 140;
+}
+.ao-blind--on { opacity: 0.96; }
+
+/* ── Ventana de construcción (herrería/carpintería) ── */
+.ao-craft {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+}
+.ao-craft--open { display: flex; }
+.ao-craft__box {
+  width: 460px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(20, 15, 9, 0.98), rgba(12, 9, 6, 0.98));
+  border: 2px solid var(--gold-soft);
+  border-radius: 6px;
+  padding: 14px;
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+}
+.ao-craft__title {
+  display: flex;
+  justify-content: space-between;
+  color: var(--gold-bright);
+  font-weight: 700;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 6px;
+}
+.ao-craft__close { background: none; border: none; color: var(--text-faint); cursor: pointer; }
+.ao-craft__hint { color: var(--text-faint); font-size: 11px; margin: 6px 0; }
+.ao-craft__list { overflow-y: auto; display: flex; flex-direction: column; gap: 3px; }
+.ao-craft__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  background: rgba(212, 175, 55, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 3px;
+}
+.ao-craft__row--smelt { background: rgba(201, 122, 58, 0.12); }
+.ao-craft__item { flex: 1; color: var(--parchment); }
+.ao-craft__cost { color: var(--text-dim); font-size: 11px; }
+.ao-craft__row button {
+  background: rgba(212, 175, 55, 0.15);
+  border: 1px solid var(--gold-soft);
+  color: var(--gold-bright);
+  border-radius: 3px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.ao-craft__row button:hover { border-color: var(--gold-bright); }
+
+/* ── Grilla de celdas de items (tienda/banco/comercio) ── */
+.ao-cellgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 38px);
+  grid-auto-rows: 38px;
+  gap: 3px;
+  min-height: 44px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 3px;
+}
+.ao-cell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(212, 175, 55, 0.07);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 2px;
+  overflow: hidden;
+  user-select: none;
+}
+.ao-cell--clickable { cursor: pointer; }
+.ao-cell--clickable:hover { border-color: var(--gold-bright); background: rgba(212, 175, 55, 0.18); }
+.ao-cell__icon { background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
+.ao-cell__name { font-size: 9px; font-weight: 700; color: var(--parchment); }
+.ao-cell__qty {
+  position: absolute;
+  bottom: 1px;
+  right: 2px;
+  font-size: 9px;
+  color: var(--gold-bright);
+  font-weight: 700;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+.ao-cell__price {
+  position: absolute;
+  top: 1px;
+  left: 2px;
+  font-size: 9px;
+  color: #ffd97a;
+  font-weight: 700;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.9);
+}
+
+/* ── Misiones: diálogo de oferta + registro ── */
+.ao-questoffer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 260;
+}
+.ao-questoffer--open { display: flex; }
+.ao-questoffer__box {
+  width: 420px;
+  background: linear-gradient(180deg, rgba(24, 18, 10, 0.98), rgba(14, 10, 6, 0.98));
+  border: 2px solid var(--gold);
+  border-radius: 6px;
+  padding: 16px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.ao-questoffer__title { color: var(--gold-bright); font-size: 17px; font-weight: 700; margin-bottom: 8px; }
+.ao-questoffer__desc { color: var(--text); font-size: 13px; line-height: 1.5; margin-bottom: 10px; }
+.ao-questoffer__req, .ao-questoffer__rewards { color: var(--text-dim); font-size: 12px; margin-bottom: 4px; }
+.ao-questoffer__rewards { color: #ffd97a; }
+.ao-questoffer__buttons { display: flex; gap: 8px; margin-top: 12px; }
+.ao-questoffer__accept {
+  flex: 1;
+  padding: 8px 0;
+  background: linear-gradient(180deg, rgba(76, 184, 126, 0.35), rgba(45, 134, 89, 0.35));
+  border: 1px solid var(--emerald-bright);
+  border-radius: 4px;
+  color: #b8f0d0;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ao-questoffer__reject {
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--text-faint);
+  border-radius: 4px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.ao-questlog {
+  position: fixed;
+  top: 130px;
+  left: 12px;
+  width: 300px;
+  max-height: 50vh;
+  overflow-y: auto;
+  background: rgba(14, 10, 6, 0.95);
+  border: 1px solid var(--gold-soft);
+  border-radius: 5px;
+  padding: 10px;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 12px;
+  z-index: 130;
+  display: none;
+}
+.ao-questlog--open { display: block; }
+.ao-questlog__title {
+  display: flex;
+  justify-content: space-between;
+  color: var(--gold-bright);
+  font-weight: 700;
+  border-bottom: 1px solid var(--gold-soft);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+}
+.ao-questlog__close { background: none; border: none; color: var(--text-faint); cursor: pointer; }
+.ao-questlog__quest {
+  padding: 6px;
+  margin-bottom: 4px;
+  background: rgba(212, 175, 55, 0.05);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 3px;
+}
+.ao-questlog__qname { color: var(--parchment); font-weight: 600; }
+.ao-questlog__qprog { color: var(--text-dim); font-size: 11px; margin: 3px 0; }
+.ao-questlog__abandon {
+  background: rgba(201, 56, 56, 0.15);
+  border: 1px solid rgba(201, 56, 56, 0.35);
+  color: #ff9d8a;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 10px;
+  cursor: pointer;
+}
+.ao-questlog__empty { color: var(--text-faint); }
+
+/* Lluvia global (/LLUVIA de GM) - lineas diagonales animadas sobre el mundo */
+.ao-rain {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 40;
+  background: repeating-linear-gradient(
+    105deg,
+    transparent 0 7px,
+    rgba(190, 210, 255, 0.22) 7px 8px,
+    transparent 8px 15px
+  );
+  animation: ao-rain-fall 0.38s linear infinite;
+}
+@keyframes ao-rain-fall {
+  from { background-position: 0 0; }
+  to { background-position: -42px 84px; }
+}
+
+/* ==========================================================================
+   SKIN "ARTE 1" v2 — reproducción fiel del cliente de referencia.
+   TODO scopeado bajo .ao-frame para ganarle al CSS viejo del panel.
+   Paleta: base marrón muy oscuro, tarjetas con marco dorado, banners
+   granate, acentos oro; salud verde, maná azul.
+   ========================================================================== */
+.ao-frame {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  background: #0a0a0d;
+  z-index: 1;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  --a1-gold: #4f8ff0;
+  --a1-gold-b: #f0d17a;
+  --a1-tan: #d8c690;
+  --a1-card: #16130c;
+  --a1-card-b: #3d3320;
+  --a1-line: #3a2f18;
+  --a1-maroon: #6e1f1f;
+}
+
+.ao-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  background: #05070c;
+}
+.ao-frame canvas.ao-viewport {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+/* ── HUD flotante (arriba-izquierda) ───────────────────────────────────── */
+.ao-stage .ao-hud {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 20;
+  width: 210px;
+  padding: 9px 11px;
+  background: rgba(10, 12, 18, 0.74);
+  border: 1px solid rgba(217, 178, 74, 0.4);
+  border-radius: 9px;
+  backdrop-filter: blur(3px);
+  pointer-events: none;
+  user-select: none;
+}
+.ao-hud__name {
+  font-weight: 700;
+  font-size: 15px;
+  color: #86e08a;
+  text-shadow: 0 1px 2px #000;
+  margin-bottom: 6px;
+}
+.ao-hud__name--criminal { color: #ff5b5b; }
+.ao-hud__bar {
+  position: relative;
+  height: 14px;
+  border-radius: 7px;
+  background: #0c0f15;
+  border: 1px solid #000;
+  margin-bottom: 4px;
+  overflow: hidden;
+}
+.ao-hud__bar i { position: absolute; inset: 0; width: 0%; transition: width 0.15s ease-out; }
+.ao-hud__bar--hp i { background: linear-gradient(#5bc85f, #2e7d32); }
+.ao-hud__bar--mp i { background: linear-gradient(#4a9cff, #1e5bd6); }
+.ao-hud__bar span {
+  position: absolute; inset: 0;
+  font-size: 9px; line-height: 14px; text-align: center;
+  color: #fff; text-shadow: 0 1px 1px #000; font-weight: 600;
+}
+.ao-hud--nomp .ao-hud__bar--mp { display: none; }
+.ao-hud__loc { margin-top: 5px; font-size: 10px; color: #d8c690; letter-spacing: 0.3px; }
+
+/* ── Panel de personaje (derecha) ──────────────────────────────────────── */
+.ao-frame .ao-inv {
+  position: relative;
+  flex: 0 0 336px;
+  width: 336px;
+  height: 100%;
+  margin: 0;
+  padding: 12px 14px 14px;
+  border: none;
+  border-left: 2px solid #241d10;
+  border-radius: 0;
+  background:
+    linear-gradient(180deg, rgba(30, 24, 14, 0.35), rgba(0, 0, 0, 0)) ,
+    #100d09;
+  overflow-y: auto;
+  overflow-x: hidden;
+  box-shadow: -6px 0 22px rgba(0, 0, 0, 0.6);
+  display: block;
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.ao-frame .ao-inv::-webkit-scrollbar { width: 8px; }
+.ao-frame .ao-inv::-webkit-scrollbar-track { background: #0a0805; }
+.ao-frame .ao-inv::-webkit-scrollbar-thumb { background: #4a3c1e; border-radius: 4px; }
+
+/* Héroe: badge de nivel hexagonal + nombre + banner PERSONAJE */
+.ao-frame .ao-panel__hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.ao-frame .ao-panel__lvlbadge {
+  flex: 0 0 auto;
+  width: 54px;
+  height: 60px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(160deg, #7a5f28, #2a2010);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.ao-frame .ao-panel__lvlbadge::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(160deg, #2c2412, #12100a);
+  z-index: 0;
+}
+.ao-frame .ao-panel__lvlbadge .ao-panel__level {
+  position: relative;
+  z-index: 1;
+  font-size: 24px;
+  font-weight: 800;
+  color: #f7e6a8;
+  line-height: 1;
+  text-shadow: 0 1px 3px #000;
+}
+.ao-frame .ao-panel__lvlbadge small {
+  position: relative;
+  z-index: 1;
+  font-size: 7px;
+  letter-spacing: 1.5px;
+  color: #4f8ff0;
+  margin-top: 1px;
+}
+.ao-frame .ao-panel__idcol { flex: 1 1 auto; min-width: 0; }
+.ao-frame .ao-panel__name {
+  display: block;
+  font-size: 19px;
+  font-weight: 700;
+  font-family: Georgia, "Times New Roman", serif;
+  color: #f4e6c0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px #000;
+  margin: 0 0 4px;
+}
+.ao-frame .ao-panel__tag {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: #f0d17a;
+  text-align: center;
+  padding: 3px 0;
+  background: linear-gradient(90deg, rgba(110, 31, 31, 0), #6e1f1f 20%, #6e1f1f 80%, rgba(110, 31, 31, 0));
+  border-radius: 2px;
+}
+
+/* Tarjeta genérica */
+.ao-frame .ao-card,
+.ao-frame .ao-panel__card,
+.ao-frame .ao-panel__tab[data-tabpane="inv"],
+.ao-frame .ao-panel__tab[data-tabpane="spells"] {
+  background: #16130c;
+  border: 1px solid #3a2f18;
+  border-radius: 8px;
+}
+
+/* Barra genérica (override total del viejo, scopeada) */
+.ao-frame .ao-bar {
+  position: relative;
+  height: 15px;
+  border-radius: 7px;
+  background: #0c0a06;
+  border: 1px solid #000;
+  overflow: hidden;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.6);
+}
+.ao-frame .ao-bar i { position: absolute; inset: 0; width: 0%; transition: width 0.15s ease-out; }
+.ao-frame .ao-bar span {
+  position: absolute; inset: 0;
+  font-size: 9px; line-height: 15px; text-align: center;
+  color: #f7f0dc; text-shadow: 0 1px 1px #000; white-space: nowrap; font-weight: 600;
+}
+.ao-frame .ao-bar--xp { height: 11px; border-radius: 5px; }
+.ao-frame .ao-bar--xp i { background: linear-gradient(#e6c25a, #a6812a); }
+.ao-frame .ao-bar--xp span { font-size: 7px; line-height: 11px; color: #2a1f08; font-weight: 700; }
+.ao-frame .ao-bar--hp i  { background: linear-gradient(#5bc85f, #2e7d32); }
+.ao-frame .ao-bar--mp i  { background: linear-gradient(#4a9cff, #1e5bd6); }
+.ao-frame .ao-bar--sp i  { background: linear-gradient(#e6c25a, #a98a24); }
+.ao-frame .ao-bar--ham i { background: linear-gradient(#d0913f, #8a5a24); }
+.ao-frame .ao-bar--sed i { background: linear-gradient(#4bc0d4, #24798a); }
+.ao-frame .ao-bar--big { height: 20px; border-radius: 9px; margin-top: 6px; }
+.ao-frame .ao-bar--big span { font-size: 11px; line-height: 20px; font-weight: 700; letter-spacing: 0.5px; }
+
+/* XP directamente bajo el nombre */
+.ao-frame .ao-panel__idcol .ao-bar--xp { margin-top: 2px; }
+
+/* Tabs Inventario / Hechizos (banner granate cuando activo) */
+.ao-frame .ao-panel__buttons { display: flex; gap: 0; margin: 0 0 8px; border: 1px solid #3a2f18; border-radius: 7px; overflow: hidden; }
+.ao-frame .ao-panel__tabbtn {
+  flex: 1;
+  padding: 9px 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b8a877;
+  background: #16130c;
+  border: none;
+  border-right: 1px solid #3a2f18;
+  border-radius: 0;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ao-frame .ao-panel__tabbtn:last-child { border-right: none; }
+.ao-frame .ao-panel__tabbtn:hover { background: #221b0f; color: #e0cf95; }
+.ao-frame .ao-panel__tabbtn--active {
+  color: #f4e6c0;
+  background: linear-gradient(#7a2323, #571818);
+  text-shadow: 0 1px 2px #000;
+}
+
+/* Grilla de inventario (override scopeado) */
+.ao-frame .ao-inv__grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 6px;
+  margin: 0;
+}
+.ao-frame .ao-inv__cell {
+  aspect-ratio: 1;
+  min-height: 0;
+  border-radius: 5px;
+  background: #0b0906;
+  border: 1px solid #2f2716;
+  box-shadow: inset 0 0 6px rgba(0, 0, 0, 0.5);
+}
+.ao-frame .ao-inv__cell--filled { background: #14100a; border-color: #4a3c1e; }
+.ao-frame .ao-inv__cell--filled:hover { border-color: var(--a1-gold); }
+.ao-frame .ao-inv__cell--equipped { border-color: #6fbf6f; box-shadow: 0 0 6px rgba(111, 191, 111, 0.4); }
+.ao-frame .ao-inv__trash {
+  font-size: 9px; text-align: center; color: #7a6a44;
+  padding: 5px; margin: 6px; border: 1px dashed #3a2f18; border-radius: 5px;
+}
+.ao-frame .ao-inv__trash--hover { border-color: #c94b4b; color: #ff9d8a; }
+
+/* Chips FUE / AGI como monedas doradas */
+.ao-frame .ao-panel__attribs { display: flex; gap: 10px; justify-content: center; margin: 10px 0; }
+.ao-frame .ao-attrib {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #e6c25a, #7a5f28);
+  border: 2px solid #f0d17a;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5), inset 0 0 8px rgba(120, 90, 30, 0.6);
+  color: #2a1f08;
+}
+.ao-frame .ao-attrib b { font-size: 18px; font-weight: 800; line-height: 1; color: #201603; }
+.ao-frame .ao-attrib__lbl { font-size: 8px; font-weight: 700; letter-spacing: 1px; color: #4a3512; margin-top: 2px; }
+.ao-frame .ao-attrib--boosted { border-color: #8ff08f; box-shadow: 0 0 10px rgba(111, 191, 111, 0.6); }
+
+/* Tarjeta retrato + ubicación + salud/maná */
+.ao-frame .ao-panel__card {
+  display: flex;
+  gap: 12px;
+  padding: 10px;
+  margin: 0 0 10px;
+}
+.ao-frame .ao-panel__portrait {
+  flex: 0 0 auto;
+  width: 60px;
+  height: 78px;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid #2f6fd6;
+  background: #0a0805;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.7);
+}
+.ao-frame .ao-panel__portrait canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.ao-frame .ao-panel__cardinfo { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.ao-frame .ao-panel__loc {
+  font-size: 11px; color: #d8c690; margin-bottom: 6px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-bottom: 1px solid #2f2716; padding-bottom: 5px;
+}
+
+/* Equipo */
+.ao-frame .ao-panel__equip { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin: 0 0 10px; }
+.ao-frame .ao-equip__cell {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 8px; font-size: 10px; color: #cbbd93;
+  background: #16130c; border: 1px solid #2f2716; border-radius: 6px;
+}
+.ao-frame .ao-equip__ph { font-size: 14px; }
+.ao-frame .ao-equip__val { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Barras secundarias */
+.ao-frame .ao-panel__bars { display: flex; flex-direction: column; gap: 5px; margin: 0 0 8px; }
+
+/* Buffs */
+.ao-frame .ao-panel__buffs { display: flex; flex-wrap: wrap; gap: 5px; margin: 0 0 8px; min-height: 0; }
+.ao-frame .ao-buff {
+  font-size: 9px; padding: 3px 8px; border-radius: 10px;
+  background: #241d10; border: 1px solid #4a3c1e; color: #e8d9a8;
+}
+.ao-frame .ao-buff--str { border-color: #a05a3a; color: #ff9d8a; background: rgba(160,90,58,0.2); }
+.ao-frame .ao-buff--agi { border-color: #3a8aa0; color: #8adfff; background: rgba(58,138,160,0.2); }
+
+/* Oro */
+.ao-frame .ao-panel__gold-row {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 15px; font-weight: 800; color: #7ab0ff;
+  padding: 8px 12px; margin: 0 0 10px;
+  background: linear-gradient(#1c160c, #120e08);
+  border: 1px solid #4a3c1e; border-radius: 7px;
+  text-shadow: 0 1px 2px #000;
+}
+.ao-frame .ao-panel__gold-ico { font-size: 17px; }
+
+/* Party integrada */
+.ao-frame .ao-panel__party-slot { margin: 0 0 10px; }
+.ao-frame .ao-panel__party-slot:empty { display: none; }
+.ao-frame .ao-inv .ao-panel__party-slot .ao-party {
+  position: static; right: auto; top: auto; left: auto; bottom: auto;
+  width: 100%; margin: 0; box-shadow: none;
+  background: #16130c; border: 1px solid #3a2f18; border-radius: 8px;
+}
+
+/* Minimapa */
+.ao-frame .ao-panel__minimap-slot { margin: 0 0 10px; }
+
+/* Botones utilitarios + Cambiar personaje (footer) */
+.ao-frame .ao-panel__navrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin: 0 0 8px; }
+.ao-frame .ao-panel__navrow button {
+  padding: 7px 0; font-size: 10px; font-weight: 600; color: #cbbd93;
+  background: #16130c; border: 1px solid #3a2f18; border-radius: 6px; cursor: pointer;
+}
+.ao-frame .ao-panel__navrow button:hover { background: #221b0f; color: #f0e0b0; }
+.ao-frame .ao-panel__changechar {
+  width: 100%; padding: 11px 0; font-size: 13px; font-weight: 700;
+  color: #f4e6c0; letter-spacing: 0.5px;
+  background: linear-gradient(#5a4420, #322512);
+  border: 1px solid #b4923f; border-radius: 7px; cursor: pointer;
+  text-shadow: 0 1px 2px #000;
+}
+.ao-frame .ao-panel__changechar:hover { background: linear-gradient(#24304a, #141a28); color: #eaf0fb; }
+
+/* Spells list (scopeado) */
+.ao-frame .ao-spells__list { display: flex; flex-direction: column; gap: 4px; padding: 6px; max-height: 200px; overflow-y: auto; }
+.ao-frame .ao-spells__row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 8px; background: #14100a; border: 1px solid #3a2f18; border-radius: 5px; cursor: pointer;
+}
+.ao-frame .ao-spells__row:hover { border-color: var(--a1-gold); }
+.ao-frame .ao-spells__row--selected { border-color: var(--a1-gold-b); background: #241d10; }
+.ao-frame .ao-spells__name { color: #e8d9a8; font-size: 12px; }
+.ao-frame .ao-spells__mana { color: #8ab8f0; font-size: 11px; font-family: Consolas, monospace; }
+.ao-frame .ao-spells__cast {
+  width: calc(100% - 12px); margin: 6px; padding: 9px 0;
+  font-size: 13px; font-weight: 700; color: #f4e6c0;
+  background: linear-gradient(#7a2323, #571818); border: 1px solid #b4923f; border-radius: 6px; cursor: pointer;
+}
+.ao-frame .ao-spells__help { display: none; }
+.ao-frame .ao-inv__hint { display: none; }
+
+/* ── Barra de macros: fila ancha de hexágonos, borde inferior del mundo ── */
+.ao-seg--macros .ao-macrobar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  padding: 7px 12px;
+  background: rgba(10, 12, 18, 0.8);
+  border: 1px solid rgba(217, 178, 74, 0.35);
+  border-radius: 12px;
+}
+.ao-seg--macros .ao-macrobar__slot {
+  position: relative;
+  width: 46px;
+  height: 50px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(160deg, #2a2412, #12100a);
+  border: none;
+  box-shadow: 0 0 0 2px #4a3c1e;
+  cursor: pointer;
+}
+.ao-seg--macros .ao-macrobar__slot--filled { box-shadow: 0 0 0 2px var(--a1-gold); }
+.ao-seg--macros .ao-macrobar__slot--hover { box-shadow: 0 0 0 2px var(--a1-gold-b); }
+.ao-seg--macros .ao-macrobar__key {
+  position: absolute; bottom: 2px; right: 4px; z-index: 2;
+  font-size: 9px; color: #4f8ff0; font-weight: 700; text-shadow: 0 1px 1px #000;
+}
+.ao-seg--macros .ao-macrobar__icon { image-rendering: pixelated; }
+
+/* ── Chat: chico y semitransparente, abajo-izquierda ───────────────────── */
+.ao-stage .ao-chat {
+  position: absolute;
+  left: 14px;
+  bottom: 14px;
+  z-index: 15;
+  width: 380px;
+  max-width: 42%;
+  height: 168px;
+  background: rgba(6, 8, 13, 0.5);
+  border: 1px solid rgba(120, 100, 50, 0.25);
+  border-radius: 8px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  transition: background 0.2s, opacity 0.2s;
+  opacity: 0.72;
+}
+.ao-stage .ao-chat:hover,
+.ao-stage .ao-chat--input-open { background: rgba(6, 8, 13, 0.82); opacity: 1; }
+.ao-stage .ao-chat__messages { flex: 1; max-height: none; background: transparent; font-size: 12px; }
+.ao-stage .ao-chat__tabs { background: transparent; margin-bottom: 3px; }
+
+/* Panel oculto (tecla I) */
+.ao-frame .ao-inv:not(.ao-inv--open) { display: none; }
+
+/* ==========================================================================
+   LAYOUT SEGMENTADO (Arte 1): placa redondeada centrada (más chica que el
+   navegador) con cada zona en su propio segmento separado.
+   Izquierda apilada: chat → mundo → macros. Derecha: inventario → mapa.
+   ========================================================================== */
+html, body { background: #050506; height: 100%; }
+
+.ao-frame {
+  position: fixed;
+  inset: 16px;
+  display: flex;
+  gap: 10px;
+  padding: 10px;
+  background: #0b0b0e;
+  border: 1px solid #241d10;
+  border-radius: 16px;
+  box-shadow: 0 10px 44px rgba(0, 0, 0, 0.65);
+  overflow: hidden;
+}
+
+/* Columnas */
+.ao-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.ao-side { flex: 0 0 322px; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+
+/* Segmento genérico: recuadro redondeado con marco */
+.ao-seg {
+  background: #100d09;
+  border: 1px solid #2f2716;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Chat arriba del mundo (mismo ancho) */
+.ao-seg--chat { flex: 0 0 auto; height: 148px; }
+/* Mundo en el medio */
+.ao-frame .ao-stage { flex: 1 1 auto; position: relative; min-height: 0; }
+.ao-frame canvas.ao-viewport { border-radius: 12px; }
+/* Macros abajo del mundo (mismo ancho) */
+.ao-seg--macros { flex: 0 0 auto; height: 76px; display: flex; align-items: center; justify-content: center; }
+
+/* Columna derecha: inventario toma el alto disponible, mapa abajo */
+.ao-side .ao-inv {
+  flex: 1 1 auto;
+  width: 100%;
+  height: auto;
+  border: 1px solid #2f2716;
+  border-radius: 12px;
+  box-shadow: none;
+  overflow-y: auto;
+}
+.ao-seg--map { flex: 0 0 auto; padding: 8px; }
+
+/* ── Chat: llena su segmento (ya no flota) ─────────────────────────────── */
+.ao-seg--chat .ao-chat {
+  position: static;
+  inset: auto;
+  left: auto; right: auto; top: auto; bottom: auto;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  opacity: 1;
+  padding: 6px 8px;
+  z-index: auto;
+}
+.ao-seg--chat .ao-chat__messages { flex: 1; background: transparent; font-size: 12px; }
+.ao-seg--chat .ao-chat__tabs { background: transparent; margin-bottom: 3px; }
+
+/* ── Macros: llena su segmento, centrado ───────────────────────────────── */
+.ao-seg--macros .ao-macrobar {
+  position: static;
+  left: auto; bottom: auto; transform: none;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* ── Mapa: el minimapa llena su segmento ───────────────────────────────── */
+.ao-seg--map .ao-minimap { margin: 0; }
+
+/* El HUD sigue flotando sobre el mundo (arriba-izquierda del segmento) */
+.ao-frame .ao-stage .ao-hud { position: absolute; left: 12px; top: 12px; }
+
+/* El minimapa vive en el box 3 (vitales) del panel Arte 3. */
+.ao-vitals__map .ao-panel__minimap-slot { display: block; width: 86px; height: 78px; }
+
+/* Lista de jugadores online: overlay arriba-derecha del mundo (no fija global) */
+.ao-frame .ao-stage .ao-players {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  left: auto;
+  width: 150px;
+  max-height: 45%;
+  background: rgba(8, 10, 16, 0.6);
+  border: 1px solid rgba(217, 178, 74, 0.25);
+  border-radius: 8px;
+  z-index: 18;
+}
+
+/* Layout segmentado: centrar el panel de stats y el log de misiones
+   (antes pegados a left:12px, ahora pisaban el segmento de chat). */
+.ao-stats-panel { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); max-height: 80vh; overflow-y: auto; }
+.ao-questlog { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); max-height: 80vh; overflow-y: auto; }
+
+/* ── Botón MAPA + mapa-mundi (todos los mapas con su número) ───────────── */
+.ao-mapbtn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 8px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #cdd8ee;
+  background: linear-gradient(#1c2438, #141a28);
+  border: 1px solid #2f6fd6;
+  border-radius: 7px;
+  cursor: pointer;
+}
+.ao-mapbtn:hover { background: linear-gradient(#24304a, #1a2234); color: #eaf0fb; }
+
+.ao-worldmap {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(2px);
+}
+.ao-worldmap--open { display: flex; }
+.ao-worldmap__box {
+  width: min(880px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: #12100b;
+  border: 2px solid #2f6fd6;
+  border-radius: 14px;
+  box-shadow: 0 12px 50px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+.ao-worldmap__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: linear-gradient(#141a28, #1a140d);
+  border-bottom: 1px solid #3a2f18;
+}
+.ao-worldmap__title { font-size: 16px; font-weight: 700; color: #7ab0ff; }
+.ao-worldmap__close {
+  background: none; border: none; color: #cbbd93; font-size: 18px; cursor: pointer; line-height: 1;
+}
+.ao-worldmap__close:hover { color: #fff; }
+.ao-worldmap__hint { padding: 8px 16px 0; font-size: 11px; color: #9c8b64; }
+.ao-worldmap__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 8px;
+  padding: 14px 16px;
+  overflow-y: auto;
+}
+.ao-worldmap__cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: #16130c;
+  border: 1px solid #2f2716;
+  border-radius: 8px;
+  min-width: 0;
+}
+.ao-worldmap__cell b {
+  flex: 0 0 auto;
+  min-width: 26px;
+  text-align: center;
+  color: #7ab0ff;
+  font-size: 14px;
+}
+.ao-worldmap__cell span {
+  flex: 1 1 auto;
+  color: #cbbd93;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ao-worldmap__cell--current {
+  border-color: #f0d17a;
+  background: linear-gradient(#2c2412, #1a140d);
+  box-shadow: 0 0 10px rgba(240, 209, 122, 0.4);
+}
+.ao-worldmap__cell--current b { color: #eaf0fb; }
+
+/* Mapa-mundi con imagen oficial (reemplaza la grilla numerada) */
+.ao-worldmap__box { width: auto; }
+.ao-worldmap__head { gap: 14px; }
+.ao-worldmap__tabs { display: flex; gap: 6px; margin-left: auto; }
+.ao-worldmap__tab {
+  padding: 5px 12px; font-size: 12px; font-weight: 600;
+  color: #b8a877; background: #16130c; border: 1px solid #3a2f18;
+  border-radius: 6px; cursor: pointer;
+}
+.ao-worldmap__tab:hover { background: #221b0f; color: #e0cf95; }
+.ao-worldmap__tab--active {
+  color: #f4e6c0; background: linear-gradient(#7a2323, #571818); border-color: #b4923f;
+}
+.ao-worldmap__imgwrap {
+  padding: 14px;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+.ao-worldmap__img {
+  display: block;
+  max-height: 76vh;
+  max-width: 100%;
+  height: auto;
+  width: auto;
+  border: 1px solid #3a2f18;
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Compactar panel para que NO necesite scrollbar ────────────────────── */
+/* Minimapa más chico (el segmento del mapa se comía 405px) */
+.ao-seg--map { padding: 6px; }
+.ao-seg--map .ao-minimap__frame { max-width: 168px; margin: 0 auto; }
+.ao-seg--map .ao-minimap__zone { font-size: 11px; }
+.ao-seg--map .ao-minimap__coords { font-size: 10px; }
+.ao-mapbtn { margin-top: 6px; padding: 6px 0; font-size: 11px; }
+
+/* Inventario compacto (contenido 855px -> ~610px) */
+.ao-frame .ao-inv { padding: 8px 10px; }
+.ao-frame .ao-panel__hero { gap: 8px; margin-bottom: 6px; }
+.ao-frame .ao-panel__lvlbadge { width: 42px; height: 46px; }
+.ao-frame .ao-panel__lvlbadge .ao-panel__level { font-size: 17px; }
+.ao-frame .ao-panel__lvlbadge small { font-size: 6px; }
+.ao-frame .ao-panel__name { font-size: 15px; margin-bottom: 2px; }
+.ao-frame .ao-panel__buttons { margin-bottom: 5px; }
+.ao-frame .ao-panel__tabbtn { padding: 6px 0; font-size: 12px; }
+.ao-frame .ao-inv__grid { gap: 3px; padding: 4px; }
+.ao-frame .ao-inv__trash { padding: 3px; margin: 4px; font-size: 8px; }
+.ao-frame .ao-panel__attribs { gap: 8px; margin: 6px 0; }
+.ao-frame .ao-attrib { width: 42px; height: 42px; }
+.ao-frame .ao-attrib b { font-size: 15px; }
+.ao-frame .ao-attrib__lbl { font-size: 7px; }
+.ao-frame .ao-panel__card { gap: 8px; padding: 6px; margin-bottom: 6px; }
+.ao-frame .ao-panel__portrait { width: 46px; height: 58px; }
+.ao-frame .ao-panel__loc { font-size: 10px; margin-bottom: 4px; padding-bottom: 4px; }
+.ao-frame .ao-panel__equip { gap: 4px; margin: 6px 0; }
+.ao-frame .ao-equip__cell { padding: 3px 5px; font-size: 9px; }
+.ao-frame .ao-bar--big { height: 16px; margin-top: 4px; }
+.ao-frame .ao-bar--big span { font-size: 10px; line-height: 16px; }
+.ao-frame .ao-panel__bars { gap: 3px; margin-bottom: 5px; }
+.ao-frame .ao-panel__bars .ao-bar { height: 12px; }
+.ao-frame .ao-panel__bars .ao-bar span { line-height: 12px; }
+.ao-frame .ao-panel__gold-row { padding: 5px 8px; margin-bottom: 6px; font-size: 13px; }
+.ao-frame .ao-panel__navrow { gap: 4px; margin-bottom: 5px; }
+.ao-frame .ao-panel__navrow button { padding: 5px 0; }
+.ao-frame .ao-panel__changechar { padding: 8px 0; font-size: 12px; }
+
+/* Panel de muerte: centrar en la ventana (usaba coords del layout viejo) */
+.ao-deathpanel { left: 50%; top: 20%; transform: translateX(-50%); }
+
+/* ==========================================================================
+   PANEL "ARTE 3": columna derecha en 3 recuadros con esquinas curvas.
+   Box 1 identidad · Box 2 inventario/hechizos · Box 3 vitales.
+   ========================================================================== */
+.ao-side { flex: 0 0 320px; width: 320px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ao-frame .ao-inv {
+  flex: 1 1 auto; width: 100%; height: 100%;
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 0; margin: 0; border: none; background: transparent;
+  overflow: hidden; box-shadow: none;
+}
+.ao-frame .ao-inv:not(.ao-inv--open) { display: none; }
+
+.ao-box {
+  background: #14131c;
+  border: 1px solid #2b2938;
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+.ao-box--items { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.ao-box--vitals { flex: 0 0 auto; }
+
+/* ── Box 1: identidad ─────────────────────────────────────────────────── */
+.ao-id__row { display: flex; align-items: center; gap: 10px; position: relative; }
+.ao-frame .ao-panel__lvlbadge {
+  flex: 0 0 auto; width: 46px; height: 50px;
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+  background: linear-gradient(160deg, #3d3656, #17151f);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.ao-frame .ao-panel__lvlbadge .ao-panel__level { font-size: 18px; font-weight: 800; color: #fff; line-height: 1; }
+.ao-frame .ao-panel__lvlbadge small { font-size: 6px; letter-spacing: 1px; color: #a49ad0; }
+.ao-id__col { flex: 1 1 auto; min-width: 0; }
+.ao-frame .ao-panel__tag { display: block; font-size: 9px; letter-spacing: 2px; color: #8a86a4; margin: 0; }
+.ao-frame .ao-panel__name {
+  display: block; font-size: 19px; font-weight: 800; color: #f1f0f6;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #000;
+}
+.ao-id__cfg {
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%;
+  background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de; font-size: 15px; cursor: pointer;
+}
+.ao-id__cfg:hover { background: #2a2838; color: #fff; }
+.ao-id__xprow { display: flex; justify-content: space-between; align-items: baseline; margin: 9px 0 4px; }
+.ao-id__xplbl { font-size: 10px; letter-spacing: 1.5px; color: #8a86a4; }
+.ao-id__xppct { font-size: 10px; color: #a8d8a8; }
+.ao-frame .ao-box--id .ao-bar--xp {
+  height: 8px; border-radius: 4px; background: #0d0c12; border: 1px solid #000; overflow: hidden; position: relative;
+}
+.ao-frame .ao-box--id .ao-bar--xp i { position: absolute; inset: 0; width: 0; background: linear-gradient(#5fdc5f, #2ea02e); }
+.ao-id__menu {
+  position: absolute; right: 0; top: 46px; z-index: 40;
+  background: #1c1a28; border: 1px solid #3b3852; border-radius: 10px; padding: 5px;
+  display: flex; flex-direction: column; gap: 2px; min-width: 190px; box-shadow: 0 8px 24px rgba(0,0,0,.65);
+}
+.ao-id__menu button {
+  text-align: left; padding: 8px 10px; font-size: 12px; color: #d2cee2;
+  background: transparent; border: none; border-radius: 6px; cursor: pointer;
+}
+.ao-id__menu button:hover { background: #2a2840; color: #fff; }
+
+/* ── Box 2: inventario / hechizos ─────────────────────────────────────── */
+.ao-frame .ao-box--items .ao-panel__buttons { display: flex; gap: 8px; margin: 0 0 9px; border: none; border-radius: 0; overflow: visible; }
+.ao-frame .ao-box--items .ao-panel__tabbtn {
+  flex: 1; padding: 9px 0; font-size: 13px; font-weight: 700; color: #b8b4cc;
+  background: #1a1826; border: 1px solid #33313f; border-radius: 9px; cursor: pointer;
+}
+.ao-frame .ao-box--items .ao-panel__tabbtn:hover { background: #221f30; }
+.ao-frame .ao-box--items .ao-panel__tabbtn--active {
+  color: #fff; background: linear-gradient(#bb4141, #8c2929); border-color: #c85454; text-shadow: 0 1px 2px #000;
+}
+.ao-frame .ao-box--items .ao-panel__tab { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.ao-frame .ao-box--items .ao-panel__tab[hidden] { display: none; }
+.ao-frame .ao-box--items .ao-inv__grid {
+  display: grid; grid-template-columns: repeat(5, 52px); grid-auto-rows: 52px; gap: 4px; padding: 6px;
+  justify-content: center; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
+  overflow-y: auto; align-content: start;
+}
+.ao-frame .ao-box--items .ao-inv__cell { aspect-ratio: auto; width: 52px; height: 52px; border-radius: 5px; background: #16151e; border: 1px solid #2b2a38; }
+.ao-frame .ao-box--items .ao-inv__cell--filled { background: #1c1b28; border-color: #46445c; }
+.ao-frame .ao-box--items .ao-inv__trash { font-size: 8px; text-align: center; color: #6a6784; padding: 3px; margin-top: 5px; border: 1px dashed #33313f; border-radius: 5px; }
+.ao-frame .ao-spells__list {
+  flex: 1 1 auto; overflow-y: auto; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
+  padding: 4px; display: flex; flex-direction: column; gap: 1px; min-height: 150px;
+}
+.ao-frame .ao-spells__row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 10px; font-size: 13px; color: #d2cee2; border-radius: 4px; cursor: pointer;
+}
+.ao-frame .ao-spells__row:hover { background: #201e2e; }
+.ao-frame .ao-spells__row--selected { background: #2f6fd6; color: #fff; }
+.ao-frame .ao-spells__name { color: inherit; }
+.ao-frame .ao-spells__mana { font-size: 10px; opacity: 0.7; font-family: Consolas, monospace; }
+.ao-frame .ao-spells__empty { color: #6a6784; font-size: 12px; text-align: center; padding: 14px 0; }
+.ao-frame .ao-spells__cast {
+  margin: 9px 0 0; padding: 12px 0; width: 100%;
+  font-size: 16px; font-weight: 800; letter-spacing: 1px;
+  color: #1a1706; background: linear-gradient(#f6e455, #e2c421);
+  border: 1px solid #f8ed82; border-radius: 9px; cursor: pointer; text-shadow: 0 1px 0 rgba(255,255,255,.25);
+}
+.ao-frame .ao-spells__cast:hover { background: linear-gradient(#fff064, #f2d532); }
+
+/* ── Box 3: vitales ───────────────────────────────────────────────────── */
+.ao-panel__zone { text-align: center; font-size: 12px; font-weight: 600; color: #cbc7de; margin: 0 0 8px; }
+.ao-vitals__main { display: flex; gap: 10px; align-items: center; margin-bottom: 9px; }
+.ao-vitals__bars { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
+.ao-frame .ao-vitals__bars .ao-bar { height: 18px; border-radius: 9px; background: #0d0c13; border: 1px solid #000; position: relative; overflow: hidden; margin: 0; }
+.ao-frame .ao-vitals__bars .ao-bar i { position: absolute; inset: 0; width: 0; transition: width .15s; }
+.ao-frame .ao-vitals__bars .ao-bar--hp i { background: linear-gradient(#e64545, #a81c1c); }
+.ao-frame .ao-vitals__bars .ao-bar--mp i { background: linear-gradient(#4a78e6, #2444aa); }
+.ao-frame .ao-vitals__bars .ao-bar span { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 18px; color: #fff; font-weight: 700; text-shadow: 0 1px 1px #000; }
+.ao-vitals__map { flex: 0 0 100px; width: 100px; }
+.ao-vitals__map .ao-panel__minimap-slot { cursor: pointer; }
+.ao-vitals__map .ao-minimap { margin: 0; }
+.ao-vitals__map .ao-minimap__zone { display: none; }
+.ao-vitals__map .ao-minimap__coords { font-size: 9px; margin-top: 2px; }
+.ao-vitals__pbtns { display: flex; gap: 8px; margin-bottom: 9px; }
+.ao-vitals__pbtn {
+  flex: 1; padding: 8px 0; font-size: 12px; font-weight: 600; color: #d2cee2;
+  background: #1a1826; border: 1px solid #33313f; border-radius: 9px; cursor: pointer;
+}
+.ao-vitals__pbtn:hover { background: #252336; color: #fff; }
+.ao-vitals__stats { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
+.ao-vitals__stats .ao-stat { display: flex; align-items: center; gap: 4px; color: #cbc7de; white-space: nowrap; }
+.ao-vitals__stats .ao-stat b { font-weight: 700; }
+.ao-vitals__stats .ao-inv__gold { color: #7ab0ff; }
+.ao-vitals__stats .ao-stat__def { color: #9cc8f0; }
+.ao-vitals__stats .ao-stat__dmg { color: #f0a880; }
+.ao-vitals__drugs { display: flex; gap: 14px; font-size: 12px; min-height: 16px; }
+.ao-drug { display: inline-flex; align-items: center; gap: 4px; color: #cbc7de; }
+.ao-drug--str b { color: #7ee87e; }
+.ao-drug--agi b { color: #ecd45e; }
+.ao-drug em { color: #9a96b4; font-style: normal; font-size: 11px; }
+
+/* El atributo hidden debe ganar al display de las clases */
+.ao-id__menu[hidden] { display: none; }
+.ao-drug[hidden] { display: none; }
+
+/* Minimapa dentro del box 3 (vitales): tamaño fijo compacto para que el
+   canvas no colapse a 0x0 y no invada el resto del panel. */
+.ao-vitals__map { flex: 0 0 86px; width: 86px; display: flex; flex-direction: column; gap: 5px; }
+.ao-vitals__map .ao-minimap { width: 86px; height: 78px; margin: 0; display: flex; flex-direction: column; }
+.ao-vitals__map .ao-minimap__frame { width: 86px; height: 66px; overflow: hidden; border-radius: 5px; }
+.ao-vitals__map .ao-minimap__canvas { width: 86px !important; height: 66px !important; display: block; }
+.ao-vitals__map .ao-minimap__coords { font-size: 9px; margin-top: 2px; text-align: center; color: #a49ac0; }
+.ao-vitals__mapbtn {
+  width: 86px; padding: 6px 0; font-size: 11px; font-weight: 600; color: #cdd8ee;
+  background: linear-gradient(#1c2438, #141a28); border: 1px solid #2f6fd6;
+  border-radius: 7px; cursor: pointer; white-space: nowrap;
+}
+.ao-vitals__mapbtn:hover { background: linear-gradient(#24304a, #1a2234); color: #eaf0fb; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Recoloreo "arte 4" (azul/navy) de la zona de macros y del chat, para que
+   respeten el azul del resto de las secciones (antes iban en amarillo/marrón),
+   y estilos del selector de macros.
+   ══════════════════════════════════════════════════════════════════════ */
+/* Marco y segmentos → navy */
+.ao-frame { border-color: #2b2938; }
+.ao-seg { background: #14131c; border-color: #2b2938; }
+.ao-side .ao-inv { border-color: #2b2938; }
+
+/* Chat: nombres, prefijo y pestañas al azul (el naranja de combate se mantiene) */
+.ao-chat__name { color: #9ab0e0; }
+.ao-chat__msg--self .ao-chat__name { color: #c4d4f4; }
+.ao-chat__prefix { color: #6f9be0; }
+.ao-chat__form { border-color: #3b3852; background: rgba(13, 12, 19, 0.9); }
+.ao-chat__tabs { background: rgba(13, 12, 19, 0.75); border-bottom-color: #2b2938; }
+.ao-chat__tab { background: #16151e; border-color: #2b2a38; color: #8a86a4; }
+.ao-chat__tab--active { background: rgba(47, 111, 214, 0.22); color: #cfe0ff; border-color: #2f6fd6; }
+.ao-chat__msg--global .ao-chat__text { color: #7fb3f0; }
+
+/* Macros: hexágonos navy con acento azul (antes dorados), un poco más grandes */
+.ao-seg--macros .ao-macrobar { gap: 10px; }
+.ao-seg--macros .ao-macrobar__slot {
+  width: 50px; height: 54px;
+  background: linear-gradient(160deg, #1c1b28, #14131c);
+  box-shadow: 0 0 0 2px #2b2938;
+}
+.ao-seg--macros .ao-macrobar__slot:hover { box-shadow: 0 0 0 2px #3b3852; }
+.ao-seg--macros .ao-macrobar__slot--empty:hover { box-shadow: 0 0 0 2px #2f6fd6; }
+.ao-macrobar__plus {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 22px; font-weight: 300; color: #4a4860; pointer-events: none;
+}
+.ao-seg--macros .ao-macrobar__slot--filled { box-shadow: 0 0 0 2px #2f6fd6; }
+.ao-seg--macros .ao-macrobar__slot--hover { box-shadow: 0 0 0 2px #4f8ff0; }
+.ao-seg--macros .ao-macrobar__key { color: #b8b4cc; }
+
+/* Selector de macro (usar / equipar / hechizo) */
+.ao-macropick {
+  position: fixed; z-index: 200; left: 50%; bottom: 96px; transform: translateX(-50%);
+  width: 300px; max-height: 340px; display: flex; flex-direction: column;
+  background: #14131c; border: 1px solid #2b2938; border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); color: #d2cee2;
+  font-family: "Segoe UI", system-ui, sans-serif; overflow: hidden;
+}
+.ao-macropick[hidden] { display: none; }
+.ao-macropick__head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px 8px; font-size: 12px; font-weight: 700; color: #f1f0f6; }
+.ao-macropick__close { width: 24px; height: 24px; border-radius: 50%; background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de; cursor: pointer; font-size: 11px; }
+.ao-macropick__close:hover { background: #2a2838; color: #fff; }
+.ao-macropick__tabs { display: flex; gap: 6px; padding: 0 12px 8px; }
+.ao-macropick__tab { flex: 1; padding: 7px 0; font-size: 12px; font-weight: 700; color: #b8b4cc; background: #1a1826; border: 1px solid #33313f; border-radius: 8px; cursor: pointer; }
+.ao-macropick__tab:hover { background: #221f30; }
+.ao-macropick__tab--active { color: #fff; background: linear-gradient(#3f7fe0, #2f6fd6); border-color: #4f8ff0; }
+.ao-macropick__body { flex: 1; overflow-y: auto; padding: 0 8px 8px; display: flex; flex-direction: column; gap: 3px; }
+.ao-macropick__row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: #16151e; border: 1px solid #2b2a38; border-radius: 8px; color: #d2cee2; font-size: 12px; cursor: pointer; text-align: left; }
+.ao-macropick__row:hover { border-color: #2f6fd6; background: #1c1b28; }
+.ao-macropick__icon { flex: 0 0 auto; background-repeat: no-repeat; image-rendering: pixelated; }
+.ao-macropick__name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-macropick__mana { font-size: 10px; color: #8ab8f0; }
+.ao-macropick__empty { padding: 16px 8px; text-align: center; color: #6a6784; font-size: 12px; }
+
+/* ── Creación de personaje: preview del sprite + selectores ── */
+.char-preview__box { display: flex; align-items: flex-end; justify-content: center; overflow: hidden; }
+.char-card .char-preview__box { margin: 0 auto 0.2em; }
+.create-panel { display: flex; gap: 1.4em; margin-bottom: 1.2em; align-items: flex-start; text-align: left; }
+.create-preview { flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0.5em; padding: 0.9em; background: var(--bg-soft); border: 1px solid var(--gold-soft); border-radius: 10px; }
+.create-preview .char-preview__box { background: radial-gradient(circle at 50% 78%, rgba(212, 175, 55, 0.14), transparent 70%); }
+.head-selector { display: flex; align-items: center; gap: 8px; }
+.head-lbl { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+.head-arrow { padding: 3px 11px; }
+.attr-line { font-size: 11px; color: var(--gold-bright); font-family: Consolas, monospace; text-align: center; }
+.create-form { flex: 1 1 auto; display: flex; flex-direction: column; gap: 0.7em; }
+.opt-group { display: flex; align-items: flex-start; gap: 0.6em; }
+.opt-lbl { flex: 0 0 60px; padding-top: 6px; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+.opt-row { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+.opt-btn { padding: 6px 12px; font-size: 13px; font-weight: 600; color: var(--text); background: var(--bg-card); border: 1px solid var(--gold-soft); border-radius: 7px; cursor: pointer; }
+.opt-btn:hover { border-color: var(--gold-dim); }
+.opt-btn.active { background: linear-gradient(135deg, var(--gold), var(--gold-dim)); color: var(--bg); border-color: var(--gold-bright); }
+.opt-desc { font-size: 12px; color: var(--text-dim); line-height: 1.5; min-height: 2.6em; }
+.create-form input { width: 100%; }
+
+/* ── Login / selección de personaje: tema AZUL (arte 4) con transparencias,
+   reemplazando el dorado, y dimensiones compactas (que entre en 720p). ── */
+.overlay { padding: 1.2em; }
+.card {
+  background: linear-gradient(145deg, rgba(24, 23, 34, 0.92), rgba(13, 12, 19, 0.9));
+  border: 1px solid #2b2938;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+  padding: 1.3em 1.5em;
+  max-height: 94vh; overflow-y: auto;
+}
+.card::before { background: linear-gradient(90deg, transparent, #2f6fd6, transparent); }
+.card-wide { max-width: 780px; }
+.brand { margin-bottom: 0.8em; }
+.brand-title { color: #f1f0f6; font-size: 1.35em; }
+.brand-sub { color: #8a86a4; }
+.button { background: linear-gradient(#3f7fe0, #2f6fd6); color: #fff; border: 1px solid #4f8ff0; }
+.button:hover:not(:disabled) { background: linear-gradient(#4f8ff0, #3f7fe0); }
+.button:disabled { background: #1a1826; color: #6a6784; border-color: #2b2a38; cursor: default; }
+.button-secondary { background: rgba(30, 28, 42, 0.7); color: #d2cee2; border: 1px solid #3b3852; }
+.button-secondary:hover { background: rgba(42, 40, 56, 0.85); }
+.divider { color: #6a6784; }
+.divider::before, .divider::after { background: #2b2938; }
+.chars-grid { grid-template-columns: repeat(5, 1fr); gap: 0.55em; margin-bottom: 0.9em; }
+.char-card { background: rgba(22, 21, 30, 0.7); border: 1px solid #2b2a38; border-radius: 10px; padding: 0.6em 0.4em; min-height: auto; gap: 0.1em; }
+.char-card:hover { border-color: #3b3852; }
+.char-card.selected { border-color: #2f6fd6; box-shadow: 0 0 0 1px #2f6fd6, 0 0 18px rgba(47, 111, 214, 0.3); }
+.char-card.empty { background: rgba(13, 12, 19, 0.4); border-style: dashed; border-color: #2b2a38; }
+.char-name { color: #e8e6f2; font-size: 0.92em; }
+.char-level { color: #b8b4cc; font-size: 0.78em; }
+.char-meta { color: #8a86a4; }
+.create-panel { gap: 1em; margin-bottom: 0.7em; }
+.create-preview { background: rgba(13, 12, 19, 0.6); border: 1px solid #2b2938; padding: 0.7em; }
+.attr-line { color: #8ab8f0; }
+.head-lbl { color: #8a86a4; }
+.create-form input { background: #0d0c13; border: 1px solid #33313f; color: #e8e6f2; }
+.create-form input:focus { border-color: #2f6fd6; }
+.opt-lbl { color: #8a86a4; }
+.opt-btn { background: #16151e; border: 1px solid #2b2a38; color: #b8b4cc; padding: 5px 11px; }
+.opt-btn:hover { border-color: #3b3852; background: #1c1b28; }
+.opt-btn.active { background: linear-gradient(#3f7fe0, #2f6fd6); color: #fff; border-color: #4f8ff0; }
+.opt-desc { color: #8a86a4; }
+.char-actions { gap: 0.8em; margin-top: 0.3em; }
+
+/* ── Tooltip de inspección de items (click) — arte 4 azul ── */
+.ao-itip {
+  position: fixed;
+  z-index: 400;
+  min-width: 150px;
+  max-width: 230px;
+  background: #14131c;
+  border: 1px solid #2b2938;
+  border-radius: 10px;
+  padding: 9px 11px;
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  font-size: 12px;
+}
+.ao-itip__name { color: #f1f0f6; font-weight: 800; font-size: 13px; }
+.ao-itip__type {
+  color: #8a86a4; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid #211f2c; padding-bottom: 5px; margin-bottom: 5px;
+}
+.ao-itip__row { display: flex; justify-content: space-between; gap: 12px; padding: 1px 0; }
+.ao-itip__row span { color: #b8b4cc; }
+.ao-itip__row b { color: #f1f0f6; font-weight: 700; }
+
+/* ── Página de inicio / landing (Arte Inicial 1, tema azul) ── */
+.ao-home {
+  position: fixed; inset: 0; z-index: 50;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, #1a2340 0%, transparent 60%),
+    linear-gradient(180deg, #0c0e18 0%, #0a0b12 100%);
+  color: #d2cee2; overflow-y: auto;
+  font-family: system-ui, "Segoe UI", sans-serif;
+}
+.ao-home__top {
+  display: flex; align-items: center; gap: 18px;
+  padding: 14px 26px; border-bottom: 1px solid #1c2236;
+  background: rgba(16, 19, 32, 0.65); backdrop-filter: blur(6px);
+  position: sticky; top: 0; z-index: 2;
+}
+.ao-home__brand { display: flex; align-items: center; gap: 9px; font-weight: 800; font-size: 18px; color: #f1f0f6; }
+.ao-home__logo {
+  width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center;
+  background: linear-gradient(135deg, #4f8ff0, #2f6fd6); color: #eaf0fb; font-size: 12px; font-weight: 900;
+}
+.ao-home__nav { display: flex; gap: 4px; margin: 0 auto; background: #101526; border: 1px solid #1e2740; border-radius: 12px; padding: 4px; }
+.ao-home__nav-item {
+  display: flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 9px;
+  background: transparent; border: none; color: #8f9bc0; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.ao-home__nav-item span { opacity: 0.8; }
+.ao-home__nav-item:hover { color: #d2cee2; background: rgba(47, 111, 214, 0.12); }
+.ao-home__nav-item.active { color: #eaf0fb; background: linear-gradient(135deg, #3f7fe0, #2f6fd6); }
+.ao-home__account { display: flex; align-items: center; gap: 10px; }
+.ao-home__user { color: #b8b4cc; font-size: 13px; }
+.ao-home__logout {
+  width: 32px; height: 32px; border-radius: 8px; background: #16192a; border: 1px solid #1e2740;
+  color: #b8b4cc; cursor: pointer; font-size: 15px;
+}
+.ao-home__logout:hover { color: #fff; border-color: #2f6fd6; }
+.ao-home__body { max-width: 1120px; margin: 0 auto; padding: 26px 26px 60px; }
+.ao-home__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ao-home__card {
+  position: relative; border-radius: 16px; padding: 22px 24px; min-height: 150px;
+  border: 1px solid #223; background: rgba(18, 24, 44, 0.55); overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.ao-home__card--world { border-color: #244a86; background: radial-gradient(500px 200px at 20% 0%, rgba(47, 111, 214, 0.22), rgba(18, 24, 44, 0.55)); }
+.ao-home__card--arenas { border-color: #3a3350; background: radial-gradient(500px 200px at 20% 0%, rgba(180, 150, 90, 0.14), rgba(24, 22, 40, 0.55)); }
+.ao-home__card-tag { color: #8ab0f0; font-size: 12px; font-weight: 800; letter-spacing: 3px; }
+.ao-home__card--arenas .ao-home__card-tag { color: #d9c58a; }
+.ao-home__card-desc { color: #b8b4cc; font-size: 13px; margin: 10px 0 auto; line-height: 1.5; }
+.ao-home__card-btn {
+  align-self: flex-start; margin-top: 16px; padding: 9px 18px; border-radius: 10px;
+  background: rgba(20, 24, 40, 0.7); border: 1px solid #2f6fd6; color: #eaf0fb;
+  font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.ao-home__card-btn:hover:not(:disabled) { background: linear-gradient(135deg, #3f7fe0, #2f6fd6); }
+.ao-home__card-btn:disabled { opacity: 0.5; cursor: not-allowed; border-color: #3a3350; }
+.ao-home__about {
+  margin-top: 20px; border-radius: 16px; padding: 22px 26px;
+  border: 1px solid #1e2740; background: rgba(14, 17, 28, 0.66);
+}
+.ao-home__about-tag { color: #7f8bb0; font-size: 12px; font-weight: 800; letter-spacing: 3px; }
+.ao-home__about-title { color: #f1f0f6; font-size: 26px; font-weight: 800; margin: 6px 0 14px; }
+.ao-home__about-text p { color: #c2c7db; font-size: 14px; line-height: 1.6; margin: 0 0 12px; }
+
+/* ── Popup de detalle de criatura/NPC (click derecho) — arte 4 azul ── */
+.ao-npcinfo {
+  position: fixed; top: 70px; left: 50%; transform: translateX(-50%);
+  z-index: 260; width: 260px; max-height: 74vh; overflow-y: auto;
+  background: #14131c; border: 1px solid #2b2938; border-radius: 12px;
+  padding: 12px 14px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+}
+.ao-npcinfo__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ao-npcinfo__name { color: #f1f0f6; font-weight: 800; font-size: 15px; }
+.ao-npcinfo__close {
+  background: #1c1b28; border: 1px solid #2b2938; color: #b8b4cc; cursor: pointer;
+  width: 24px; height: 24px; border-radius: 7px; font-size: 12px; line-height: 1;
+}
+.ao-npcinfo__close:hover { color: #fff; border-color: #4f8ff0; }
+.ao-npcinfo__sub { color: #8a86a4; font-size: 12px; margin: 2px 0 8px; }
+.ao-npcinfo__stat { display: flex; justify-content: space-between; padding: 3px 0; }
+.ao-npcinfo__stat span { color: #d2cee2; }
+.ao-npcinfo__stat b { color: #a78bfa; font-weight: 800; }
+.ao-npcinfo__sectitle {
+  color: #b8b4cc; font-weight: 700; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.6px; margin: 10px 0 4px; border-top: 1px solid #211f2c; padding-top: 8px;
+}
+.ao-npcinfo__sectitle small { text-transform: none; letter-spacing: 0; color: #6f6b86; font-weight: 500; }
+.ao-npcinfo__row { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+.ao-npcinfo__row span { color: #d2cee2; }
+.ao-npcinfo__row b { color: #7ab0ff; font-weight: 700; }
+.ao-npcinfo__faint { color: #6f6b86; }
+
+/* ── Detalle de item ESTÁTICO (dentro del panel de inventario, no popup) ── */
+.ao-inv__detail {
+  margin-top: 6px;
+  min-height: 66px;
+  background: #14131c;
+  border: 1px solid #2b2938;
+  border-radius: 8px;
+  padding: 7px 9px;
+  font-size: 12px;
+}
+.ao-inv__detail-hint { color: #6f6b86; font-size: 11px; }
+.ao-inv__d-name { color: #f1f0f6; font-weight: 800; font-size: 13px; }
+.ao-inv__d-type {
+  color: #8a86a4; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid #211f2c; padding-bottom: 4px; margin-bottom: 4px;
+}
+.ao-inv__d-rows { display: flex; flex-direction: column; gap: 1px; }
+.ao-inv__d-row { display: flex; justify-content: space-between; gap: 12px; }
+.ao-inv__d-row span { color: #b8b4cc; }
+.ao-inv__d-row b { color: #f1f0f6; font-weight: 700; }
+
+/* ── Barra de macros rehecha (referencia Arte 1): cuadrados redondeados con
+      ícono grande y tecla en la esquina inferior derecha. Tema oscuro/azul. ── */
+.ao-seg--macros .ao-macrobar {
+  /* En el flujo: el segmento (.ao-seg--macros, display:flex justify-center)
+     lo centra perfecto. Sin panel propio: el segmento full-width ES el panel,
+     así coincide en tamaño con el módulo del mundo de arriba. */
+  position: static; transform: none; z-index: 20;
+  display: flex; gap: 10px; justify-content: center; align-items: center;
+  background: transparent; border: none; box-shadow: none; padding: 0;
+}
+.ao-seg--macros .ao-macrobar__slot {
+  position: relative; width: 54px; height: 54px;
+  clip-path: none;
+  border-radius: 12px;
+  background: linear-gradient(160deg, #1a2033, #10131d);
+  border: 1px solid #2a3550;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer;
+}
+.ao-seg--macros .ao-macrobar__slot:hover { border-color: #3f5a8a; }
+.ao-seg--macros .ao-macrobar__slot--filled { border-color: #3f6fbf; box-shadow: inset 0 0 0 1px rgba(79, 143, 240, 0.25); }
+.ao-seg--macros .ao-macrobar__slot--hover { border-color: #4f8ff0; }
+.ao-seg--macros .ao-macrobar__key {
+  position: absolute; bottom: 2px; right: 5px; z-index: 2;
+  font-size: 10px; color: #c9d3ea; font-weight: 800; text-shadow: 0 1px 2px #000; top: auto; left: auto;
+}
+.ao-seg--macros .ao-macrobar__icon { image-rendering: pixelated; transform: scale(1.35); }
+.ao-seg--macros .ao-macrobar__name {
+  font-size: 8.5px; color: #d2cee2; text-align: center; padding: 0 3px 8px;
+  line-height: 1.15; word-break: break-word; font-weight: 600;
+}
+.ao-seg--macros .ao-macrobar__plus { font-size: 20px; color: #46527a; font-weight: 300; }
+
+/* ── Picker de macros: selector de tecla + comando custom ── */
+.ao-macropick__keyrow {
+  display: flex; align-items: center; gap: 8px; padding: 0 12px 8px; font-size: 12px; color: #b8b4cc;
+}
+.ao-macropick__keysel {
+  background: #1a1826; border: 1px solid #33313f; color: #f1f0f6; border-radius: 7px;
+  padding: 5px 8px; font-size: 12px; font-weight: 700; cursor: pointer; min-width: 56px;
+}
+.ao-macropick__free { display: flex; gap: 6px; padding: 6px 0 0; }
+.ao-macropick__freein {
+  flex: 1; background: #14131c; border: 1px solid #33313f; color: #f1f0f6; border-radius: 7px; padding: 7px 9px; font-size: 12px;
+}
+.ao-macropick__freebtn {
+  padding: 7px 12px; border-radius: 7px; border: 1px solid #4f8ff0; background: linear-gradient(#3f7fe0, #2f6fd6);
+  color: #fff; font-weight: 700; font-size: 12px; cursor: pointer;
+}
+.ao-macropick__freebtn:hover { filter: brightness(1.1); }
+
+/* Con 11 slots la barra es más ancha: reducir un poco el slot y permitir wrap. */
+.ao-seg--macros .ao-macrobar { flex-wrap: nowrap; justify-content: center; }
+.ao-seg--macros .ao-macrobar__slot { width: 54px; height: 54px; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   PORTAL DE ENTRADA (login + selección/creación de personaje) — skin AO
+   ─────────────────────────────────────────────────────────────────────
+   El AO clásico entra por la "pantalla de conexión": la escena de batalla
+   con el título ARGENTUM ONLINE. Reponemos ese fondo y vestimos el panel
+   con marco de bronce y pergamino cálido, en vez del navy genérico "arte 4".
+   Todo va scopeado bajo .overlay para NO tocar la UI in-game (que sigue azul).
+   Gana al bloque navy de más arriba por especificidad (.overlay .x) + orden.
+   ══════════════════════════════════════════════════════════════════════ */
+.overlay {
+  /* Escena de batalla del AO detrás del panel, oscurecida para leer el HUD. */
+  background:
+    linear-gradient(rgba(8, 5, 2, 0.60), rgba(8, 5, 2, 0.80)),
+    url("/ao-assets/ui/pantalla-conexion.png") center center / cover no-repeat fixed;
+  /* Paleta cálida local del portal (no filtra a in-game). */
+  --ao-gold: #d8b45a;
+  --ao-gold-bright: #f2d98d;
+  --ao-bronze: #8a6428;
+  --ao-bronze-dk: #4a3316;
+  --ao-parch: #efe1bf;
+  --ao-ink: #1c1206;
+}
+
+.overlay .card {
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(90, 60, 24, 0.22), transparent 60%),
+    linear-gradient(160deg, rgba(34, 23, 12, 0.94), rgba(18, 11, 5, 0.96));
+  border: 2px solid var(--ao-bronze);
+  border-radius: 6px;
+  /* Doble filete: hairline dorado interno + relieve + sombra profunda. */
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 214, 138, 0.18),
+    inset 0 2px 24px rgba(0, 0, 0, 0.55),
+    0 26px 70px rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+}
+.overlay .card::before {
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--ao-gold), transparent);
+  border-radius: 6px 6px 0 0;
+}
+
+.overlay .brand-title {
+  font-family: Georgia, "Cinzel", serif;
+  color: var(--ao-gold-bright);
+  background: linear-gradient(180deg, #f6e6b0, #c99a3c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.06em;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+}
+.overlay .brand-sub { color: var(--ao-parch); opacity: 0.72; }
+
+/* Botón principal: piedra/bronce cálido con texto oscuro grabado. */
+.overlay .button {
+  background: linear-gradient(180deg, #e6c874, #b07f2e);
+  color: var(--ao-ink);
+  border: 1px solid #f0d98d;
+  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.35);
+}
+.overlay .button:hover:not(:disabled) {
+  background: linear-gradient(180deg, #f2d98d, #c68f34);
+  box-shadow: 0 6px 20px rgba(216, 180, 90, 0.35);
+  filter: none;
+}
+.overlay .button:disabled {
+  background: rgba(40, 28, 14, 0.7);
+  color: #8a744c;
+  border-color: var(--ao-bronze-dk);
+}
+.overlay .button-secondary {
+  background: rgba(30, 20, 10, 0.6);
+  color: var(--ao-parch);
+  border: 1px solid var(--ao-bronze);
+}
+.overlay .button-secondary:hover:not(:disabled) {
+  background: rgba(46, 32, 16, 0.8);
+  color: var(--ao-gold-bright);
+  border-color: var(--ao-gold);
+}
+.overlay .link-button { color: var(--ao-gold); text-decoration-color: var(--ao-bronze); }
+.overlay .link-button:hover { color: var(--ao-gold-bright); }
+
+.overlay .divider { color: #9a7f4e; }
+.overlay .divider::before, .overlay .divider::after { background: var(--ao-bronze); opacity: 0.5; }
+
+/* Campos: fondo tinta con foco dorado. */
+.overlay .form-row input,
+.overlay .create-form input {
+  background: rgba(10, 6, 2, 0.75);
+  border: 1px solid var(--ao-bronze);
+  color: var(--ao-parch);
+}
+.overlay .form-row input::placeholder,
+.overlay .create-form input::placeholder { color: #8a744c; }
+.overlay .form-row input:focus,
+.overlay .create-form input:focus {
+  border-color: var(--ao-gold);
+  box-shadow: 0 0 0 3px rgba(216, 180, 90, 0.18);
+}
+.overlay .form-row label { color: var(--ao-parch); opacity: 0.8; }
+.overlay .consent-label { color: var(--ao-parch); opacity: 0.85; }
+.overlay .consent-label a { color: var(--ao-gold); }
+.overlay .consent-label input[type="checkbox"] { accent-color: var(--ao-gold); }
+
+/* Selectores de género/raza/clase/cabeza. */
+.overlay .opt-btn {
+  background: rgba(22, 14, 6, 0.7);
+  border: 1px solid var(--ao-bronze);
+  color: var(--ao-parch);
+}
+.overlay .opt-btn:hover { border-color: var(--ao-gold); background: rgba(40, 27, 12, 0.8); }
+.overlay .opt-btn.active {
+  background: linear-gradient(180deg, #e6c874, #b07f2e);
+  color: var(--ao-ink);
+  border-color: #f0d98d;
+}
+.overlay .opt-lbl, .overlay .head-lbl { color: #b79a63; }
+.overlay .opt-desc { color: var(--ao-parch); opacity: 0.72; }
+.overlay .attr-line { color: var(--ao-gold-bright); }
+
+/* Preview del sprite: nicho de piedra con halo cálido. */
+.overlay .create-preview {
+  background: radial-gradient(circle at 50% 80%, rgba(90, 60, 24, 0.28), rgba(10, 6, 2, 0.85));
+  border: 1px solid var(--ao-bronze);
+}
+.overlay .create-preview .char-preview__box {
+  background: radial-gradient(circle at 50% 78%, rgba(216, 180, 90, 0.18), transparent 70%);
+}
+
+/* Tarjetas de personaje. */
+.overlay .char-card {
+  background: rgba(24, 16, 7, 0.72);
+  border: 1px solid var(--ao-bronze);
+}
+.overlay .char-card:hover { border-color: var(--ao-gold); }
+.overlay .char-card.selected {
+  border-color: var(--ao-gold-bright);
+  box-shadow: 0 0 0 1px var(--ao-gold-bright), 0 0 20px rgba(216, 180, 90, 0.35);
+}
+.overlay .char-card.empty { background: rgba(12, 8, 3, 0.5); }
+.overlay .char-name { color: var(--ao-parch); }
+.overlay .char-level { color: var(--ao-gold); }
+.overlay .char-meta { color: #9a7f4e; }

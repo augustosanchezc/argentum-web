@@ -1,16 +1,58 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
+import { initialSkillsFor, isValidHead, RACES, type InventorySlot } from "@ao/shared";
 import { eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
-import { calcInitialStats } from "../world/classes.js";
+import { calcInitialStatsRaced } from "../world/classes.js";
+
+// Kit de newbie del AO original (items reales de obj.dat, flag Newbie=1):
+//   460 Daga · 859 Arco · 861 Espada · 862 Bastón de Mago
+//   463 Vestimentas Comunes (ropaje 1) · 857 Poción Roja · 856 Poción Azul
+//   467 Manzana Roja · 468 Botella de Agua
+// El arma y la armadura arrancan equipadas (el ropaje se ve al entrar).
+function newbieKit(classId: number): {
+  inventory: InventorySlot[];
+  weapon: number;
+  armor: number;
+} {
+  const weaponByClass: Record<number, number> = {
+    1: 861, // Guerrero → Espada (Newbie)
+    2: 862, // Mago → Bastón de Mago (Newbie)
+    3: 460, // Clérigo → Daga (Newbie)
+    4: 859, // Arquero → Arco (Newbie)
+    5: 460, // Asesino → Daga (Newbie)
+    6: 460, // Druida → Daga (Newbie)
+  };
+  const weapon = weaponByClass[classId] ?? 460;
+  const armor = 463;
+  const usesMana = classId === 2 || classId === 3 || classId === 6;
+
+  const inventory: InventorySlot[] = [
+    { item: weapon, qty: 1 },
+    { item: armor, qty: 1 },
+    { item: 857, qty: 15 }, // Poción Roja (Newbie)
+    { item: 467, qty: 10 }, // Manzana Roja (Newbie)
+    { item: 468, qty: 5 },  // Botella de Agua (Newbie)
+  ];
+  if (usesMana) inventory.push({ item: 856, qty: 15 }); // Poción Azul (Newbie)
+  if (classId === 4) inventory.push({ item: 860, qty: 150 }); // Flechas (Newbie)
+  // Herramientas de trabajo newbie (hacha, piquete, caña — como el kit
+  // de oficios del AO) para poder talar/minar/pescar desde el arranque.
+  inventory.push({ item: 561, qty: 1 }, { item: 562, qty: 1 }, { item: 563, qty: 1 });
+
+  return { inventory, weapon, armor };
+}
 
 const NAME_RE = /^[a-zA-Z0-9]{3,16}$/u;
-const MAX_CHARACTERS_PER_ACCOUNT = 3;
+const MAX_CHARACTERS_PER_ACCOUNT = 5;
 const VALID_CLASS_IDS = [1, 2, 3, 4, 5, 6];
 
 interface CreateCharacterBody {
   name: string;
   classId?: number;
+  race?: number;
+  gender?: number;
+  head?: number;
 }
 
 const createCharacterSchema = {
@@ -21,6 +63,9 @@ const createCharacterSchema = {
     properties: {
       name: { type: "string", minLength: 3, maxLength: 16 },
       classId: { type: "integer", minimum: 1, maximum: 6 },
+      race: { type: "integer", minimum: 1, maximum: 5 },
+      gender: { type: "integer", minimum: 1, maximum: 2 },
+      head: { type: "integer", minimum: 1, maximum: 1000 },
     },
   },
 } as const;
@@ -38,6 +83,10 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           name: characters.name,
           level: characters.level,
           classId: characters.classId,
+          race: characters.race,
+          gender: characters.gender,
+          headId: characters.headId,
+          bodyId: characters.bodyId,
           createdAt: characters.createdAt,
         })
         .from(characters)
@@ -63,6 +112,16 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
         return reply.code(400).send({ error: "INVALID_CLASS" });
       }
 
+      const race = req.body.race ?? 1;
+      const gender = req.body.gender ?? 1;
+      if (!RACES[race]) return reply.code(400).send({ error: "INVALID_RACE" });
+      if (gender !== 1 && gender !== 2) return reply.code(400).send({ error: "INVALID_GENDER" });
+      // Cabeza: si no vino o es inválida para la raza+género, usar la primera del rango.
+      const headRange = RACES[race].heads[gender === 2 ? 2 : 1];
+      const head = req.body.head !== undefined && isValidHead(race, gender, req.body.head)
+        ? req.body.head
+        : headRange[0];
+
       const [countRow] = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(characters)
@@ -81,7 +140,8 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
         return reply.code(409).send({ error: "NAME_TAKEN" });
       }
 
-      const init = calcInitialStats(classId);
+      const init = calcInitialStatsRaced(classId, race, gender, head);
+      const kit = newbieKit(classId);
 
       const [character] = await db
         .insert(characters)
@@ -90,6 +150,8 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           name,
           level: 1,
           classId: init.classId,
+          race,
+          gender,
           str: init.str,
           agi: init.agi,
           int_: init.int_,
@@ -101,12 +163,20 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           mana: init.maxMana,
           bodyId: init.bodyId,
           headId: init.headId,
+          inventory: kit.inventory,
+          equippedWeapon: kit.weapon,
+          equippedArmor: kit.armor,
+          skills: initialSkillsFor(classId),
         })
         .returning({
           id: characters.id,
           name: characters.name,
           level: characters.level,
           classId: characters.classId,
+          race: characters.race,
+          gender: characters.gender,
+          headId: characters.headId,
+          bodyId: characters.bodyId,
           createdAt: characters.createdAt,
         });
 

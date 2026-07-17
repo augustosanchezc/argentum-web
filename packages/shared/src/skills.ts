@@ -1,4 +1,8 @@
 // Habilidades de clase del AO web. Una habilidad primaria por clase.
+// Las clases mágicas usan hechizos reales de Hechizos.dat (nombre, palabras
+// mágicas y maná del AO original — ver spells.generated.ts). Las físicas
+// (Guerrero/Arquero/Asesino) usan golpes especiales propios porque el AO
+// original no tiene skills activas para ellas.
 // El sistema es extensible: agregar más skills con IDs > 10.
 
 export type SkillType = "damage" | "heal" | "dot" | "buff";
@@ -30,18 +34,18 @@ export const SKILLS: Record<number, SkillDef> = {
     mpCost: 0, cooldownMs: 10_000, range: 1,
     type: "damage", dmgMultiplier: 2,
   },
-  // Mago: rayo eléctrico (daño mágico basado en INT, rango 10)
+  // Mago: Dardo Mágico (HECHIZO2 del AO — "OHL VOR PEK")
   2: {
-    id: 2, name: "Rayo eléctrico", classId: 2, key: "1",
-    description: "Lanza un rayo de energía arcana que ignora armadura.",
-    mpCost: 15, cooldownMs: 1_500, range: 10,
+    id: 2, name: "Dardo Mágico", classId: 2, key: "1",
+    description: "«OHL VOR PEK» — proyectil de energía arcana que ignora armadura.",
+    mpCost: 10, cooldownMs: 1_500, range: 10,
     type: "damage", intMultiplier: 0.8,
   },
-  // Clérigo: cura a un aliado en rango (incluyendo a sí mismo)
+  // Clérigo: Curar Heridas Leves (HECHIZO3 del AO — "CORP SANC")
   3: {
-    id: 3, name: "Curar", classId: 3, key: "1",
-    description: "Restaura HP de un aliado en rango. Basado en INT.",
-    mpCost: 20, cooldownMs: 3_000, range: 5,
+    id: 3, name: "Curar Heridas Leves", classId: 3, key: "1",
+    description: "«CORP SANC» — restaura HP de un aliado en rango. Basado en INT.",
+    mpCost: 10, cooldownMs: 3_000, range: 5,
     type: "heal", intMultiplier: 1.0,
   },
   // Arquero: disparo a distancia (sin costo de MP, CD corto)
@@ -58,11 +62,11 @@ export const SKILLS: Record<number, SkillDef> = {
     mpCost: 5, cooldownMs: 5_000, range: 1,
     type: "damage", dmgMultiplier: 1.8,
   },
-  // Druida: veneno (DoT 5 ticks × 5 HP)
+  // Druida: Toxina (HECHIZO4 del AO — "SERP XON IN", envenena)
   6: {
-    id: 6, name: "Veneno", classId: 6, key: "1",
-    description: "Envenena al objetivo: 5 de daño por segundo durante 5 segundos.",
-    mpCost: 12, cooldownMs: 8_000, range: 6,
+    id: 6, name: "Toxina", classId: 6, key: "1",
+    description: "«SERP XON IN» — envenena al objetivo: 5 de daño por segundo durante 5 segundos.",
+    mpCost: 24, cooldownMs: 8_000, range: 6,
     type: "dot", dotDamage: 5, dotTicks: 5,
   },
 };

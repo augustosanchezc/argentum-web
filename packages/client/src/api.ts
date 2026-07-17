@@ -11,7 +11,19 @@ export interface CharacterSummary {
   name: string;
   level: number;
   classId: number;
+  race?: number;
+  gender?: number;
+  headId?: number;
+  bodyId?: number;
   createdAt: string;
+}
+
+export interface CreateCharacterInput {
+  name: string;
+  classId: number;
+  race: number;
+  gender: number;
+  head: number;
 }
 
 export interface LoginResponse {
@@ -59,10 +71,14 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   return body as T;
 }
 
-export function register(email: string, password: string): Promise<AccountSummary> {
+export function register(
+  email: string,
+  password: string,
+  turnstileToken?: string,
+): Promise<AccountSummary> {
   return jsonRequest<AccountSummary>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify(turnstileToken ? { email, password, turnstileToken } : { email, password }),
   });
 }
 
@@ -77,9 +93,9 @@ export function listCharacters(): Promise<CharactersListResponse> {
   return jsonRequest<CharactersListResponse>("/characters/");
 }
 
-export function createCharacter(name: string, classId = 1): Promise<CharacterSummary> {
+export function createCharacter(input: CreateCharacterInput): Promise<CharacterSummary> {
   return jsonRequest<CharacterSummary>("/characters/", {
     method: "POST",
-    body: JSON.stringify({ name, classId }),
+    body: JSON.stringify(input),
   });
 }

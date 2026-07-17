@@ -11,6 +11,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write \"src/**/*.{ts,tsx,json,md}\"",
+    "parse-dat": "node scripts/parse-ao-dat.mjs",
+    "smoke-world": "tsx scripts/smoke-world.mts",
     "db:generate": "node --env-file=../../.env.local node_modules/drizzle-kit/bin.cjs generate",
     "db:migrate": "tsx --env-file=../../.env.local src/db/migrate.ts",
     "db:studio": "drizzle-kit studio"
@@ -19,6 +21,8 @@
     "@ao/shared": "workspace:*",
     "@fastify/cors": "^11.0.0",
     "@fastify/jwt": "^9.0.4",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/static": "^9.3.0",
     "@fastify/websocket": "^11.0.1",
     "@sentry/node": "^10.63.0",
     "bcrypt": "^5.1.1",

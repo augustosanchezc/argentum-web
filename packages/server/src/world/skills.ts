@@ -11,10 +11,12 @@ export interface SkillResult {
   newCasterMana: number;
 }
 
-// DoTs activos: targetCharacterId → lista de efectos pendientes
+// DoTs activos: targetCharacterId → lista de efectos pendientes.
+// `poison` = veneno del AO: daña RandomNumber(1,5) por tick y dura hasta curarse
+// (no expira por ticksLeft; se limpia con Antídoto/Poción Violeta o al morir).
 export const activeDots = new Map<
   number,
-  { damage: number; ticksLeft: number; casterId: number }[]
+  { damage: number; ticksLeft: number; casterId: number; poison?: boolean }[]
 >();
 
 function manhattan(a: { x: number; y: number }, b: { x: number; y: number }): number {

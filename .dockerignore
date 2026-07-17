@@ -1,0 +1,26 @@
+# Reduce el contexto de build (más rápido) y evita filtrar secretos/artefactos.
+**/node_modules
+**/dist
+.git
+.gitignore
+
+# Secretos y entornos locales — nunca dentro de la imagen.
+.env
+.env.*
+!.env.prod.example
+
+# Logs y temporales.
+**/*.log
+server.log
+npm-debug.log*
+
+# El cliente NO va en la imagen del server (Caddy lo sirve host-mounted).
+packages/client
+
+# Infra y docs (no se necesitan en la imagen del server).
+docker-compose*.yml
+Dockerfile
+Caddyfile
+infra
+docs
+scratchpad

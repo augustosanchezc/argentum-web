@@ -103,3 +103,26 @@ export function totalArmorDefense(
 ): number {
   return armorDefenseFor(armor) + helmetDefenseFor(helmet) + shieldDefenseFor(shield);
 }
+
+// AO Libre: la defensa de cada pieza se tira RandomNumber(MinDef, MaxDef) en
+// CADA golpe (SistemaCombate.bas), no es un valor fijo. Estas versiones tiran.
+function rollDefOf(id: number | null, type: string): number {
+  if (id === null) return 0;
+  const def = getItem(id);
+  if (def?.type !== type) return 0;
+  const lo = def.defenseMin ?? def.defense ?? 0;
+  const hi = def.defenseMax ?? def.defense ?? 0;
+  return hi <= lo ? lo : lo + Math.floor(Math.random() * (hi - lo + 1));
+}
+
+export function rollArmorDefenseFor(equippedArmor: number | null): number {
+  return rollDefOf(equippedArmor, "armor");
+}
+
+export function rollTotalArmorDefense(
+  armor: number | null,
+  helmet: number | null,
+  shield: number | null,
+): number {
+  return rollDefOf(armor, "armor") + rollDefOf(helmet, "helmet") + rollDefOf(shield, "shield");
+}

@@ -3,11 +3,28 @@ import { setToken } from "../auth";
 
 type Mode = "login" | "register";
 
+// Captcha Cloudflare Turnstile: si hay site key configurada (prod), el registro
+// muestra el widget y exige el token. Sin site key (dev), no aparece.
+const TURNSTILE_SITEKEY = (import.meta.env.VITE_TURNSTILE_SITEKEY as string | undefined) || "";
+
+let turnstileScriptRequested = false;
+function ensureTurnstileScript(): void {
+  if (turnstileScriptRequested || !TURNSTILE_SITEKEY) return;
+  turnstileScriptRequested = true;
+  const s = document.createElement("script");
+  s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+  s.async = true;
+  s.defer = true;
+  document.head.appendChild(s);
+}
+
 const ERROR_MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: "Email o contraseña incorrectos.",
   EMAIL_TAKEN: "Ya hay una cuenta con ese email.",
   INVALID_EMAIL: "El email no es válido.",
   INVALID_TOKEN: "Sesión expirada. Inicia sesión de nuevo.",
+  CAPTCHA_FAILED: "No se pudo verificar el captcha. Probá de nuevo.",
+  RATE_LIMITED: "Demasiados intentos. Esperá un minuto y probá de nuevo.",
   UNKNOWN_ERROR: "No se pudo completar la operación. Probá de nuevo.",
 };
 
@@ -53,6 +70,7 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
             <a href="/docs/legal/privacidad" target="_blank" rel="noopener noreferrer">Política de Privacidad</a>
           </label>
         </div>
+        ${TURNSTILE_SITEKEY ? `<div class="form-row"><div class="cf-turnstile" data-sitekey="${TURNSTILE_SITEKEY}"></div></div>` : ""}
         ` : ""}
 
         <button type="submit" class="button" id="auth-submit">
@@ -76,6 +94,7 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
     const consentCheckbox = card.querySelector<HTMLInputElement>("#auth-consent");
 
     emailInput.focus();
+    if (!isLogin) ensureTurnstileScript();
 
     toggleBtn.addEventListener("click", () => {
       mode = mode === "login" ? "register" : "login";
@@ -95,12 +114,24 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
         return;
       }
 
+      // Captcha Turnstile (solo si hay site key). El widget inyecta un input
+      // oculto `cf-turnstile-response` en el form con el token.
+      let turnstileToken: string | undefined;
+      if (mode === "register" && TURNSTILE_SITEKEY) {
+        turnstileToken = form.querySelector<HTMLInputElement>('[name="cf-turnstile-response"]')?.value || undefined;
+        if (!turnstileToken) {
+          errorBox.textContent = "Completá el captcha para continuar.";
+          errorBox.style.display = "block";
+          return;
+        }
+      }
+
       submitBtn.disabled = true;
       submitBtn.textContent = "...";
 
       try {
         if (mode === "register") {
-          await register(email, password);
+          await register(email, password, turnstileToken);
         }
         const result = await login(email, password);
         setToken(result.token);

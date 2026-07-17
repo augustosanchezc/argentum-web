@@ -1,10 +1,12 @@
 import type { Direction, Vector2 } from "@ao/shared";
 import { isWalkable, type MapState } from "./maps.js";
 
-// Cooldown minimo entre movimientos exitosos. 200ms = 5 tiles/s.
-// El AO original era ~6 tiles/s, pero 5 deja margen para latencia
-// sin que el server rechace por cooldown.
-export const MOVE_COOLDOWN_MS = 200;
+// Cooldown mínimo entre movimientos exitosos en el SERVER. El cliente predice y
+// manda pasos cada ~200ms (5 tiles/s); el server usa un umbral MÁS BAJO (150ms)
+// como MARGEN para el jitter de red: así un paso legítimo del cliente nunca se
+// rechaza por cooldown (lo que provocaba una corrección y un tirón/snap-back
+// cada pocos pasos). La velocidad efectiva la sigue marcando el cliente (5/s).
+export const MOVE_COOLDOWN_MS = 150;
 
 const DELTAS: Record<Direction, Vector2> = {
   north: { x: 0, y: -1 },
@@ -20,6 +22,8 @@ export interface MoveAttemptInput {
   readonly now: number;
   readonly map: MapState;
   readonly isOccupied: (pos: Vector2) => boolean;
+  // Navegando: solo se mueve por agua (a pie, solo por tierra).
+  readonly navigating?: boolean;
 }
 
 export type MoveAttemptResult =
@@ -37,7 +41,7 @@ export function attemptMove(input: MoveAttemptInput): MoveAttemptResult {
     y: input.position.y + delta.y,
   };
 
-  if (!isWalkable(input.map, target.x, target.y)) {
+  if (!isWalkable(input.map, target.x, target.y, input.navigating ?? false)) {
     return { ok: false, reason: "BLOCKED" };
   }
 

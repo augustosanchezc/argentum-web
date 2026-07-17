@@ -1,18 +1,29 @@
 import {
   ServerToClientOp,
   type Damage,
-  type Death,
   type Direction,
+  type EntityDespawn,
   type EntityId,
+  type EntitySpawn,
   type EntityUpdate,
   type Respawn,
   type Vector2,
 } from "@ao/shared";
-import { isAdjacent, RESPAWN_DELAY_MS } from "../world/combat.js";
+import {
+  INTERVALS,
+  isAdjacent,
+  playerPoderEvasion,
+  playerPoderEvasionEscudo,
+  rollHit,
+  rollShieldBlock,
+} from "../world/combat.js";
+import { trainSkill } from "../world/skill-training.js";
 import { isCriminal } from "../world/criminal.js";
 import { getMap, isWalkable } from "../world/maps.js";
 import { npcs, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
-import { broadcastToMap } from "./broadcast.js";
+import { rerollCreatureType } from "../world/map-spawns.js";
+import { rollArmorDefenseFor } from "../world/inventory.js";
+import { broadcastToMap, killPlayer, stopMeditating } from "./broadcast.js";
 import { sessions, type Session } from "./sessions.js";
 
 const TICK_MS = 100;
@@ -31,29 +42,8 @@ export interface GameLoop {
   ticks: () => number;
 }
 
-// Reapariciones de jugadores (T-042): todo personaje muerto cuyo deadUntil
-// venció revive en el spawn del mapa con HP al máximo.
-function processPlayerRespawns(now: number): void {
-  for (const s of sessions.all()) {
-    if (s.deadUntil === 0 || now < s.deadUntil) continue;
-
-    const map = getMap(s.mapId);
-    const spawn = map ? map.spawn : s.position;
-    s.position = { x: spawn.x, y: spawn.y };
-    s.hp = s.maxHp;
-    s.deadUntil = 0;
-    s.lastMoveAt = now;
-
-    const respawn: Respawn = {
-      op: ServerToClientOp.Respawn,
-      id: s.characterId as EntityId,
-      position: { x: s.position.x, y: s.position.y },
-      hp: s.hp,
-      maxHp: s.maxHp,
-    };
-    broadcastToMap(s.mapId, respawn);
-  }
-}
+// Los jugadores muertos NO auto-reviven (fantasma del AO): caminan hasta un
+// sacerdote o usan «volver al hogar». Ver checkPriestRevive / handleGoHome.
 
 function chebyshev(a: Vector2, b: Vector2): number {
   return Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y));
@@ -97,8 +87,11 @@ function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number): boolean 
 function nearestTarget(npc: NpcInstance): Session | null {
   let best: Session | null = null;
   let bestDist = Infinity;
+  const now = Date.now();
   for (const s of sessions.inMap(npc.mapId)) {
     if (s.deadUntil !== 0) continue;
+    // Los invisibles no son detectados por las criaturas.
+    if (s.invisibleUntil > now) continue;
     if (npc.type.isGuard && !isCriminal(s)) continue;
     const d = chebyshev(npc.position, s.position);
     if (d <= npc.type.aggroRadius && d < bestDist) {
@@ -113,9 +106,34 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   npc.lastAttackAt = now;
   const dirs = stepDirsToward(npc.position, target.position);
   if (dirs[0]) npc.direction = dirs[0];
+  stopMeditating(target);
 
-  // La armadura equipada del objetivo reduce el daño (mínimo 1).
-  const amount = Math.max(1, rollNpcDamage(npc.type) - target.armorDefense);
+  // Impacto del AO (NpcImpacto): PoderAtaque del NPC contra la evasión del
+  // jugador (+escudo). Si falla y hay escudo, puede rechazar el golpe.
+  const hasShield = target.equippedShield !== null;
+  const evasion =
+    playerPoderEvasion(target) + (hasShield ? playerPoderEvasionEscudo(target) : 0);
+  if (!rollHit(npc.type.poderAtaque, evasion)) {
+    const blocked =
+      hasShield && rollShieldBlock(target.skills.defensa, target.skills.tacticas);
+    // El defensor entrena Tácticas al evadir / Defensa al bloquear.
+    trainSkill(target, blocked ? "defensa" : "tacticas", true);
+    const missPkt: Damage = {
+      op: ServerToClientOp.Damage,
+      attackerId: npc.id as EntityId,
+      targetId: target.characterId as EntityId,
+      amount: 0,
+      hp: target.hp,
+      maxHp: target.maxHp,
+      ...(blocked ? { blocked: true } : { miss: true }),
+    };
+    broadcastToMap(npc.mapId, missPkt);
+    return;
+  }
+
+  // La armadura equipada del objetivo reduce el daño (mínimo 1). AO tira
+  // RandomNumber(MinDef,MaxDef) de la armadura en cada golpe.
+  const amount = Math.max(1, rollNpcDamage(npc.type) - rollArmorDefenseFor(target.equippedArmor));
   target.hp = Math.max(0, target.hp - amount);
 
   const damage: Damage = {
@@ -129,16 +147,11 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   broadcastToMap(npc.mapId, damage);
 
   if (target.hp === 0) {
-    target.deadUntil = now + RESPAWN_DELAY_MS;
-    const death: Death = {
-      op: ServerToClientOp.Death,
-      id: target.characterId as EntityId,
-    };
-    broadcastToMap(npc.mapId, death);
+    killPlayer(target);
   }
 }
 
-function npcMoveToward(npc: NpcInstance, target: Session, now: number): void {
+function npcMoveToward(npc: NpcInstance, target: { position: Vector2 }, now: number): void {
   for (const dir of stepDirsToward(npc.position, target.position)) {
     const next: Vector2 = {
       x: npc.position.x + DELTAS[dir].x,
@@ -160,24 +173,105 @@ function npcMoveToward(npc: NpcInstance, target: Session, now: number): void {
   }
 }
 
+// Combate de mascota contra NPC: el golpe lo resuelve index.ts (ahí vive
+// damageNpc con XP/drops para el amo). El hook se registra por conexión.
+type PetAttackFn = (owner: Session, target: NpcInstance, petId: number, now: number) => void;
+let petAttackFn: PetAttackFn | null = null;
+export function setPetAttackHandler(fn: PetAttackFn): void {
+  petAttackFn = fn;
+}
+
+// IA de mascota (FollowAmo del AO): asiste al objetivo del amo o lo sigue.
+// Si el amo se desconecta, muere o cambia de mapa, vuelve a ser salvaje.
+function processPet(npc: NpcInstance, now: number): void {
+  const owner = npc.ownerCharacterId !== null
+    ? sessions.getByCharacterId(npc.ownerCharacterId)
+    : undefined;
+  if (!owner || owner.deadUntil !== 0 || owner.mapId !== npc.mapId) {
+    npc.ownerCharacterId = null;
+    npc.petTargetNpcId = null;
+    return;
+  }
+  const target = npc.petTargetNpcId !== null ? npcs.get(npc.petTargetNpcId) : undefined;
+  if (target && target.deadUntil === 0 && target.mapId === npc.mapId) {
+    if (isAdjacent(npc.position, target.position)) {
+      if (now - npc.lastAttackAt >= INTERVALS.npcAttack && petAttackFn) {
+        npc.lastAttackAt = now;
+        petAttackFn(owner, target, npc.id, now);
+      }
+    } else if (npc.type.canMove && now - npc.lastMoveAt >= npc.type.moveCooldownMs) {
+      npcMoveToward(npc, target, now);
+    }
+    return;
+  }
+  npc.petTargetNpcId = null;
+  if (
+    npc.type.canMove &&
+    chebyshev(npc.position, owner.position) > 3 &&
+    now - npc.lastMoveAt >= npc.type.moveCooldownMs
+  ) {
+    npcMoveToward(npc, owner, now);
+  }
+}
+
 // IA + reaparición de NPCs (T-052, T-053).
 function processNpcs(now: number): void {
   for (const npc of npcs.all()) {
     // Reaparición.
     if (npc.deadUntil !== 0) {
       if (now < npc.deadUntil) continue;
+
+      // Respawn aleatorio por mapa: si es una criatura de caza y el admin
+      // habilitó el pool de este mapa, reaparece como una del pool (al azar).
+      // El tipo cambia → refrescamos apariencia/nombre con despawn+spawn
+      // (el paquete Respawn solo lleva pos/hp).
+      const typeChanged = rerollCreatureType(npc);
+
       npc.hp = npc.type.maxHp;
       npc.position = { x: npc.spawn.x, y: npc.spawn.y };
+      npc.direction = "south";
       npc.deadUntil = 0;
       npc.targetCharacterId = null;
-      const respawn: Respawn = {
-        op: ServerToClientOp.Respawn,
-        id: npc.id as EntityId,
-        position: { x: npc.position.x, y: npc.position.y },
-        hp: npc.hp,
-        maxHp: npc.type.maxHp,
-      };
-      broadcastToMap(npc.mapId, respawn);
+      // Si era mascota, reaparece salvaje.
+      npc.ownerCharacterId = null;
+      npc.petTargetNpcId = null;
+
+      if (typeChanged) {
+        const despawn: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
+        broadcastToMap(npc.mapId, despawn);
+        const spawn: EntitySpawn = {
+          op: ServerToClientOp.EntitySpawn,
+          id: npc.id as EntityId,
+          position: { x: npc.position.x, y: npc.position.y },
+          direction: npc.direction,
+          name: npc.type.name,
+          hp: npc.hp,
+          maxHp: npc.type.maxHp,
+          kind: "npc",
+          bodyId: npc.type.bodyId,
+          headId: npc.type.headId,
+          graphic: 0,
+        };
+        broadcastToMap(npc.mapId, spawn);
+      } else {
+        const respawn: Respawn = {
+          op: ServerToClientOp.Respawn,
+          id: npc.id as EntityId,
+          position: { x: npc.position.x, y: npc.position.y },
+          hp: npc.hp,
+          maxHp: npc.type.maxHp,
+        };
+        broadcastToMap(npc.mapId, respawn);
+      }
+      continue;
+    }
+
+    // Paralizado/inmovilizado por hechizo: sin IA hasta que expire.
+    if (npc.paralyzedUntil > now) continue;
+
+    // Mascotas: siguen a su amo y asisten en su combate.
+    if (npc.ownerCharacterId !== null) {
+      processPet(npc, now);
       continue;
     }
 
@@ -190,10 +284,11 @@ function processNpcs(now: number): void {
     if (!target) continue;
 
     if (isAdjacent(npc.position, target.position)) {
-      if (now - npc.lastAttackAt >= npc.type.attackCooldownMs) {
+      if (now - npc.lastAttackAt >= INTERVALS.npcAttack) {
         npcAttack(npc, target, now);
       }
-    } else if (now - npc.lastMoveAt >= npc.type.moveCooldownMs) {
+    } else if (npc.type.canMove && now - npc.lastMoveAt >= npc.type.moveCooldownMs) {
+      // Movement=1 en NPCs.dat = estático (comerciantes, guardias de puesto).
       npcMoveToward(npc, target, now);
     }
   }
@@ -208,7 +303,6 @@ export function createGameLoop(logger: { info: (msg: string) => void }): GameLoo
     tickCount += 1;
     const now = Date.now();
 
-    processPlayerRespawns(now);
     processNpcs(now);
 
     if (now - lastReport > 10_000) {

@@ -38,12 +38,15 @@ export class Tileset {
 
   async loadIndex(): Promise<void> {
     if (this.indexLoaded) return;
-    const res = await fetch(`${ASSETS_BASE}/graficos.json`);
+    // cache: "no-cache" fuerza revalidación — un graficos.json viejo cacheado
+    // por el navegador deja miles de tiles sin textura (parches negros).
+    const res = await fetch(`${ASSETS_BASE}/graficos.json`, { cache: "no-cache" });
     if (!res.ok) {
       throw new Error(`No se pudo cargar graficos.json (${res.status.toString()})`);
     }
     this.index = (await res.json()) as GrhIndex;
     this.indexLoaded = true;
+    console.log(`[tileset] índice cargado: ${Object.keys(this.index).length.toString()} GRHs`);
   }
 
   // Devuelve true si el índice ya está disponible.
@@ -53,7 +56,8 @@ export class Tileset {
 
   // Precarga las texturas base (PNG) necesarias para un conjunto de grh.
   // Idempotente: los PNGs ya cargados se saltan. Errores de un PNG concreto
-  // no abortan el resto — ese grh quedará sin textura y usará fallback.
+  // no abortan el resto: se reintenta una vez y si vuelve a fallar queda
+  // registrado en consola (ese grh usará el fallback de color).
   async preload(grhIds: Iterable<number>): Promise<void> {
     const fileNums = new Set<number>();
     for (const grh of grhIds) {
@@ -62,20 +66,41 @@ export class Tileset {
         fileNums.add(entry.f);
       }
     }
+    const failed: number[] = [];
     await Promise.all(
       [...fileNums].map(async (fileNum) => {
-        try {
-          const tex = await Assets.load<Texture>(
-            `${ASSETS_BASE}/graficos/${fileNum.toString()}.png`,
-          );
-          // Pixel-art: escalado nearest para que no se vea borroso al hacer zoom.
-          tex.source.scaleMode = "nearest";
-          this.fileTextures.set(fileNum, tex);
-        } catch {
-          // PNG faltante: lo dejamos fuera; get() devolverá null para sus grh.
+        const url = `${ASSETS_BASE}/graficos/${fileNum.toString()}.png`;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          try {
+            const tex = await Assets.load<Texture>(url);
+            // Pixel-art: escalado nearest para que no se vea borroso al hacer zoom.
+            tex.source.scaleMode = "nearest";
+            this.fileTextures.set(fileNum, tex);
+            return;
+          } catch {
+            // backoff corto antes del reintento
+            await new Promise((r) => setTimeout(r, 250 * (attempt + 1)));
+          }
         }
+        failed.push(fileNum);
       }),
     );
+    if (failed.length > 0) {
+      console.warn(
+        `[tileset] ${failed.length.toString()} PNGs fallaron tras reintento: ${failed.slice(0, 20).join(", ")}`,
+      );
+    }
+  }
+
+  // Cuántos PNGs de atlas todavía NO están cargados para este conjunto de grh.
+  // 0 = ya está todo en caché (el mapa se puede dibujar completo sin precargar).
+  missingFileCount(grhIds: Iterable<number>): number {
+    const files = new Set<number>();
+    for (const grh of grhIds) {
+      const e = this.index[grh.toString()];
+      if (e && !this.fileTextures.has(e.f)) files.add(e.f);
+    }
+    return files.size;
   }
 
   // Devuelve las coordenadas del grh dentro de su PNG. Sirve para renderizar

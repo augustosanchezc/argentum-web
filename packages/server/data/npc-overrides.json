@@ -1,0 +1,997 @@
+{
+  "2": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "3": {
+    "giveExp": 45,
+    "giveGld": 0
+  },
+  "4": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "17": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "18": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "65": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "66": {
+    "giveExp": 45,
+    "giveGld": 0
+  },
+  "67": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "75": {
+    "giveExp": 165,
+    "giveGld": 0
+  },
+  "76": {
+    "giveExp": 15,
+    "giveGld": 0
+  },
+  "77": {
+    "giveExp": 15,
+    "giveGld": 0
+  },
+  "78": {
+    "giveExp": 1650,
+    "giveGld": 0
+  },
+  "79": {
+    "giveExp": 1050,
+    "giveGld": 0
+  },
+  "89": {
+    "giveExp": 18000,
+    "giveGld": 3000
+  },
+  "90": {
+    "giveExp": 6000,
+    "giveGld": 6000
+  },
+  "91": {
+    "giveExp": 225,
+    "giveGld": 0
+  },
+  "95": {
+    "giveExp": 1650,
+    "giveGld": 0
+  },
+  "96": {
+    "giveExp": 1800,
+    "giveGld": 0
+  },
+  "97": {
+    "giveExp": 60,
+    "giveGld": 0
+  },
+  "165": {
+    "giveExp": 11100,
+    "giveGld": 0
+  },
+  "166": {
+    "giveExp": 17700,
+    "giveGld": 0
+  },
+  "500": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "501": {
+    "drops": [
+      {
+        "item": 414,
+        "qty": 1,
+        "chance": 0.6
+      },
+      {
+        "item": 27,
+        "qty": 3,
+        "chance": 0.35
+      },
+      {
+        "item": 1002,
+        "qty": 1,
+        "chance": 0.2
+      },
+      {
+        "item": 394,
+        "qty": 1,
+        "chance": 0.1
+      }
+    ],
+    "giveExp": 300,
+    "giveGld": 0
+  },
+  "502": {
+    "giveExp": 525,
+    "giveGld": 0
+  },
+  "503": {
+    "giveExp": 141,
+    "giveGld": 0
+  },
+  "504": {
+    "giveExp": 45,
+    "giveGld": 0
+  },
+  "505": {
+    "giveExp": 285,
+    "giveGld": 0
+  },
+  "506": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "507": {
+    "giveExp": 1065,
+    "giveGld": 0
+  },
+  "508": {
+    "giveExp": 465,
+    "giveGld": 0
+  },
+  "509": {
+    "giveExp": 25500,
+    "giveGld": 0
+  },
+  "510": {
+    "giveExp": 4350,
+    "giveGld": 0
+  },
+  "511": {
+    "giveExp": 9330,
+    "giveGld": 0
+  },
+  "512": {
+    "name": "Lobo",
+    "hostile": true,
+    "maxHp": 75,
+    "minHit": 20,
+    "maxHit": 50,
+    "def": 8,
+    "giveExp": 3000,
+    "giveGld": 0,
+    "poderAtaque": 120,
+    "poderEvasion": 25,
+    "movement": 3
+  },
+  "513": {
+    "giveExp": 21864,
+    "giveGld": 0
+  },
+  "514": {
+    "giveExp": 1485,
+    "giveGld": 0
+  },
+  "515": {
+    "giveExp": 4140,
+    "giveGld": 0
+  },
+  "516": {
+    "giveExp": 135,
+    "giveGld": 0
+  },
+  "517": {
+    "giveExp": 17700,
+    "giveGld": 0
+  },
+  "518": {
+    "giveExp": 6300,
+    "giveGld": 0
+  },
+  "519": {
+    "giveExp": 4350,
+    "giveGld": 0
+  },
+  "521": {
+    "giveExp": 1800,
+    "giveGld": 0
+  },
+  "522": {
+    "giveExp": 1185,
+    "giveGld": 0
+  },
+  "523": {
+    "giveExp": 1185,
+    "giveGld": 132
+  },
+  "524": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "525": {
+    "giveExp": 30,
+    "giveGld": 0
+  },
+  "526": {
+    "giveExp": 1650,
+    "giveGld": 0
+  },
+  "527": {
+    "giveExp": 25500,
+    "giveGld": 0
+  },
+  "528": {
+    "giveExp": 153,
+    "giveGld": 0
+  },
+  "529": {
+    "giveExp": 96,
+    "giveGld": 0
+  },
+  "530": {
+    "giveExp": 798,
+    "giveGld": 0
+  },
+  "531": {
+    "giveExp": 4500,
+    "giveGld": 0
+  },
+  "532": {
+    "giveExp": 1650,
+    "giveGld": 0
+  },
+  "533": {
+    "giveExp": 123,
+    "giveGld": 0
+  },
+  "534": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "535": {
+    "giveExp": 15,
+    "giveGld": 0
+  },
+  "536": {
+    "giveExp": 48,
+    "giveGld": 0
+  },
+  "537": {
+    "giveExp": 7500,
+    "giveGld": 0
+  },
+  "538": {
+    "giveExp": 2550,
+    "giveGld": 0
+  },
+  "539": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "540": {
+    "giveExp": 735,
+    "giveGld": 0
+  },
+  "541": {
+    "giveExp": 10500,
+    "giveGld": 0
+  },
+  "543": {
+    "giveExp": 42600,
+    "giveGld": 0
+  },
+  "544": {
+    "giveExp": 600,
+    "giveGld": 0
+  },
+  "545": {
+    "giveExp": 2550,
+    "giveGld": 0
+  },
+  "547": {
+    "giveExp": 4350,
+    "giveGld": 0
+  },
+  "548": {
+    "giveExp": 25500,
+    "giveGld": 0
+  },
+  "549": {
+    "giveExp": 8430,
+    "giveGld": 0
+  },
+  "550": {
+    "giveExp": 18300,
+    "giveGld": 0
+  },
+  "551": {
+    "giveExp": 12000,
+    "giveGld": 0
+  },
+  "552": {
+    "giveExp": 125400,
+    "giveGld": 0
+  },
+  "553": {
+    "giveExp": 36750,
+    "giveGld": 0
+  },
+  "554": {
+    "giveExp": 9000,
+    "giveGld": 0
+  },
+  "555": {
+    "giveExp": 7500,
+    "giveGld": 0
+  },
+  "556": {
+    "giveExp": 75,
+    "giveGld": 0
+  },
+  "557": {
+    "giveExp": 1020,
+    "giveGld": 0
+  },
+  "558": {
+    "giveExp": 135000,
+    "giveGld": 75000
+  },
+  "559": {
+    "giveExp": 135000,
+    "giveGld": 75000
+  },
+  "560": {
+    "giveExp": 135000,
+    "giveGld": 75000
+  },
+  "561": {
+    "giveExp": 135000,
+    "giveGld": 75000
+  },
+  "562": {
+    "giveExp": 135000,
+    "giveGld": 75000
+  },
+  "564": {
+    "giveExp": 96,
+    "giveGld": 0
+  },
+  "565": {
+    "giveExp": 45,
+    "giveGld": 0
+  },
+  "566": {
+    "giveExp": 36,
+    "giveGld": 0
+  },
+  "568": {
+    "giveExp": 17400,
+    "giveGld": 0
+  },
+  "569": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "573": {
+    "giveExp": 300,
+    "giveGld": 0
+  },
+  "574": {
+    "giveExp": 2700,
+    "giveGld": 0
+  },
+  "575": {
+    "giveExp": 3000,
+    "giveGld": 0
+  },
+  "576": {
+    "giveExp": 300,
+    "giveGld": 0
+  },
+  "577": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "578": {
+    "giveExp": 45,
+    "giveGld": 0
+  },
+  "579": {
+    "giveExp": 75,
+    "giveGld": 0
+  },
+  "582": {
+    "giveExp": 15000,
+    "giveGld": 0
+  },
+  "583": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "584": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "585": {
+    "giveExp": 7500,
+    "giveGld": 0
+  },
+  "586": {
+    "giveExp": 105000,
+    "giveGld": 0
+  },
+  "587": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "588": {
+    "giveExp": 300,
+    "giveGld": 0
+  },
+  "589": {
+    "giveExp": 3000,
+    "giveGld": 0
+  },
+  "590": {
+    "giveExp": 1365,
+    "giveGld": 0
+  },
+  "591": {
+    "giveExp": 3300,
+    "giveGld": 0
+  },
+  "592": {
+    "giveExp": 2100,
+    "giveGld": 0
+  },
+  "593": {
+    "giveExp": 2550,
+    "giveGld": 0
+  },
+  "594": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "595": {
+    "giveExp": 2700,
+    "giveGld": 0
+  },
+  "596": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "597": {
+    "giveExp": 1365,
+    "giveGld": 0
+  },
+  "598": {
+    "giveExp": 14100,
+    "giveGld": 0
+  },
+  "599": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "600": {
+    "giveExp": 2700,
+    "giveGld": 0
+  },
+  "601": {
+    "giveExp": 2550,
+    "giveGld": 0
+  },
+  "602": {
+    "giveExp": 3450,
+    "giveGld": 0
+  },
+  "603": {
+    "giveExp": 5475,
+    "giveGld": 0
+  },
+  "604": {
+    "giveExp": 1650,
+    "giveGld": 0
+  },
+  "605": {
+    "giveExp": 8190,
+    "giveGld": 0
+  },
+  "606": {
+    "giveExp": 10500,
+    "giveGld": 0
+  },
+  "607": {
+    "giveExp": 17250,
+    "giveGld": 0
+  },
+  "608": {
+    "giveExp": 10500,
+    "giveGld": 0
+  },
+  "609": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "610": {
+    "giveExp": 31500,
+    "giveGld": 0
+  },
+  "611": {
+    "giveExp": 21300,
+    "giveGld": 0
+  },
+  "612": {
+    "giveExp": 5400,
+    "giveGld": 0
+  },
+  "613": {
+    "giveExp": 5700,
+    "giveGld": 0
+  },
+  "614": {
+    "giveExp": 6900,
+    "giveGld": 0
+  },
+  "615": {
+    "giveExp": 9300,
+    "giveGld": 0
+  },
+  "616": {
+    "giveExp": 180,
+    "giveGld": 0
+  },
+  "617": {
+    "giveExp": 525,
+    "giveGld": 0
+  },
+  "618": {
+    "giveExp": 240,
+    "giveGld": 0
+  },
+  "619": {
+    "giveExp": 1251,
+    "giveGld": 0
+  },
+  "620": {
+    "giveExp": 225,
+    "giveGld": 0
+  },
+  "621": {
+    "giveExp": 405,
+    "giveGld": 0
+  },
+  "622": {
+    "giveExp": 480,
+    "giveGld": 0
+  },
+  "623": {
+    "giveExp": 360,
+    "giveGld": 0
+  },
+  "624": {
+    "giveExp": 1500,
+    "giveGld": 0
+  },
+  "625": {
+    "giveExp": 90,
+    "giveGld": 0
+  },
+  "626": {
+    "giveExp": 210,
+    "giveGld": 0
+  },
+  "627": {
+    "giveExp": 300,
+    "giveGld": 0
+  },
+  "628": {
+    "giveExp": 285,
+    "giveGld": 0
+  },
+  "658": {
+    "giveExp": 150000,
+    "giveGld": 0
+  },
+  "700": {
+    "giveExp": 20100,
+    "giveGld": 0
+  },
+  "701": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "702": {
+    "giveExp": 5400,
+    "giveGld": 0
+  },
+  "703": {
+    "giveExp": 5400,
+    "giveGld": 0
+  },
+  "704": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "705": {
+    "giveExp": 9000,
+    "giveGld": 0
+  },
+  "706": {
+    "giveExp": 31500,
+    "giveGld": 0
+  },
+  "707": {
+    "giveExp": 19500,
+    "giveGld": 0
+  },
+  "708": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "709": {
+    "giveExp": 25500,
+    "giveGld": 0
+  },
+  "710": {
+    "giveExp": 45000,
+    "giveGld": 0
+  },
+  "711": {
+    "giveExp": 33000,
+    "giveGld": 0
+  },
+  "712": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "713": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "714": {
+    "giveExp": 25800,
+    "giveGld": 0
+  },
+  "715": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "716": {
+    "giveExp": 45000,
+    "giveGld": 0
+  },
+  "717": {
+    "giveExp": 45000,
+    "giveGld": 0
+  },
+  "751": {
+    "giveExp": 165000,
+    "giveGld": 75000
+  },
+  "752": {
+    "giveExp": 34500,
+    "giveGld": 0
+  },
+  "753": {
+    "giveExp": 75000,
+    "giveGld": 0
+  },
+  "754": {
+    "giveExp": 18300,
+    "giveGld": 0
+  },
+  "755": {
+    "giveExp": 21300,
+    "giveGld": 0
+  },
+  "756": {
+    "giveExp": 150000,
+    "giveGld": 0
+  },
+  "757": {
+    "giveExp": 24000,
+    "giveGld": 0
+  },
+  "758": {
+    "giveExp": 37500,
+    "giveGld": 0
+  },
+  "759": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "760": {
+    "giveExp": 4500,
+    "giveGld": 0
+  },
+  "761": {
+    "giveExp": 45000,
+    "giveGld": 0
+  },
+  "762": {
+    "giveExp": 45000,
+    "giveGld": 0
+  },
+  "763": {
+    "giveExp": 48000,
+    "giveGld": 0
+  },
+  "764": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "765": {
+    "giveExp": 10500,
+    "giveGld": 0
+  },
+  "766": {
+    "giveExp": 12000,
+    "giveGld": 0
+  },
+  "767": {
+    "giveExp": 30000,
+    "giveGld": 0
+  },
+  "768": {
+    "giveExp": 75000,
+    "giveGld": 0
+  },
+  "769": {
+    "giveExp": 240000,
+    "giveGld": 0
+  },
+  "770": {
+    "giveExp": 105000,
+    "giveGld": 0
+  },
+  "771": {
+    "giveExp": 54000,
+    "giveGld": 0
+  },
+  "772": {
+    "giveExp": 150000,
+    "giveGld": 0
+  },
+  "773": {
+    "giveExp": 25500,
+    "giveGld": 0
+  },
+  "774": {
+    "giveExp": 210000,
+    "giveGld": 0
+  },
+  "775": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "776": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "777": {
+    "giveExp": 36000,
+    "giveGld": 0
+  },
+  "778": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "779": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "780": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "781": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "782": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "783": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "784": {
+    "giveExp": 16800,
+    "giveGld": 0
+  },
+  "785": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "786": {
+    "giveExp": 2400,
+    "giveGld": 225
+  },
+  "787": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "788": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "789": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "790": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "791": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "792": {
+    "giveExp": 210000,
+    "giveGld": 225000
+  },
+  "793": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "794": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "795": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "796": {
+    "giveExp": 49500,
+    "giveGld": 0
+  },
+  "797": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "798": {
+    "giveExp": 2100000,
+    "giveGld": 0
+  },
+  "799": {
+    "giveExp": 2700000,
+    "giveGld": 0
+  },
+  "800": {
+    "giveExp": 2400000,
+    "giveGld": 0
+  },
+  "801": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "802": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "803": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "804": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "805": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "806": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "807": {
+    "giveExp": 51750,
+    "giveGld": 0
+  },
+  "808": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "809": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "810": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "811": {
+    "giveExp": 162000,
+    "giveGld": 45000
+  },
+  "812": {
+    "giveExp": 22500,
+    "giveGld": 0
+  },
+  "813": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "814": {
+    "giveExp": 12000,
+    "giveGld": 0
+  },
+  "815": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "816": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "817": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "818": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "819": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "820": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "821": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "822": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "823": {
+    "giveExp": 3300,
+    "giveGld": 0
+  },
+  "824": {
+    "giveExp": 6000,
+    "giveGld": 0
+  },
+  "825": {
+    "giveExp": 54000,
+    "giveGld": 0
+  },
+  "930": {
+    "giveExp": 450000,
+    "giveGld": 0
+  },
+  "931": {
+    "giveExp": 60000,
+    "giveGld": 0
+  },
+  "932": {
+    "giveExp": 61500,
+    "giveGld": 0
+  },
+  "933": {
+    "giveExp": 450000,
+    "giveGld": 0
+  },
+  "934": {
+    "giveExp": 450000,
+    "giveGld": 0
+  },
+  "937": {
+    "giveExp": 3000000,
+    "giveGld": 0
+  },
+  "946": {
+    "giveExp": 9000,
+    "giveGld": 0
+  }
+}

@@ -1,5 +1,9 @@
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Direction, Vector2 } from "@ao/shared";
-import { getMap, isWalkable } from "./maps.js";
+import { getMap, isWalkable, loadedMapIds } from "./maps.js";
+import { NPC_DEFS, type NpcDefData } from "./npcs.generated.js";
 
 export const NPC_ID_BASE = 1_000_000;
 
@@ -9,276 +13,197 @@ export function isNpcId(id: number): boolean {
 
 export interface NpcDrop {
   readonly item: number;
+  readonly qty: number;
   readonly chance: number;
 }
 
+// Tipo de NPC en runtime. Se construye desde NPC_DEFS (NPCs.dat real del AO)
+// en toNpcType(). Los campos de timing/aggro no están en el .dat original
+// (el server VB6 los tenía hardcodeados) — usamos equivalentes fieles.
 export interface NpcType {
-  readonly key: string;
+  readonly number: number; // número de NPC en NPCs.dat
   readonly name: string;
-  readonly graphic: number;
-  readonly bodyId?: number;
-  readonly headId?: number;
+  readonly bodyId: number;
+  readonly headId: number;
   readonly maxHp: number;
   readonly damageMin: number;
   readonly damageMax: number;
+  readonly defense: number;
   readonly attackCooldownMs: number;
   readonly aggroRadius: number;
   readonly moveCooldownMs: number;
+  readonly canMove: boolean;
   readonly xpReward: number;
   readonly respawnMs: number;
   readonly hostile: boolean;
+  readonly attackable: boolean;
   readonly merchant: boolean;
   readonly banker: boolean;
-  // Si true, solo ataca a jugadores criminales (guardias de ciudad)
-  readonly isGuard?: boolean;
+  // Criatura de caza (NpcType=0, no comercia): lo que sí puede randomizarse en
+  // el respawn por mapa. Excluye guardias, sacerdotes, comerciantes, banqueros.
+  readonly isCreature: boolean;
+  // Guardia real: solo ataca a jugadores criminales.
+  readonly isGuard: boolean;
+  // Sacerdote (NpcType=1): revive y cura al interactuar o al acercarse.
+  readonly isPriest: boolean;
+  // NPC de misiones: quest que ofrece (0 = ninguna).
+  readonly questNumber: number;
+  // Probabilidad de impacto/evasión del AO (NPCs.dat).
+  readonly poderAtaque: number;
+  readonly poderEvasion: number;
+  // Domable (DoDomar): puntos de doma requeridos (0 = no domable).
+  readonly domable: number;
   readonly goldMin: number;
   readonly goldMax: number;
   readonly drops: readonly NpcDrop[];
   readonly shopOffers: readonly number[];
 }
 
-const NPC_TYPES: Record<string, NpcType> = {
-  // ── Criaturas débiles ─────────────────────────────────────────────────────
-  rata: {
-    key: "rata", name: "Rata gigante", graphic: 0,
-    bodyId: 71, headId: 0,
-    maxHp: 12, damageMin: 1, damageMax: 3,
-    attackCooldownMs: 1200, aggroRadius: 5, moveCooldownMs: 500,
-    xpReward: 8, respawnMs: 8_000, hostile: true, merchant: false, banker: false,
-    goldMin: 2, goldMax: 6,
-    drops: [{ item: 1, chance: 0.5 }],
-    shopOffers: [],
-  },
-  arana: {
-    key: "arana", name: "Araña pequeña", graphic: 0,
-    bodyId: 7, headId: 0,
-    maxHp: 20, damageMin: 2, damageMax: 4,
-    attackCooldownMs: 1400, aggroRadius: 4, moveCooldownMs: 600,
-    xpReward: 14, respawnMs: 10_000, hostile: true, merchant: false, banker: false,
-    goldMin: 3, goldMax: 8,
-    drops: [{ item: 1, chance: 0.5 }],
-    shopOffers: [],
-  },
-  vibora: {
-    key: "vibora", name: "Víbora", graphic: 0,
-    bodyId: 97, headId: 0,
-    maxHp: 18, damageMin: 3, damageMax: 6,
-    attackCooldownMs: 1300, aggroRadius: 5, moveCooldownMs: 550,
-    xpReward: 18, respawnMs: 10_000, hostile: true, merchant: false, banker: false,
-    goldMin: 4, goldMax: 10,
-    drops: [{ item: 1, chance: 0.4 }],
-    shopOffers: [],
-  },
-  // ── Criaturas medias ──────────────────────────────────────────────────────
-  lobo: {
-    key: "lobo", name: "Lobo", graphic: 0,
-    bodyId: 10, headId: 0,
-    maxHp: 26, damageMin: 2, damageMax: 5,
-    attackCooldownMs: 1000, aggroRadius: 6, moveCooldownMs: 420,
-    xpReward: 20, respawnMs: 12_000, hostile: true, merchant: false, banker: false,
-    goldMin: 5, goldMax: 12,
-    drops: [{ item: 1, chance: 0.4 }, { item: 2, chance: 0.25 }],
-    shopOffers: [],
-  },
-  oso: {
-    key: "oso", name: "Oso pardo", graphic: 0,
-    bodyId: 8, headId: 0,
-    maxHp: 60, damageMin: 5, damageMax: 9,
-    attackCooldownMs: 1000, aggroRadius: 6, moveCooldownMs: 450,
-    xpReward: 40, respawnMs: 20_000, hostile: true, merchant: false, banker: false,
-    goldMin: 10, goldMax: 25,
-    drops: [{ item: 4, chance: 0.3 }],
-    shopOffers: [],
-  },
-  goblin: {
-    key: "goblin", name: "Goblin", graphic: 0,
-    bodyId: 33, headId: 0,
-    maxHp: 45, damageMin: 4, damageMax: 8,
-    attackCooldownMs: 1100, aggroRadius: 7, moveCooldownMs: 400,
-    xpReward: 30, respawnMs: 15_000, hostile: true, merchant: false, banker: false,
-    goldMin: 8, goldMax: 20,
-    drops: [{ item: 2, chance: 0.4 }, { item: 1, chance: 0.3 }],
-    shopOffers: [],
-  },
-  esqueleto: {
-    key: "esqueleto", name: "Esqueleto", graphic: 0,
-    bodyId: 15, headId: 0,
-    maxHp: 70, damageMin: 6, damageMax: 10,
-    attackCooldownMs: 1000, aggroRadius: 6, moveCooldownMs: 450,
-    xpReward: 50, respawnMs: 20_000, hostile: true, merchant: false, banker: false,
-    goldMin: 15, goldMax: 35,
-    drops: [{ item: 5, chance: 0.3 }, { item: 1, chance: 0.5 }],
-    shopOffers: [],
-  },
-  // ── Criaturas difíciles ───────────────────────────────────────────────────
-  zombie: {
-    key: "zombie", name: "Zombie", graphic: 0,
-    bodyId: 24, headId: 0,
-    maxHp: 90, damageMin: 8, damageMax: 14,
-    attackCooldownMs: 1200, aggroRadius: 5, moveCooldownMs: 600,
-    xpReward: 70, respawnMs: 25_000, hostile: true, merchant: false, banker: false,
-    goldMin: 20, goldMax: 50,
-    drops: [{ item: 13, chance: 0.2 }, { item: 1, chance: 0.6 }],
-    shopOffers: [],
-  },
-  vampiro: {
-    key: "vampiro", name: "Vampiro", graphic: 0,
-    bodyId: 12, headId: 0,
-    maxHp: 150, damageMin: 12, damageMax: 20,
-    attackCooldownMs: 900, aggroRadius: 8, moveCooldownMs: 350,
-    xpReward: 120, respawnMs: 60_000, hostile: true, merchant: false, banker: false,
-    goldMin: 40, goldMax: 100,
-    drops: [{ item: 3, chance: 0.3 }, { item: 21, chance: 0.5 }],
-    shopOffers: [],
-  },
-  orco: {
-    key: "orco", name: "Orco", graphic: 0,
-    bodyId: 42, headId: 0,
-    maxHp: 110, damageMin: 10, damageMax: 16,
-    attackCooldownMs: 1000, aggroRadius: 6, moveCooldownMs: 420,
-    xpReward: 85, respawnMs: 30_000, hostile: true, merchant: false, banker: false,
-    goldMin: 30, goldMax: 70,
-    drops: [{ item: 7, chance: 0.2 }, { item: 1, chance: 0.4 }],
-    shopOffers: [],
-  },
-  trol: {
-    key: "trol", name: "Trol", graphic: 0,
-    bodyId: 25, headId: 0,
-    maxHp: 180, damageMin: 14, damageMax: 22,
-    attackCooldownMs: 1100, aggroRadius: 7, moveCooldownMs: 500,
-    xpReward: 150, respawnMs: 60_000, hostile: true, merchant: false, banker: false,
-    goldMin: 50, goldMax: 120,
-    drops: [{ item: 14, chance: 0.2 }, { item: 20, chance: 0.15 }],
-    shopOffers: [],
-  },
-  dragon_verde: {
-    key: "dragon_verde", name: "Dragón verde", graphic: 0,
-    bodyId: 5, headId: 0,
-    maxHp: 500, damageMin: 20, damageMax: 35,
-    attackCooldownMs: 800, aggroRadius: 10, moveCooldownMs: 400,
-    xpReward: 400, respawnMs: 300_000, hostile: true, merchant: false, banker: false,
-    goldMin: 200, goldMax: 500,
-    drops: [{ item: 11, chance: 0.4 }, { item: 15, chance: 0.3 }, { item: 18, chance: 0.25 }],
-    shopOffers: [],
-  },
-  // ── NPCs de servicio y guardias ──────────────────────────────────────────
-  guardia: {
-    key: "guardia", name: "Guardia Real", graphic: 0,
-    bodyId: 1, headId: 2,
-    maxHp: 500, damageMin: 30, damageMax: 50,
-    attackCooldownMs: 800, aggroRadius: 15, moveCooldownMs: 300,
-    xpReward: 0, respawnMs: 0, hostile: true, isGuard: true, merchant: false, banker: false,
-    goldMin: 0, goldMax: 0,
-    drops: [],
-    shopOffers: [],
-  },
-  mercader: {
-    key: "mercader", name: "Mercader", graphic: 0,
-    bodyId: 1, headId: 1,
-    maxHp: 50, damageMin: 0, damageMax: 0,
-    attackCooldownMs: 0, aggroRadius: 0, moveCooldownMs: 0,
-    xpReward: 0, respawnMs: 0, hostile: false, merchant: true, banker: false,
-    goldMin: 0, goldMax: 0,
-    drops: [],
-    shopOffers: [1, 2, 6, 8, 12, 21, 22],
-  },
-  banquero: {
-    key: "banquero", name: "Banquero", graphic: 0,
-    bodyId: 1, headId: 1,
-    maxHp: 999, damageMin: 0, damageMax: 0,
-    attackCooldownMs: 0, aggroRadius: 0, moveCooldownMs: 0,
-    xpReward: 0, respawnMs: 0, hostile: false, merchant: false, banker: true,
-    goldMin: 0, goldMax: 0,
-    drops: [],
-    shopOffers: [],
-  },
-};
+// Item de oro (iORO del AO). El oro de un NPC viene de dos fuentes de NPCs.dat:
+// (1) el campo GiveGLD (NPCTirarOro lo tira FIJO, sin aleatoriedad) — lo usan
+// pocos NPCs; (2) entradas de item 12 en la tabla Drop, que usan la mayoría de
+// las criaturas (GiveGLD=0). Acreditamos ambas al matador.
+export const GOLD_ITEM = 12;
+
+// AO Libre carga los drops SIN campo de probabilidad (tDrops = {ObjIndex, Amount});
+// el sub NPC_TIRAR_ITEMS que decide la chance NO está en la fuente open source
+// disponible. Pero el patrón de datos lo delata: muchas criaturas tienen VARIAS
+// entradas de oro con montos crecientes (ej. Murciélago 1/2/15/70, Gorila
+// 1200/7500) — o sea "monto chico frecuente, jackpot raro". Eso implica una
+// probabilidad DECRECIENTE por posición en la tabla. Usamos ese esquema (nuestro,
+// tuneable por drop desde el panel admin, ya que el número exacto no es portable).
+const DROP_CHANCES = [0.6, 0.35, 0.2, 0.1, 0.05];
+
+function toNpcType(number: number, d: NpcDefData): NpcType {
+  const banker = d.npcType === 4;
+  const merchant = d.comercia && !banker;
+  const isGuard = d.npcType === 2;
+  // Guardias (2) persiguen criminales; guardias del caos (8) atacan a todos.
+  const hostile = d.hostile || isGuard || d.npcType === 8;
+  const canMove = d.movement !== 1;
+
+  const drops: NpcDrop[] = (d.drops ?? []).map((drop, i) => ({
+    item: drop.item,
+    qty: drop.qty,
+    // Chance por posición (override-able por drop desde el panel admin).
+    chance: (drop as { chance?: number }).chance ?? DROP_CHANCES[i] ?? 0.05,
+  }));
+
+  return {
+    number,
+    name: d.name,
+    bodyId: d.body,
+    headId: d.head,
+    maxHp: d.maxHp,
+    damageMin: d.minHit,
+    damageMax: Math.max(d.minHit, d.maxHit),
+    defense: d.def,
+    attackCooldownMs: 1_600, // IntervaloNpcPuedeAtacar del Server.ini
+
+    aggroRadius: isGuard ? 10 : 8,
+    moveCooldownMs: hostile ? 450 : 700,
+    canMove,
+    xpReward: d.giveExp,
+    // El intervalo de respawn del AO original es del server, no del .dat.
+    // Escalamos por HP: criaturas débiles vuelven rápido, jefes tardan.
+    respawnMs: d.attackable ? Math.min(300_000, 8_000 + d.maxHp * 40) : 0,
+    hostile,
+    attackable: d.attackable,
+    merchant,
+    banker,
+    isCreature: d.npcType === 0 && !d.comercia,
+    isGuard,
+    isPriest: d.npcType === 1,
+    questNumber: d.questNumber ?? 0,
+    poderAtaque: d.poderAtaque,
+    poderEvasion: d.poderEvasion,
+    domable: d.domable ?? 0,
+    // NPCTirarOro del AO tira GiveGLD FIJO (sin rango aleatorio): goldMin==goldMax.
+    goldMin: d.giveGld,
+    goldMax: d.giveGld,
+    drops,
+    shopOffers: d.shopItems ?? [],
+  };
+}
+
+// Cache de NpcType por número de NPCs.dat.
+const typeCache = new Map<number, NpcType>();
+
+// ── Overrides editables desde el panel de administración ──────────────────
+// Las definiciones base salen de NPCs.dat (npcs.generated). El admin puede
+// sobreescribir campos por número; se guardan en un JSON y se mergean sobre la
+// base. Al editar se limpia el cache para que los NPCs que aparezcan después
+// usen los nuevos valores (los ya spawneados toman los cambios al respawnear).
+const OVERRIDES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../data/npc-overrides.json");
+const npcOverrides = new Map<number, Partial<NpcDefData>>();
+try {
+  const obj = JSON.parse(readFileSync(OVERRIDES_PATH, "utf8")) as Record<string, Partial<NpcDefData>>;
+  for (const [k, v] of Object.entries(obj)) npcOverrides.set(Number(k), v);
+} catch {
+  // sin overrides todavía
+}
+
+function persistNpcOverrides(): void {
+  const obj: Record<string, Partial<NpcDefData>> = {};
+  for (const [k, v] of npcOverrides) obj[k.toString()] = v;
+  try {
+    mkdirSync(dirname(OVERRIDES_PATH), { recursive: true });
+    writeFileSync(OVERRIDES_PATH, JSON.stringify(obj, null, 2));
+  } catch {
+    // disco de solo lectura: los cambios viven en memoria hasta reiniciar
+  }
+}
+
+// Definición efectiva (base de NPCs.dat + override del admin).
+export function getEffectiveNpcDef(number: number): NpcDefData | undefined {
+  const base = NPC_DEFS[number];
+  if (!base) return undefined;
+  const ov = npcOverrides.get(number);
+  return ov ? { ...base, ...ov } : base;
+}
+
+export function getNpcOverride(number: number): Partial<NpcDefData> | undefined {
+  return npcOverrides.get(number);
+}
+
+// Aplica un override parcial y lo persiste. Devuelve la def efectiva o null.
+export function setNpcOverride(number: number, patch: Partial<NpcDefData>): NpcDefData | null {
+  if (!NPC_DEFS[number]) return null;
+  npcOverrides.set(number, { ...(npcOverrides.get(number) ?? {}), ...patch });
+  typeCache.delete(number); // se reconstruye con los nuevos valores
+  persistNpcOverrides();
+  return getEffectiveNpcDef(number) ?? null;
+}
+
+export function getNpcType(number: number): NpcType | undefined {
+  const cached = typeCache.get(number);
+  if (cached) return cached;
+  const def = getEffectiveNpcDef(number);
+  if (!def) return undefined;
+  const t = toNpcType(number, def);
+  typeCache.set(number, t);
+  return t;
+}
 
 export interface NpcInstance {
   readonly id: number;
-  readonly type: NpcType;
+  // Mutable: el respawn aleatorio por mapa puede cambiar la criatura (map-spawns).
+  type: NpcType;
   readonly mapId: number;
   readonly spawn: Vector2;
   position: Vector2;
   direction: Direction;
   hp: number;
   deadUntil: number;
+  // Paralizado/inmovilizado por hechizo (epoch ms, 0 = libre).
+  paralyzedUntil: number;
   lastMoveAt: number;
   lastAttackAt: number;
   targetCharacterId: number | null;
+  // Mascota (DoDomar): personaje amo y NPC objetivo al que asiste.
+  ownerCharacterId: number | null;
+  petTargetNpcId: number | null;
 }
-
-interface NpcSpawnDef {
-  typeKey: string;
-  at: Vector2;
-}
-
-const SPAWN_DEFS: Record<number, NpcSpawnDef[]> = {
-  // Mapa 1 — Ullathorpe (ciudad): criaturas débiles + NPCs de servicio
-  1: [
-    { typeKey: "rata",     at: { x: 28, y: 24 } },
-    { typeKey: "rata",     at: { x: 22, y: 27 } },
-    { typeKey: "rata",     at: { x: 30, y: 30 } },
-    { typeKey: "arana",    at: { x: 20, y: 30 } },
-    { typeKey: "arana",    at: { x: 32, y: 22 } },
-    { typeKey: "lobo",     at: { x: 20, y: 22 } },
-    { typeKey: "lobo",     at: { x: 32, y: 26 } },
-    { typeKey: "mercader", at: { x: 26, y: 25 } },
-    { typeKey: "banquero", at: { x: 24, y: 25 } },
-    { typeKey: "guardia",  at: { x: 23, y: 24 } },
-    { typeKey: "guardia",  at: { x: 27, y: 24 } },
-  ],
-  // Mapa 2 — Sur de Ullathorpe: ratas, víboras, arañas
-  2: [
-    { typeKey: "rata",   at: { x: 30, y: 30 } },
-    { typeKey: "rata",   at: { x: 40, y: 25 } },
-    { typeKey: "rata",   at: { x: 25, y: 45 } },
-    { typeKey: "vibora", at: { x: 45, y: 35 } },
-    { typeKey: "vibora", at: { x: 35, y: 50 } },
-    { typeKey: "vibora", at: { x: 20, y: 38 } },
-    { typeKey: "arana",  at: { x: 50, y: 30 } },
-    { typeKey: "arana",  at: { x: 28, y: 55 } },
-  ],
-  // Mapa 5 — Norte de Ullathorpe: bosque con lobos y osos
-  5: [
-    { typeKey: "lobo", at: { x: 30, y: 20 } },
-    { typeKey: "lobo", at: { x: 45, y: 35 } },
-    { typeKey: "lobo", at: { x: 25, y: 50 } },
-    { typeKey: "lobo", at: { x: 55, y: 45 } },
-    { typeKey: "oso",  at: { x: 40, y: 25 } },
-    { typeKey: "oso",  at: { x: 20, y: 40 } },
-  ],
-  // Mapa 8 — Camino del Oeste: goblins y lobos
-  8: [
-    { typeKey: "goblin", at: { x: 20, y: 30 } },
-    { typeKey: "goblin", at: { x: 35, y: 20 } },
-    { typeKey: "goblin", at: { x: 45, y: 40 } },
-    { typeKey: "goblin", at: { x: 25, y: 55 } },
-    { typeKey: "lobo",   at: { x: 50, y: 25 } },
-    { typeKey: "lobo",   at: { x: 30, y: 45 } },
-  ],
-  // Mapa 11 — Camino del Este: goblins y esqueletos
-  11: [
-    { typeKey: "goblin",    at: { x: 30, y: 25 } },
-    { typeKey: "goblin",    at: { x: 50, y: 35 } },
-    { typeKey: "goblin",    at: { x: 20, y: 45 } },
-    { typeKey: "esqueleto", at: { x: 40, y: 45 } },
-    { typeKey: "esqueleto", at: { x: 25, y: 30 } },
-    { typeKey: "esqueleto", at: { x: 55, y: 50 } },
-  ],
-  // Mapa 40 — Sótanos de Ullathorpe: dungeon difícil
-  40: [
-    { typeKey: "zombie",      at: { x: 25, y: 25 } },
-    { typeKey: "zombie",      at: { x: 35, y: 30 } },
-    { typeKey: "zombie",      at: { x: 20, y: 40 } },
-    { typeKey: "vampiro",     at: { x: 40, y: 20 } },
-    { typeKey: "vampiro",     at: { x: 30, y: 45 } },
-    { typeKey: "orco",        at: { x: 45, y: 35 } },
-    { typeKey: "orco",        at: { x: 15, y: 30 } },
-    { typeKey: "trol",        at: { x: 50, y: 50 } },
-    { typeKey: "dragon_verde", at: { x: 55, y: 55 } },
-  ],
-};
 
 function findWalkableNear(mapId: number, origin: Vector2): Vector2 {
   const map = getMap(mapId);
@@ -301,14 +226,23 @@ class NpcRegistry {
   private readonly byId = new Map<number, NpcInstance>();
   private nextId = NPC_ID_BASE + 1;
 
+  // Puebla el mundo desde los .inf de los mapas cargados: cada tile con
+  // npcIndex spawnea el NPC de NPCs.dat correspondiente — la población
+  // real del AO original (comerciantes, guardias y criaturas incluidos).
   init(): void {
     if (this.byId.size > 0) return;
-    for (const [mapIdStr, defs] of Object.entries(SPAWN_DEFS)) {
-      const mapId = Number(mapIdStr);
-      for (const def of defs) {
-        const type = NPC_TYPES[def.typeKey];
-        if (!type) continue;
-        const pos = findWalkableNear(mapId, def.at);
+    let spawned = 0;
+    let unknown = 0;
+    for (const mapId of loadedMapIds()) {
+      const map = getMap(mapId);
+      if (!map) continue;
+      for (const s of map.npcSpawns) {
+        const type = getNpcType(s.npcNumber);
+        if (!type) {
+          unknown++;
+          continue;
+        }
+        const pos = findWalkableNear(mapId, { x: s.x, y: s.y });
         const id = this.nextId++;
         this.byId.set(id, {
           id, type, mapId,
@@ -317,12 +251,20 @@ class NpcRegistry {
           direction: "south",
           hp: type.maxHp,
           deadUntil: 0,
+          paralyzedUntil: 0,
           lastMoveAt: 0,
           lastAttackAt: 0,
           targetCharacterId: null,
+          ownerCharacterId: null,
+          petTargetNpcId: null,
         });
+        spawned++;
       }
     }
+    console.log(
+      `[npcs] ${spawned.toString()} NPCs spawneados desde los .inf de ${loadedMapIds().length.toString()} mapas` +
+      (unknown > 0 ? ` (${unknown.toString()} npcIndex sin entrada en NPCs.dat, ignorados)` : ""),
+    );
   }
 
   get(id: number): NpcInstance | undefined { return this.byId.get(id); }
@@ -335,17 +277,55 @@ class NpcRegistry {
     }
     return out;
   }
+
+  // Spawnea un NPC/criatura en runtime cerca de `at` (para el comando GM de
+  // invocar). Devuelve la instancia, o null si el número no existe en NPCs.dat.
+  spawnAt(npcNumber: number, mapId: number, at: Vector2): NpcInstance | null {
+    const type = getNpcType(npcNumber);
+    if (!type) return null;
+    const pos = findWalkableNear(mapId, at);
+    const id = this.nextId++;
+    const inst: NpcInstance = {
+      id, type, mapId,
+      spawn: { x: pos.x, y: pos.y },
+      position: { x: pos.x, y: pos.y },
+      direction: "south",
+      hp: type.maxHp,
+      deadUntil: 0,
+      paralyzedUntil: 0,
+      lastMoveAt: 0,
+      lastAttackAt: 0,
+      targetCharacterId: null,
+      ownerCharacterId: null,
+      petTargetNpcId: null,
+    };
+    this.byId.set(id, inst);
+    return inst;
+  }
 }
 
 export const npcs = new NpcRegistry();
+
+// Mascotas de un personaje (MascotasIndex del AO — máx. 3).
+export const MAX_MASCOTAS = 3;
+export function petsOf(characterId: number): NpcInstance[] {
+  const out: NpcInstance[] = [];
+  for (const n of npcs.all()) {
+    if (n.ownerCharacterId === characterId && n.deadUntil === 0) out.push(n);
+  }
+  return out;
+}
 
 export function rollNpcDamage(type: NpcType, rng: () => number = Math.random): number {
   const span = type.damageMax - type.damageMin + 1;
   return type.damageMin + Math.floor(rng() * span);
 }
 
-export function rollNpcGold(type: NpcType, rng: () => number = Math.random): number {
-  if (type.goldMax <= 0) return 0;
-  const span = type.goldMax - type.goldMin + 1;
-  return type.goldMin + Math.floor(rng() * span);
+// Oro por GiveGLD del AO: monto FIJO (NPCTirarOro no aleatoriza). goldMin==goldMax
+// hoy, así que devuelve exactamente GiveGLD; se conserva el parámetro rng por
+// compatibilidad de firma. La mayoría de las criaturas tiene GiveGLD=0 y su oro
+// sale de la tabla de drops (item 12).
+export function rollNpcGold(type: NpcType, _rng: () => number = Math.random): number {
+  void _rng;
+  return Math.max(0, type.goldMax);
 }

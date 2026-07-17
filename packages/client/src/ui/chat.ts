@@ -5,7 +5,12 @@ export interface ChatMessage {
   text: string;
   timestamp: number; // epoch ms (server)
   isSelf: boolean;
-  kind?: "normal" | "whisper";
+  // normal/whisper → pestaña Chat · combate → pestaña Combate ·
+  // global → pestaña Global (mensajes de sistema: zonas, niveles, muertes).
+  kind?: "normal" | "whisper" | "combate" | "global";
+  // Color custom del texto (p. ej. "Ves a X" según ciudadano/criminal/GM). En
+  // bold. Si se define, pisa el color de la clase de `kind`.
+  color?: string;
 }
 
 export interface ChatHandle {
@@ -34,9 +39,15 @@ function fmtTime(epochMs: number): string {
 
 export function mountChat(opts: MountChatOptions): ChatHandle {
   const wrap = document.createElement("div");
-  wrap.className = "ao-chat";
+  wrap.className = "ao-chat ao-chat--tab-todo";
   wrap.innerHTML = `
     <div class="ao-chat__messages" role="log" aria-live="polite"></div>
+    <div class="ao-chat__tabs">
+      <button type="button" data-cat="todo" class="ao-chat__tab ao-chat__tab--active">todo</button>
+      <button type="button" data-cat="chat" class="ao-chat__tab">chat</button>
+      <button type="button" data-cat="combate" class="ao-chat__tab">combate</button>
+      <button type="button" data-cat="global" class="ao-chat__tab">global</button>
+    </div>
     <form class="ao-chat__form" autocomplete="off">
       <span class="ao-chat__prefix">&gt;</span>
       <input
@@ -54,24 +65,49 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
   const formEl = wrap.querySelector<HTMLFormElement>(".ao-chat__form")!;
   const inputEl = wrap.querySelector<HTMLInputElement>(".ao-chat__input")!;
 
+  // Pestañas: filtran por categoría vía clase en el wrapper (CSS).
+  const tabBtns = [...wrap.querySelectorAll<HTMLButtonElement>(".ao-chat__tab")];
+  for (const btn of tabBtns) {
+    btn.addEventListener("click", () => {
+      for (const b of tabBtns) b.classList.toggle("ao-chat__tab--active", b === btn);
+      wrap.className = wrap.className.replace(/ao-chat--tab-\w+/, `ao-chat--tab-${btn.dataset.cat ?? "todo"}`);
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    });
+  }
+
   function scrollToBottom(): void {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
   function appendMessage(msg: ChatMessage): void {
     const row = document.createElement("div");
-    const extraClass = msg.kind === "whisper" ? " ao-chat__msg--whisper" : msg.isSelf ? " ao-chat__msg--self" : "";
+    const kind = msg.kind ?? "normal";
+    const extraClass =
+      kind === "whisper" ? " ao-chat__msg--whisper"
+      : kind === "combate" ? " ao-chat__msg--combate"
+      : kind === "global" ? " ao-chat__msg--global"
+      : msg.isSelf ? " ao-chat__msg--self" : "";
     row.className = `ao-chat__msg${extraClass}`;
+    // Categoría para el filtrado por pestaña.
+    row.dataset.cat = kind === "combate" ? "combate" : kind === "global" ? "global" : "chat";
     const time = document.createElement("span");
     time.className = "ao-chat__time";
     time.textContent = fmtTime(msg.timestamp);
-    const name = document.createElement("span");
-    name.className = "ao-chat__name";
-    name.textContent = msg.fromName;
+    row.append(time);
+    if (msg.fromName) {
+      const name = document.createElement("span");
+      name.className = "ao-chat__name";
+      name.textContent = msg.fromName;
+      row.append(name);
+    }
     const text = document.createElement("span");
     text.className = "ao-chat__text";
     text.textContent = msg.text;
-    row.append(time, name, text);
+    if (msg.color) {
+      text.style.color = msg.color;
+      text.style.fontWeight = "700";
+    }
+    row.append(text);
     messagesEl.appendChild(row);
 
     // Recorte de buffer
@@ -84,6 +120,7 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
   function showError(reason: string): void {
     const row = document.createElement("div");
     row.className = "ao-chat__msg ao-chat__msg--error";
+    row.dataset.cat = "chat";
     const map: Record<string, string> = {
       RATE_LIMITED: "Más lento, esperá un segundo.",
       EMPTY: "El mensaje está vacío.",
@@ -151,6 +188,7 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
     text: `Bienvenido ${opts.selfCharacterName}. Enter para chatear.`,
     timestamp: Date.now(),
     isSelf: false,
+    kind: "global",
   });
 
   return {

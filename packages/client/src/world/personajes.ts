@@ -19,9 +19,10 @@ interface PersonajesIndex {
     o: number;
   }>;
   // Sprites de NPCs monstruo (rata, lobo, etc). Igual estructura que
-  // bodies pero sin head separada — el sprite ya incluye "cabeza".
+  // bodies; se fusionan en `bodies` al cargar (ver load()).
   monsterBodies: Record<string, {
     walkFrames: number[][];
+    headOffset?: { x: number; y: number };
   }>;
 }
 
@@ -54,25 +55,41 @@ export class Personajes {
 
   async load(): Promise<void> {
     if (this.loaded) return;
-    const res = await fetch(`${ASSETS_BASE}/personajes.json`);
+    const res = await fetch(`${ASSETS_BASE}/personajes.json`, { cache: "no-cache" });
     if (!res.ok) {
       throw new Error(`No se pudo cargar personajes.json (${res.status.toString()})`);
     }
     this.index = (await res.json()) as PersonajesIndex;
+    // Unificamos bodies y monsterBodies en un solo espacio de lookup: con el
+    // sistema de ropaje del AO cualquier body de Personajes.ini puede ser el
+    // sprite de un jugador (armaduras = NumRopaje) o de un NPC humanoide.
+    for (const [id, mb] of Object.entries(this.index.monsterBodies ?? {})) {
+      if (!this.index.bodies[id]) {
+        this.index.bodies[id] = {
+          walkFrames: mb.walkFrames,
+          headOffset: mb.headOffset ?? { x: 0, y: 0 },
+        };
+      }
+    }
     this.loaded = true;
-    // Precargamos los PNGs de todos los cuerpos y cabezas del índice para
-    // que al aparecer una entidad no haya salto visual.
+    // NO precargamos los PNGs acá: con 675 bodies serían ~700 archivos de
+    // golpe y saturan el dev server (tiles negros, siluetas eternas).
+    // Cada body/head se baja on-demand con ensure() al aparecer la entidad.
+  }
+
+  // Precarga los PNGs de un body+head específicos. Idempotente y barato:
+  // el Tileset saltea los archivos ya cargados.
+  async ensure(bodyId: number, headId: number): Promise<void> {
     const grhIds = new Set<number>();
-    for (const b of Object.values(this.index.bodies)) {
+    const b = this.index.bodies[bodyId.toString()];
+    if (b) {
       for (const dirFrames of b.walkFrames) for (const g of dirFrames) grhIds.add(g);
     }
-    for (const h of Object.values(this.index.heads)) {
+    const h = this.index.heads[headId.toString()];
+    if (h) {
       grhIds.add(h.n); grhIds.add(h.e); grhIds.add(h.s); grhIds.add(h.o);
     }
-    for (const mb of Object.values(this.index.monsterBodies ?? {})) {
-      for (const dirFrames of mb.walkFrames) for (const g of dirFrames) grhIds.add(g);
-    }
-    await this.tileset.preload(grhIds);
+    if (grhIds.size > 0) await this.tileset.preload(grhIds);
   }
 
   get ready(): boolean {
@@ -113,6 +130,21 @@ export class Personajes {
     const h = this.index.heads[headId.toString()];
     if (!h) return null;
     return this.tileset.get(h[HEAD_KEY[dir]]);
+  }
+
+  // GRH crudos (para dibujar el retrato del personaje a mano en un canvas 2D).
+  headGrh(headId: number, dir: CharDirection): number | null {
+    const h = this.index.heads[headId.toString()];
+    if (!h) return null;
+    return h[HEAD_KEY[dir]] || null;
+  }
+
+  bodyGrh(bodyId: number, dir: CharDirection, frameIdx = 0): number | null {
+    const b = this.index.bodies[bodyId.toString()];
+    if (!b) return null;
+    const dirFrames = b.walkFrames[DIR_INDEX[dir]];
+    if (!dirFrames || dirFrames.length === 0) return null;
+    return dirFrames[frameIdx % dirFrames.length] || null;
   }
 
   hasMonsterBody(monsterBodyId: number): boolean {

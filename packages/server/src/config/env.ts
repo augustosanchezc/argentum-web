@@ -41,6 +41,17 @@ export const env = {
   sentry: {
     dsn: optional("SENTRY_DSN", ""),
   },
+  // Email a promover a Dios/Admin (role 3) al arrancar — bootstrap del
+  // primer administrador del panel.
+  adminEmail: optional("ADMIN_EMAIL", ""),
+  // Allowlist de IPs para el panel /admin (coma-separadas). Vacío = sin
+  // restricción por IP (dev). En prod, poner la(s) IP(s) del admin.
+  adminIpAllowlist: optional("ADMIN_IP_ALLOWLIST", ""),
+  // Cloudflare Turnstile (captcha del registro). Secreto vacío = captcha
+  // desactivado (dev). En prod, setear el secret del widget.
+  turnstile: {
+    secret: optional("TURNSTILE_SECRET", ""),
+  },
 } as const;
 
 export type AppEnv = typeof env;

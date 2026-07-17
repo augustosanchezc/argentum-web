@@ -2,11 +2,31 @@ import { calcMaxHp, calcMaxMp, getClass } from "@ao/shared";
 
 export { calcMaxHp, calcMaxMp };
 
-export const MAX_LEVEL = 36;
+export const MAX_LEVEL = 50;
 
-// Fórmula AO original: NecesitaExp(n) = n*(n-1)/2*100 + 100
+// Curva de experiencia REAL de AO Libre (Modulo_UsUaRiOs.CheckUserLevel L713-727):
+// no es una fórmula cerrada — parte de un ELU inicial y lo multiplica por rangos
+// de nivel en cada subida, dando un crecimiento EXPONENCIAL.
+//   ELV<15 ×1.4 · <21 ×1.35 · <26 ×1.3 · <35 ×1.2 · <40 ×1.3 · resto ×1.375
+// El seed inicial (exp de nivel 1→2) se setea en ConnectNewUser, que no está en
+// la porción de fuente que tenemos; usamos 300, el valor estándar de AO Libre.
+const ELU_INICIAL = 300;
+
+function xpMultiplier(level: number): number {
+  if (level < 15) return 1.4;
+  if (level < 21) return 1.35;
+  if (level < 26) return 1.3;
+  if (level < 35) return 1.2;
+  if (level < 40) return 1.3;
+  return 1.375;
+}
+
+// Exp necesaria para pasar de `level` a `level+1` (el AO multiplica usando el
+// nivel YA incrementado, por eso mult(l) usa el nivel destino).
 function xpForLevel(level: number): number {
-  return Math.floor(level * (level - 1) / 2) * 100 + 100;
+  let elu = ELU_INICIAL; // need(1→2)
+  for (let l = 2; l <= level; l += 1) elu = Math.round(elu * xpMultiplier(l));
+  return elu;
 }
 
 // XP total acumulada para ALCANZAR un nivel (nivel 1 = 0).
@@ -36,7 +56,8 @@ export function levelProgress(level: number, totalXp: number): LevelProgress {
   }
   const base = cumulativeXpForLevel(level);
   const next = cumulativeXpForLevel(level + 1);
-  return { level, xpIntoLevel: totalXp - base, xpForNextLevel: next - base };
+  // Clamp: un nivel fijado por GM (sin ajustar xp) dejaría xpIntoLevel negativo.
+  return { level, xpIntoLevel: Math.max(0, totalXp - base), xpForNextLevel: next - base };
 }
 
 export interface GainResult {

@@ -75,7 +75,7 @@ export function mountPartyUi(parent: HTMLElement, cb: PartyUiCallbacks): PartyUi
         li.className = "ao-party__member";
         const frac = m.maxHp > 0 ? Math.max(0, Math.min(1, m.hp / m.maxHp)) : 0;
         const pct = Math.round(frac * 100);
-        const color = frac > 0.5 ? "#4cb87e" : frac > 0.25 ? "#d4af37" : "#c93838";
+        const color = frac > 0.5 ? "#4cb87e" : frac > 0.25 ? "#e0863a" : "#c93838";
         li.innerHTML = `
           <span class="ao-party__name">${m.name}</span>
           <div class="ao-party__hpbar-bg">

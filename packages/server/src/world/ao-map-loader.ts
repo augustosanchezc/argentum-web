@@ -40,25 +40,39 @@ class BinReader {
   private offset = 0;
   constructor(private readonly buf: Buffer) {}
 
+  // Falla con contexto si no quedan `n` bytes — evita leer basura de un archivo
+  // truncado/corrupto (antes las lecturas iban directo sin chequear bounds).
+  private need(n: number): void {
+    if (this.offset + n > this.buf.length) {
+      throw new RangeError(
+        `lectura fuera de rango: pedidos ${n.toString()} bytes en offset ${this.offset.toString()} de ${this.buf.length.toString()}`,
+      );
+    }
+  }
+
   u8(): number {
+    this.need(1);
     const v = this.buf.readUInt8(this.offset);
     this.offset += 1;
     return v;
   }
 
   u16LE(): number {
+    this.need(2);
     const v = this.buf.readUInt16LE(this.offset);
     this.offset += 2;
     return v;
   }
 
   u32LE(): number {
+    this.need(4);
     const v = this.buf.readUInt32LE(this.offset);
     this.offset += 4;
     return v;
   }
 
   asciiZ(length: number): string {
+    this.need(length);
     const slice = this.buf.subarray(this.offset, this.offset + length);
     this.offset += length;
     // Recortamos padding (espacios + nulls finales).
@@ -67,11 +81,16 @@ class BinReader {
   }
 
   skip(n: number): void {
+    this.need(n);
     this.offset += n;
   }
 
   remaining(): number {
     return this.buf.length - this.offset;
+  }
+
+  tell(): number {
+    return this.offset;
   }
 }
 
@@ -85,7 +104,13 @@ function parseMapHeader(reader: BinReader): ParsedHeader {
   const description = reader.asciiZ(255);
   // CRC + MagicWord + padding double — no los necesitamos para la lógica.
   reader.skip(4 + 4 + 8);
-  void MAP_HEADER_BYTES; // referencia: assert offset == MAP_HEADER_BYTES
+  // El header debe medir exactamente MAP_HEADER_BYTES; si no, el body quedaría
+  // desalineado y leeríamos tiles corridos. Fallamos temprano y con contexto.
+  if (reader.tell() !== MAP_HEADER_BYTES) {
+    throw new RangeError(
+      `header desalineado: offset ${reader.tell().toString()} != ${MAP_HEADER_BYTES.toString()}`,
+    );
+  }
   return { version, description };
 }
 

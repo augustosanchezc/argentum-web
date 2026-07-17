@@ -13,6 +13,7 @@ const EMAIL_MAX = 254;
 interface AuthBody {
   email: string;
   password: string;
+  turnstileToken?: string;
 }
 
 const authBodySchema = {
@@ -23,9 +24,33 @@ const authBodySchema = {
     properties: {
       email: { type: "string", minLength: 3, maxLength: EMAIL_MAX },
       password: { type: "string", minLength: PASSWORD_MIN, maxLength: PASSWORD_MAX },
+      // Token del captcha Cloudflare Turnstile (solo lo usa /register).
+      turnstileToken: { type: "string", maxLength: 4096 },
     },
   },
 } as const;
+
+// Límite estricto anti fuerza-bruta para login/registro (además del backstop
+// global). 5 intentos por minuto por IP.
+const strictAuthLimit = { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } };
+
+// Verifica el captcha Turnstile contra Cloudflare. Si no hay secret configurado
+// (dev), el captcha está desactivado y siempre pasa.
+async function verifyTurnstile(token: string | undefined, ip: string): Promise<boolean> {
+  if (!env.turnstile.secret) return true;
+  if (!token) return false;
+  try {
+    const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ secret: env.turnstile.secret, response: token, remoteip: ip }),
+    });
+    const data = (await res.json()) as { success?: boolean };
+    return data.success === true;
+  } catch {
+    return false;
+  }
+}
 
 export const registerAuthRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   // Hash dummy precomputado para que el tiempo de respuesta sea
@@ -35,10 +60,15 @@ export const registerAuthRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
   app.post<{ Body: AuthBody }>(
     "/register",
-    { schema: authBodySchema },
+    { schema: authBodySchema, ...strictAuthLimit },
     async (req, reply) => {
       const email = req.body.email.trim().toLowerCase();
       const { password } = req.body;
+
+      // Captcha anti-bots (Cloudflare Turnstile). Desactivado si no hay secret.
+      if (!(await verifyTurnstile(req.body.turnstileToken, req.ip))) {
+        return reply.code(403).send({ error: "CAPTCHA_FAILED" });
+      }
 
       if (!EMAIL_RE.test(email)) {
         return reply.code(400).send({ error: "INVALID_EMAIL" });
@@ -75,7 +105,7 @@ export const registerAuthRoutes: FastifyPluginAsync = async (app: FastifyInstanc
 
   app.post<{ Body: AuthBody }>(
     "/login",
-    { schema: authBodySchema },
+    { schema: authBodySchema, ...strictAuthLimit },
     async (req, reply) => {
       const email = req.body.email.trim().toLowerCase();
       const { password } = req.body;
@@ -85,6 +115,7 @@ export const registerAuthRoutes: FastifyPluginAsync = async (app: FastifyInstanc
           id: accounts.id,
           email: accounts.email,
           passwordHash: accounts.passwordHash,
+          role: accounts.role,
         })
         .from(accounts)
         .where(eq(sql`lower(${accounts.email})`, email))
@@ -103,11 +134,11 @@ export const registerAuthRoutes: FastifyPluginAsync = async (app: FastifyInstanc
         return reply.code(401).send({ error: "INVALID_CREDENTIALS" });
       }
 
-      const token = app.jwt.sign({ accountId: row.id, email: row.email });
+      const token = app.jwt.sign({ accountId: row.id, email: row.email, role: row.role });
 
       return reply.send({
         token,
-        account: { id: row.id, email: row.email },
+        account: { id: row.id, email: row.email, role: row.role },
       });
     },
   );

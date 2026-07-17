@@ -1,7 +1,9 @@
+import { eq, sql } from "drizzle-orm";
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { initSentry } from "./sentry.js";
-import { pool } from "./db/index.js";
+import { db, pool } from "./db/index.js";
+import { accounts } from "./db/schema/accounts.js";
 import { loadedMapIds } from "./world/maps.js";
 import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
@@ -11,6 +13,18 @@ async function main(): Promise<void> {
   // de arranque. Sin DSN configurado, no hace nada.
   initSentry();
   const app = await buildApp();
+
+  // Bootstrap del primer admin: ADMIN_EMAIL se promueve a Dios (role 3).
+  if (env.adminEmail) {
+    const updated = await db
+      .update(accounts)
+      .set({ role: 3 })
+      .where(eq(sql`lower(${accounts.email})`, env.adminEmail.toLowerCase()))
+      .returning({ id: accounts.id });
+    if (updated.length > 0) {
+      app.log.info({ email: env.adminEmail }, "[ao-server] admin promovido a Dios (role 3)");
+    }
+  }
 
   // Log de mapas cargados (útil para saber qué mapas están disponibles y
   // cuáles hay que descargar con scripts/fetch-maps.mjs).

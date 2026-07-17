@@ -1,4 +1,4 @@
-import type { Direction, InventorySlot, Vector2 } from "@ao/shared";
+import { emptySkills, type Direction, type InventorySlot, type SkillKey, type SkillSet, type Vector2 } from "@ao/shared";
 import type { WebSocket } from "ws";
 import { connectedPlayers } from "../metrics.js";
 
@@ -15,23 +15,53 @@ export interface Session {
   lastChatAt: number;
   joinedAt: number;
   lastSeenAt: number;
-  // Clase y stats primarios
+  // Clase, raza, género y stats primarios
   classId: number;
+  race: number;
+  gender: number;
+  // Descripción del personaje (se ve al hacer click sobre él; se setea con /desc).
+  description: string;
+  // Skills por uso (21 skills del AO, 0-100) + XP parcial hacia el próximo punto.
+  skills: SkillSet;
+  skillsXp: Partial<Record<SkillKey, number>>;
   str: number;
   agi: number;
   int_: number;
   con: number;
   car: number;
   statPoints: number;
-  // HP / MP
+  // HP / MP / Energía (stamina del AO)
   level: number;
   xp: number;
   hp: number;
   maxHp: number;
   mana: number;
   maxMana: number;
+  sta: number;
+  maxSta: number;
   lastAttackAt: number;
+  // Momento del último casteo (para los intervalos golpe-magia del AO).
+  lastCastAt: number;
+  // Momento del último uso de item (IntervaloUserPuedeUsar, 125ms).
+  lastUseAt: number;
+  // Momento en que se tomó la última poción. En el AO el cooldown de pociones
+  // (IntervaloGolpeUsar 1200ms) es un timer compartido: se refresca al golpear
+  // Y al tomar cada poción → 1 poción cada 1200ms (no 125ms).
+  lastPotionAt: number;
+  // Trabajos: último golpe de trabajo (IntervaloTrabajo 850ms).
+  lastWorkAt: number;
+  // Descansando junto a una fogata (regen acelerada; moverse lo corta).
+  resting: boolean;
+  // Seguro /SEG: con true no se puede atacar ciudadanos.
+  safeOn: boolean;
+  // Navegación: en barco (body = barco, solo se mueve por agua).
+  navigating: boolean;
+  boatBody: number;
+  // Muerto: 0 = vivo. Los jugadores NO auto-reviven (fantasma del AO):
+  // reviven por sacerdote o llegando al hogar.
   deadUntil: number;
+  // Viaje al hogar (goHome): epoch ms de llegada (0 = sin viaje).
+  homeTravelUntil: number;
   // Economía e inventario
   gold: number;
   inventory: InventorySlot[];
@@ -45,8 +75,11 @@ export interface Session {
   helmetDefense: number;
   shieldDefense: number;
   // Sprite (Personajes.ind / Cabezas.ind del AO)
-  bodyId: number;
+  bodyId: number;   // body base del personaje (sin ropa)
   headId: number;
+  // Body visible: el NumRopaje de la armadura equipada, o bodyId si está
+  // desnudo. Se recalcula al equipar/desequipar y se broadcastea el cambio.
+  visibleBodyId: number;
   // Banco (E-4.2)
   bankInventory: InventorySlot[];
   bankGold: number;
@@ -56,6 +89,51 @@ export interface Session {
   tradeId: string | null;
   // Habilidades
   lastSkillAt: number;
+  // Meditación (recupera maná acelerado; se corta al moverse/atacar/recibir daño)
+  meditating: boolean;
+  // Estados alterados (epoch ms de expiración, 0 = inactivo):
+  // paralizado: no camina ni pega (puede castear — Remover Parálisis).
+  // inmovilizado: no camina. invisible: los demás no lo ven.
+  paralyzedUntil: number;
+  immobilizedUntil: number;
+  invisibleUntil: number;
+  blindUntil: number;
+  dumbUntil: number;
+  // Hambre y sed (0-100). En 0 se corta la regeneración (AO original).
+  hunger: number;
+  thirst: number;
+  // Acumuladores de regeneración (ms), modelo del AO: cada efecto tiene su
+  // propio contador que dispara al superar su intervalo (Sanar/RecStamina/
+  // HambreYSed/Meditar). Ver world/regen.ts.
+  regenCounters: { hp: number; sta: number; agua: number; com: number; med: number };
+  // Drogas / hechizos de buff: bonus temporal de STR (Fuerza / Poción Verde)
+  // y AGI (Celeridad / Poción Amarilla). buffUntil = epoch ms de expiración.
+  strBonus: number;
+  agiBonus: number;
+  buffUntil: number;
+  // Misiones (Quests.DAT): activas con progreso + completadas.
+  quests: Array<{ id: number; kills: number[] }>;
+  questsDone: number[];
+  // Facciones: 0 ninguna · 1 Armada Real · 2 Legión Oscura.
+  faction: number;
+  citizensKilled: number;
+  criminalsKilled: number;
+  // Clan (modGuilds.bas — núcleo): id y nombre, más invitación pendiente.
+  guildId: number | null;
+  guildName: string | null;
+  guildInvite: { guildId: number; guildName: string; from: string } | null;
+  // Amigos (nombres, máx. 50 como el AO).
+  friends: string[];
+  // Privilegios de la cuenta (0 jugador · 1 Consejero · 2 Semidiós · 3 Dios).
+  role: number;
+  // Equitación (DoEquita): montado + body de la montura + espera tras desmontar.
+  mounted: boolean;
+  mountBody: number;
+  mountCooldownUntil: number;
+  // Overlays de equipo visibles (Armas/Escudos/Cascos — 0 = ninguno).
+  visibleWeaponAnim: number;
+  visibleShieldAnim: number;
+  visibleHelmetAnim: number;
   // Sistema criminal
   criminalUntil: number;
 }
@@ -99,6 +177,11 @@ export class SessionRegistry {
       joinedAt: now,
       lastSeenAt: now,
       classId: 1,
+      race: 1,
+      gender: 1,
+      description: "",
+      skills: emptySkills(),
+      skillsXp: {},
       str: 18,
       agi: 13,
       int_: 12,
@@ -111,8 +194,19 @@ export class SessionRegistry {
       maxHp: 30,
       mana: 0,
       maxMana: 0,
+      sta: 100,
+      maxSta: 100,
       lastAttackAt: 0,
+      lastCastAt: 0,
+      lastUseAt: 0,
+      lastPotionAt: 0,
+      lastWorkAt: 0,
+      resting: false,
+      safeOn: true,
+      navigating: false,
+      boatBody: 0,
       deadUntil: 0,
+      homeTravelUntil: 0,
       gold: 0,
       inventory: [],
       equippedWeapon: null,
@@ -125,11 +219,40 @@ export class SessionRegistry {
       shieldDefense: 0,
       bodyId: 1,
       headId: 1,
+      visibleBodyId: 1,
       bankInventory: [],
       bankGold: 0,
       partyId: null,
       tradeId: null,
       lastSkillAt: 0,
+      meditating: false,
+      paralyzedUntil: 0,
+      immobilizedUntil: 0,
+      invisibleUntil: 0,
+      blindUntil: 0,
+      dumbUntil: 0,
+      hunger: 100,
+      thirst: 100,
+      regenCounters: { hp: 0, sta: 0, agua: 0, com: 0, med: 0 },
+      strBonus: 0,
+      agiBonus: 0,
+      buffUntil: 0,
+      quests: [],
+      questsDone: [],
+      faction: 0,
+      citizensKilled: 0,
+      criminalsKilled: 0,
+      guildId: null,
+      guildName: null,
+      guildInvite: null,
+      friends: [],
+      role: 0,
+      mounted: false,
+      mountBody: 0,
+      mountCooldownUntil: 0,
+      visibleWeaponAnim: 0,
+      visibleShieldAnim: 0,
+      visibleHelmetAnim: 0,
       criminalUntil: 0,
     };
     this.bySessionId.set(id, session);
