@@ -45,6 +45,9 @@ ENV NODE_ENV=production
 EXPOSE 3000
 WORKDIR /app/packages/server
 
-# Aplica migraciones pendientes y arranca. Si migrate falla, el contenedor no
-# arranca (fail-fast). tsx resuelve @ao/shared desde la fuente.
-CMD ["sh", "-c", "pnpm exec tsx src/db/migrate.ts && pnpm exec tsx src/index.ts"]
+# Sincroniza la base al esquema con drizzle-kit push (igual que el flujo de
+# desarrollo) y arranca. Se eligió push en vez de las migraciones porque el
+# proyecto se desarrolla con push y las migraciones quedaban incompletas
+# (drift), lo que rompía el arranque en un deploy limpio. Si push falla, el
+# contenedor no arranca (fail-fast). tsx resuelve @ao/shared desde la fuente.
+CMD ["sh", "-c", "pnpm exec drizzle-kit push --force && pnpm exec tsx src/index.ts"]

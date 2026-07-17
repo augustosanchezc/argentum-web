@@ -4,6 +4,10 @@ services:
   # ── Reverse proxy + TLS automático ─────────────────────────────────────────
   caddy:
     image: caddy:2-alpine
+    environment:
+      # Caddy usa {$DOMAIN} en el Caddyfile; hay que inyectarlo al contenedor
+      # (la interpolación ${DOMAIN} de compose no llega sola al proceso Caddy).
+      DOMAIN: ${DOMAIN}
     restart: unless-stopped
     ports:
       - "80:80"
