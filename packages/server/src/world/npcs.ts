@@ -102,7 +102,10 @@ function toNpcType(number: number, d: NpcDefData): NpcType {
     defense: d.def,
     attackCooldownMs: 1_600, // IntervaloNpcPuedeAtacar del Server.ini
 
-    aggroRadius: isGuard ? 10 : 8,
+    // Radio de detección/persecución (chebyshev). Mayor que el rango visual del
+    // jugador (~10 tiles a lo ancho, ~7 a lo alto) para que las criaturas
+    // empiecen a perseguir ANTES de entrar en pantalla.
+    aggroRadius: isGuard ? 18 : 15,
     moveCooldownMs: hostile ? 450 : 700,
     canMove,
     xpReward: d.giveExp,

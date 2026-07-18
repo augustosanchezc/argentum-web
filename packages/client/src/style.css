@@ -1215,11 +1215,12 @@ h3 {
   font-weight: bold;
 }
 .ao-macrobar__name {
-  font-size: 8px;
+  font-family: "Alegreya SC", Georgia, serif;
+  font-size: 10px;
   color: var(--parchment);
   text-align: center;
   padding: 0 2px;
-  line-height: 1.2;
+  line-height: 1.15;
   word-break: break-word;
 }
 .ao-macrobar__icon { background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
@@ -2943,8 +2944,10 @@ html, body { background: #050506; height: 100%; }
 }
 .ao-seg--macros .ao-macrobar__icon { image-rendering: pixelated; transform: scale(1.35); }
 .ao-seg--macros .ao-macrobar__name {
-  font-size: 8.5px; color: #d2cee2; text-align: center; padding: 0 3px 8px;
-  line-height: 1.15; word-break: break-word; font-weight: 600;
+  font-family: "Alegreya SC", Georgia, serif;
+  font-size: 10.5px; color: #e6dfbe; text-align: center; padding: 0 3px 8px;
+  line-height: 1.1; word-break: break-word; font-weight: 500;
+  letter-spacing: 0.2px; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
 }
 .ao-seg--macros .ao-macrobar__plus { font-size: 20px; color: #46527a; font-weight: 300; }
 
