@@ -497,29 +497,21 @@ h3 {
 }
 
 /* Panel de jugadores online (T-047) */
+/* Solo el contador de conectados (sin recuadro ni lista de nombres). */
 .ao-players {
   position: fixed;
   top: 108px; /* debajo de la consola superior */
   left: 12px;
-  width: 180px;
-  max-height: 40vh;
-  overflow-y: auto;
-  padding: 8px 10px;
-  background: rgba(10, 8, 5, 0.55);
-  border: 1px solid rgba(212, 175, 55, 0.15);
-  border-radius: 4px;
   font-family: "Segoe UI", system-ui, sans-serif;
   font-size: 13px;
   color: var(--text);
   z-index: 100;
-  pointer-events: auto;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
 .ao-players__title {
   color: var(--gold-bright);
   font-weight: 600;
-  margin-bottom: 4px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
-  padding-bottom: 4px;
 }
 .ao-players__list {
   list-style: none;
@@ -1794,7 +1786,41 @@ h3 {
   min-width: 0;
   overflow: hidden;
   background: #05070c;
+  /* Centra el recuadro del viewport (letterbox a los costados en pantallas anchas). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+/* Recuadro del mundo: acotado a ~21x15 tiles (840x600 @ world-scale 1.25), así
+   el borde de lo que ves coincide con el alcance de casteo. */
+.ao-viewbox {
+  position: relative;
+  width: min(100%, 840px);
+  height: min(100%, 600px);
+  transform-origin: center center;
+}
+/* Botón de pantalla completa (esquina sup. izq. del stage). */
+.ao-fsbtn {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 30;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: #d8c690;
+  background: rgba(8, 10, 16, 0.6);
+  border: 1px solid rgba(217, 178, 74, 0.35);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.ao-fsbtn:hover { background: rgba(20, 24, 34, 0.85); color: #fff; }
+.ao-fsbtn--on { color: #7fd07f; border-color: rgba(127, 208, 127, 0.5); }
 .ao-frame canvas.ao-viewport {
   position: absolute;
   inset: 0;
@@ -2292,19 +2318,19 @@ html, body { background: #050506; height: 100%; }
 .ao-seg--map .ao-minimap { margin: 0; }
 
 /* El HUD sigue flotando sobre el mundo (arriba-izquierda del segmento) */
-.ao-frame .ao-stage .ao-hud { position: absolute; left: 12px; top: 12px; }
+/* HUD flotante (nombre/vida/maná) oculto: los vitales viven en el panel lateral. */
+.ao-frame .ao-stage .ao-hud { display: none; }
 
 /* El minimapa vive en el box 3 (vitales) del panel Arte 3. */
 .ao-vitals__map .ao-panel__minimap-slot { display: block; width: 86px; height: 78px; }
 
-/* Lista de jugadores online: overlay arriba-derecha del mundo (no fija global) */
+/* Contador de conectados: solo el número, arriba-derecha, cajita compacta. */
 .ao-frame .ao-stage .ao-players {
   position: absolute;
   top: 12px;
   right: 12px;
   left: auto;
-  width: 150px;
-  max-height: 45%;
+  padding: 5px 10px;
   background: rgba(8, 10, 16, 0.6);
   border: 1px solid rgba(217, 178, 74, 0.25);
   border-radius: 8px;

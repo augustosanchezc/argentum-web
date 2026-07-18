@@ -293,17 +293,24 @@ export async function startGameScene(
   frame.appendChild(sideCol);
   root.appendChild(frame);
 
+  // Recuadro fijo del viewport (~21x15 tiles): acota el mundo visible al alcance
+  // de casteo (SPELL_RANGE 10), para no ver de más en pantallas anchas. Se
+  // centra en el stage con letterbox a los costados.
+  const viewportBox = document.createElement("div");
+  viewportBox.className = "ao-viewbox";
+  stageEl.appendChild(viewportBox);
+
   const app = new Application();
   await app.init({
     background: "#05070c",
-    resizeTo: stageEl,
+    resizeTo: viewportBox,
     antialias: false,
     autoDensity: true,
     resolution: window.devicePixelRatio || 1,
   });
 
   app.canvas.classList.add("ao-viewport");
-  stageEl.appendChild(app.canvas);
+  viewportBox.appendChild(app.canvas);
 
   // HUD flotante sobre el mundo (arriba-izquierda): nombre, vida, maná,
   // mapa y coordenadas — como el overlay del cliente moderno de Arte 1.
@@ -1704,7 +1711,7 @@ export async function startGameScene(
   // Cartel de modo casteo: visible SOLO mientras hay un hechizo armado.
   const castBanner = document.createElement("div");
   castBanner.className = "ao-castbanner";
-  stageEl.appendChild(castBanner);
+  viewportBox.appendChild(castBanner);
 
   // Único punto que arma/desarma el casteo: cursor + cartel + estado.
   function setArmedSpell(spellId: number | null): void {
@@ -2935,9 +2942,39 @@ export async function startGameScene(
     setEntityAppearance(v, p.bodyId, p.headId, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0);
   }
 
+  // Botón de pantalla completa: amplía el juego a toda la pantalla del navegador.
+  // El recuadro se ESCALA (mantiene los mismos ~21x15 tiles) para no ver de más.
+  const fsBtn = document.createElement("button");
+  fsBtn.type = "button";
+  fsBtn.className = "ao-fsbtn";
+  fsBtn.title = "Pantalla completa (Esc para salir)";
+  fsBtn.setAttribute("aria-label", "Pantalla completa");
+  fsBtn.textContent = "⛶";
+  stageEl.appendChild(fsBtn);
+
+  function applyFsScale(): void {
+    if (!viewportBox.isConnected) return;
+    if (document.fullscreenElement) {
+      const r = stageEl.getBoundingClientRect();
+      const s = Math.max(1, Math.min(r.width / 840, r.height / 600));
+      viewportBox.style.transform = `scale(${s.toFixed(4)})`;
+      fsBtn.classList.add("ao-fsbtn--on");
+    } else {
+      viewportBox.style.transform = "";
+      fsBtn.classList.remove("ao-fsbtn--on");
+    }
+  }
+  fsBtn.addEventListener("click", () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void frame.requestFullscreen().catch(() => undefined);
+  });
+  const onFsChange = (): void => { applyFsScale(); };
+  document.addEventListener("fullscreenchange", onFsChange);
+
   const onResize = (): void => {
     centerStatus();
     layoutCombatHud();
+    applyFsScale();
     if (mapWidth > 0) centerCameraOnSelf();
   };
   app.renderer.on("resize", onResize);
@@ -2992,7 +3029,7 @@ export async function startGameScene(
     void client.start();
 
     // Lista de jugadores online: overlay arriba-derecha del segmento del mundo.
-    playerList = mountPlayerList(stageEl);
+    playerList = mountPlayerList(viewportBox);
 
     keyConfig = mountKeyConfig(root, (map) => {
       keymap = map;
@@ -3163,7 +3200,7 @@ export async function startGameScene(
 
     // El toast de invitación se monta en el stage (flota sobre el mundo); el
     // panel de party lo relocalizamos al slot del panel derecho (Arte 1).
-    partyUi = mountPartyUi(stageEl, {
+    partyUi = mountPartyUi(viewportBox, {
       onAcceptInvite: () => {
         const pkt: PartyAcceptRequest = { op: ClientToServerOp.PartyAccept };
         client?.send(pkt);
@@ -3364,6 +3401,8 @@ export async function startGameScene(
       rainAudio?.pause();
       rainEl?.remove();
       window.removeEventListener("resize", onResize);
+      document.removeEventListener("fullscreenchange", onFsChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
       frame.remove();
       craftUi?.destroy();
       questsUi?.destroy();
