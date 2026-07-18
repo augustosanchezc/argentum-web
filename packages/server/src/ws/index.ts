@@ -1599,9 +1599,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (now - s.lastUseAt < INTERVALS.use) return;
       if (def.type === "potion") {
         // AO Libre: las pociones (rojas) se spamean rápido — cooldown propio
-        // corto y tuneable (INTERVALS.potion). El único freno grande es no
-        // poder tomar poción JUSTO después de golpear (IntervaloGolpeUsar).
-        if (now - s.lastAttackAt < INTERVALS.golpeUsar) {
+        // corto y tuneable (INTERVALS.potion). El poteo es fluido incluso en
+        // combate: golpeUsar por defecto es 0 (no frena tras golpear); solo
+        // frena si el admin lo sube en el panel.
+        if (INTERVALS.golpeUsar > 0 && now - s.lastAttackAt < INTERVALS.golpeUsar) {
           consoleMsg(s, "¡Debes esperar unos momentos para tomar una poción!", "combate");
           return;
         }

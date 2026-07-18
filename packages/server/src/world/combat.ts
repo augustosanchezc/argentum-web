@@ -15,7 +15,8 @@ export const DEFAULT_INTERVALS: Readonly<Record<IntervalKey, number>> = {
   arrow: 1_400,      // IntervaloFlechasCazadores
   use: 125,          // IntervaloUserPuedeUsar (entre usos de cualquier item)
   potion: 125,       // Cooldown entre pociones (rojas spameables como el AO)
-  golpeUsar: 1_200,  // IntervaloGolpeUsar (no tomar poción justo tras golpear)
+  golpeUsar: 0,      // IntervaloGolpeUsar: 0 = poteo fluido (potear mientras peleás,
+                     //                    como el AO). Tuneable en el panel admin.
   magiaGolpe: 1_000, // IntervaloMagiaGolpe (golpear después de castear)
   golpeMagia: 1_000, // IntervaloGolpeMagia (castear después de golpear)
   npcAttack: 1_600,  // IntervaloNpcPuedeAtacar
