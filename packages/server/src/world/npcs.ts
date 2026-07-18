@@ -57,6 +57,8 @@ export interface NpcType {
   readonly goldMax: number;
   readonly drops: readonly NpcDrop[];
   readonly shopOffers: readonly number[];
+  // Sonidos de la criatura (Snd1/2/3 de NPCs.dat): al atacar y al morir.
+  readonly sounds: readonly number[];
 }
 
 // Item de oro (iORO del AO). El oro de un NPC viene de dos fuentes de NPCs.dat:
@@ -123,7 +125,14 @@ function toNpcType(number: number, d: NpcDefData): NpcType {
     goldMax: d.giveGld,
     drops,
     shopOffers: d.shopItems ?? [],
+    sounds: d.sounds ?? [],
   };
+}
+
+// Elige al azar uno de los sonidos de la criatura (Snd1/2/3), 0 si no tiene.
+export function randomNpcSound(type: NpcType): number {
+  if (type.sounds.length === 0) return 0;
+  return type.sounds[Math.floor(Math.random() * type.sounds.length)] ?? 0;
 }
 
 // Cache de NpcType por número de NPCs.dat.

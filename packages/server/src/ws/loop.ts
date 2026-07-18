@@ -20,7 +20,7 @@ import {
 import { trainSkill } from "../world/skill-training.js";
 import { isCriminal } from "../world/criminal.js";
 import { getMap, isWalkable } from "../world/maps.js";
-import { npcs, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
+import { npcs, randomNpcSound, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
 import { rerollCreatureType } from "../world/map-spawns.js";
 import { rollArmorDefenseFor } from "../world/inventory.js";
 import { broadcastToMap, killPlayer, stopMeditating } from "./broadcast.js";
@@ -83,6 +83,22 @@ function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number): boolean 
   return true;
 }
 
+// Elige un tile caminable y libre al azar del mapa, evitando `avoid` (para el
+// respawn aleatorio de criaturas: nunca reaparecen en el mismo lugar). Si en
+// varios intentos no encuentra, devuelve null y el caller cae al spawn fijo.
+function randomFreeTile(mapId: number, excludeNpcId: number, avoid: Vector2): Vector2 | null {
+  const map = getMap(mapId);
+  if (!map) return null;
+  for (let i = 0; i < 50; i += 1) {
+    const x = Math.floor(Math.random() * map.width);
+    const y = Math.floor(Math.random() * map.height);
+    if (x === avoid.x && y === avoid.y) continue;
+    const pos: Vector2 = { x, y };
+    if (isTileFree(mapId, pos, excludeNpcId)) return pos;
+  }
+  return null;
+}
+
 // Jugador vivo más cercano al NPC dentro de su radio de aggro.
 function nearestTarget(npc: NpcInstance): Session | null {
   let best: Session | null = null;
@@ -107,6 +123,8 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   const dirs = stepDirsToward(npc.position, target.position);
   if (dirs[0]) npc.direction = dirs[0];
   stopMeditating(target);
+  // Sonido de la criatura al golpear (rugido/Snd de NPCs.dat), 0 = sin sonido.
+  const snd = randomNpcSound(npc.type);
 
   // Impacto del AO (NpcImpacto): PoderAtaque del NPC contra la evasión del
   // jugador (+escudo). Si falla y hay escudo, puede rechazar el golpe.
@@ -126,6 +144,7 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
       hp: target.hp,
       maxHp: target.maxHp,
       ...(blocked ? { blocked: true } : { miss: true }),
+      ...(snd > 0 ? { wav: snd } : {}),
     };
     broadcastToMap(npc.mapId, missPkt);
     return;
@@ -143,6 +162,7 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
     amount,
     hp: target.hp,
     maxHp: target.maxHp,
+    ...(snd > 0 ? { wav: snd } : {}),
   };
   broadcastToMap(npc.mapId, damage);
 
@@ -228,7 +248,10 @@ function processNpcs(now: number): void {
       const typeChanged = rerollCreatureType(npc);
 
       npc.hp = npc.type.maxHp;
-      npc.position = { x: npc.spawn.x, y: npc.spawn.y };
+      // Respawn en posición ALEATORIA del mapa (nunca en el mismo lugar donde
+      // murió). Si no hay tile libre, cae al spawn original.
+      const respawnPos = randomFreeTile(npc.mapId, npc.id, npc.position);
+      npc.position = respawnPos ?? { x: npc.spawn.x, y: npc.spawn.y };
       npc.direction = "south";
       npc.deadUntil = 0;
       npc.targetCharacterId = null;

@@ -463,6 +463,7 @@ async function saveSpawns(){
 var giveTargetId = null;
 async function openChar(id){
   var c = await api("/admin/api/characters/"+id);
+  var ROLES = [[0,"Jugador"],[1,"Consejero"],[2,"Semidiós"],[3,"Dios"]];
   var html = "<button class='card__close' id='mClose'>✕</button><h2>"+esc(c.name)+" <span class='muted' style='font-size:12px'>#"+c.id+" · "+(CLASSES[c.classId]||c.classId)+" · "+(c.online?"online":"offline")+"</span></h2>";
   FIELDS.forEach(function(group){
     html += "<div class='sect'><h3>"+group[0]+"</h3><div class='grid'>";
@@ -473,10 +474,18 @@ async function openChar(id){
     html += "</div></div>";
   });
   html += "<div class='sect'><h3>Dar item</h3><div class='toolbar'><input type='text' id='giveSearch' placeholder='buscar item…' style='flex:1'><input type='number' id='giveQty' value='1' min='1' style='width:80px'></div><div class='give-results' id='giveResults'></div></div>";
+  html += "<div class='sect'><h3>Rango (rol GM)</h3><div class='toolbar' id='roleBtns'>"+ROLES.map(function(rr){ return "<button class='btn-sm"+(c.role===rr[0]?" btn-primary":"")+"' data-setrole='"+rr[0]+"'"+(c.role===rr[0]?" disabled":"")+">"+rr[1]+"</button>"; }).join("")+"</div><div class='muted' style='font-size:12px;margin-top:6px'>Cuenta: "+esc(c.email||"")+" · se aplica en vivo</div></div>";
   html += "<div class='sect' style='display:flex;gap:10px;justify-content:flex-end'>"+(c.online?"<button class='btn-sm' data-kick='"+c.id+"' style='margin-right:auto'>Kick (aplicar en vivo)</button>":"")+"<button id='mCancel'>Cerrar</button><button class='btn-primary' id='mSave'>Guardar cambios</button></div>";
   $("modalCard").innerHTML = html;
   $("modal").classList.add("open");
   giveTargetId = c.id;
+  var setRoleBtns = $("modalCard").querySelectorAll("[data-setrole]");
+  for(var ri=0; ri<setRoleBtns.length; ri++){ setRoleBtns[ri].onclick = async function(){
+    var nr = Number(this.dataset.setrole);
+    if(!confirm("¿Cambiar el rango de "+c.name+" a "+ROLES[nr][1]+"?")) return;
+    try{ await api("/admin/api/accounts/"+c.accountId+"/role", { method:"POST", body: JSON.stringify({ role:nr }) }); alert("Rango actualizado a "+ROLES[nr][1]+" (en vivo)."); openChar(c.id); }
+    catch(e){ alert("Error: "+e.message); }
+  }; }
   $("mClose").onclick = $("mCancel").onclick = function(){ $("modal").classList.remove("open"); };
   $("mSave").onclick = async function(){
     var body={}; var inputs=$("modalCard").querySelectorAll("input[data-f]");

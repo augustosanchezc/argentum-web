@@ -138,7 +138,7 @@ import {
 import { getMap, isWalkable, isWaterAt, setTileBlocked, setTileObject, type MapState } from "../world/maps.js";
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
-import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcs, petsOf, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
+import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcs, petsOf, randomNpcSound, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
 import { setPetAttackHandler } from "./loop.js";
 import { weather } from "../world/weather.js";
 import { accounts } from "../db/schema/accounts.js";
@@ -195,6 +195,8 @@ function buildMapDataPacket(map: MapState): MapData {
     faction: s.faction,
     guild: s.guildName ?? undefined,
     role: s.role,
+    level: s.level,
+    classId: s.classId,
     ...computeVisibleEquip(s),
   }));
   const npcEntities = npcs.inMap(map.id).map((n) => ({
@@ -669,6 +671,8 @@ setInterval(() => {
       faction: s.faction,
       guild: s.guildName ?? undefined,
       role: s.role,
+      level: s.level,
+      classId: s.classId,
       ...computeVisibleEquip(s),
     };
     broadcastToMap(home.id, spawnPkt, s.id);
@@ -986,6 +990,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         faction: s.faction,
         guild: s.guildName ?? undefined,
         role: s.role,
+        level: s.level,
+        classId: s.classId,
         ...computeVisibleEquip(s),
       };
       broadcastToMap(destMap.id, spawn, s.id);
@@ -1355,7 +1361,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (npc.hp === 0) {
         npc.deadUntil = now + npc.type.respawnMs;
         npc.targetCharacterId = null;
-        const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId };
+        const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId, wav: randomNpcSound(npc.type) };
         broadcastToMap(npc.mapId, death);
 
         // Oro: en AO el oro se dropea como item 12 de la tabla Drop (cada entrada
@@ -3637,6 +3643,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         faction: session.faction,
         guild: session.guildName ?? undefined,
         role: session.role,
+        level: session.level,
+        classId: session.classId,
         ...computeVisibleEquip(session),
       };
       broadcastToMap(map.id, spawn, session.id);

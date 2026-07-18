@@ -1,6 +1,7 @@
 import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture } from "pixi.js";
 import {
   ClientToServerOp,
+  CLASSES,
   getAoSpell,
   getClassSkill,
   getItem,
@@ -181,15 +182,19 @@ interface EntityVisual {
   container: Container;
   // Nombre de la entidad (para las líneas del log de combate).
   name: string;
-  // Etiqueta de nombre (debajo de los pies). Jugadores: siempre visible,
-  // azul ciudadano / rojo criminal. NPCs: solo al pasar el mouse.
+  // Etiqueta SOBRE la cabeza: "Lv. N" y la clase. Jugadores: siempre visible.
   label: Text;
+  // Nombre, DEBAJO del personaje (color por rol/criminal, como el de arriba).
+  nameLabel: Text;
   criminal: boolean;
   // Facción y clan — arman el tag bajo el nombre (el clan tiene prioridad).
   faction: number;
   guild: string | null;
   // Rol GM (0 jugador · 1 Consejero · 2 Semidiós · 3 Dios) — nombre en verde.
   role: number;
+  // Nivel y clase del jugador (para el label "Lv. N / Nombre - Clase").
+  level: number;
+  classId: number;
   // Habla sobre la cabeza (ChatOverHead del AO).
   overheadText: Text | null;
   overheadUntil: number;
@@ -581,17 +586,40 @@ export async function startGameScene(
     }
   }
 
+  // Barra de HP de jugador, estilo panel lateral (.ao-bar--hp): roja, bordes
+  // redondeados y un poco más larga. Siempre roja (la de NPCs va por tramos).
+  function drawPlayerHpBar(g: Graphics, hp: number, maxHp: number): void {
+    const w = 52;
+    const h = 6;
+    const x = -w / 2;
+    const frac = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
+    g.clear();
+    g.roundRect(x - 1, -1, w + 2, h + 2, 4)
+      .fill({ color: 0x0a0805, alpha: 0.8 })
+      .stroke({ width: 1, color: 0x2a1f14 });
+    if (frac > 0) {
+      g.roundRect(x, 0, w * frac, h, 3).fill({ color: 0xc94a3a });
+    }
+  }
+
   // El AO original no muestra barras de vida flotantes. Compromiso: la barra
   // aparece SOLO al recibir daño, por 3 segundos, y siempre por ENCIMA del
   // sprite (calculado con su altura real — nunca sobre la cara).
   const HP_BAR_SHOW_MS = 3_000;
   function showEntityHpBar(v: EntityVisual): void {
-    drawHpBar(v.hpBar, v.hp, v.maxHp);
-    v.hpBar.y = v.bodySprite
-      ? v.bodySprite.y - v.bodySprite.height - 10
-      : -34;
-    v.hpBar.visible = true;
-    v.hpBarUntil = performance.now() + HP_BAR_SHOW_MS;
+    if (v.kind === "player") {
+      // Jugadores: barra roja SIEMPRE visible, DEBAJO del nombre.
+      drawPlayerHpBar(v.hpBar, v.hp, v.maxHp);
+      v.hpBar.y = 30;
+      v.hpBar.visible = true;
+      v.hpBarUntil = 0;
+    } else {
+      // NPCs/criaturas: como el AO, solo unos segundos al recibir daño, arriba.
+      drawHpBar(v.hpBar, v.hp, v.maxHp);
+      v.hpBar.y = v.bodySprite ? v.bodySprite.y - v.bodySprite.height - 10 : -34;
+      v.hpBar.visible = true;
+      v.hpBarUntil = performance.now() + HP_BAR_SHOW_MS;
+    }
   }
 
   // Dibuja la figura humana orientada en `facing`. Se llama al crear y cada
@@ -674,7 +702,7 @@ export async function startGameScene(
     isSelf: boolean,
     kind: EntityKind,
     facing: Direction,
-  ): { container: Container; body: Graphics; hpBar: Graphics; label: Text } {
+  ): { container: Container; body: Graphics; hpBar: Graphics; label: Text; nameLabel: Text } {
     const c = new Container();
     const body = new Graphics();
     drawEntityBody(body, isSelf, kind, facing);
@@ -701,12 +729,30 @@ export async function startGameScene(
         stroke: { color: "#0a0805", width: 3 },
       }),
     });
-    // Como el AO original: el nombre va DEBAJO de los pies del personaje,
-    // y las criaturas/NPCs no muestran nombre (solo al pasar el mouse).
-    label.anchor.set(0.5, 0);
-    label.y = 15;
+    // Label SOBRE la cabeza: "Lv. N" y la clase (2 líneas).
+    // Las criaturas/NPCs solo muestran el nombre al pasar el mouse.
+    label.anchor.set(0.5, 1);
+    label.y = -42;
     if (kind !== "player") label.visible = false;
     c.addChild(label);
+
+    // Nombre DEBAJO del personaje (mismo estilo; se colorea por rol/criminal).
+    const nameLabel = new Text({
+      text: name,
+      resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
+      style: new TextStyle({
+        fill: labelFill,
+        fontFamily: "Verdana, Geneva, sans-serif",
+        fontSize: 10,
+        fontWeight: "bold",
+        align: "center",
+        stroke: { color: "#0a0805", width: 3 },
+      }),
+    });
+    nameLabel.anchor.set(0.5, 0);
+    nameLabel.y = 15;
+    if (kind !== "player") nameLabel.visible = false;
+    c.addChild(nameLabel);
 
     // Oculta por defecto (el AO no muestra barras flotantes); aparece unos
     // segundos al recibir daño — ver showEntityHpBar.
@@ -714,7 +760,7 @@ export async function startGameScene(
     hpBar.visible = false;
     c.addChild(hpBar);
 
-    return { container: c, body, hpBar, label };
+    return { container: c, body, hpBar, label, nameLabel };
   }
 
   function entityCenterPx(pos: Vector2): { x: number; y: number } {
@@ -742,9 +788,15 @@ export async function startGameScene(
     shieldAnim = 0,
     helmetAnim = 0,
     role = 0,
+    level = 1,
+    classId = 1,
   ): EntityVisual {
-    const { container, body, hpBar, label } = buildEntityVisual(name, isSelf, kind, facing);
-    if (kind === "player") label.style.fill = nameColor(role, criminal);
+    const { container, body, hpBar, label, nameLabel } = buildEntityVisual(name, isSelf, kind, facing);
+    if (kind === "player") {
+      const col = nameColor(role, criminal);
+      label.style.fill = col;
+      nameLabel.style.fill = col;
+    }
     // NPCs: nombre visible solo al pasar el mouse (como el AO).
     if (kind !== "player") {
       container.on("pointerover", () => { label.visible = true; });
@@ -766,6 +818,7 @@ export async function startGameScene(
       container,
       name,
       label,
+      nameLabel,
       criminal,
       faction,
       guild,
@@ -794,6 +847,8 @@ export async function startGameScene(
       tweenDuration: 0,
       isSelf,
       kind,
+      level,
+      classId,
       hp,
       maxHp,
       dead,
@@ -810,6 +865,7 @@ export async function startGameScene(
     };
     entityVisuals.set(id, visual);
     applyNameTag(visual);
+    if (kind === "player" && !dead) showEntityHpBar(visual);
     tryAttachCharSprites(visual);
     return visual;
   }
@@ -1331,7 +1387,7 @@ export async function startGameScene(
     for (const ent of data.entities) {
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
-      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0);
+      addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0, ent.level ?? 1, ent.classId ?? 1);
     }
     updateSelfHud();
   }
@@ -1453,13 +1509,15 @@ export async function startGameScene(
     // Los muertos SÍ caminan (fantasma del AO — para llegar al sacerdote).
     if (!own) return;
 
-    // Girar es INMEDIATO (responsivo): actualizamos la dirección ya, aunque el
-    // PASO tenga que esperar al cooldown. Antes girábamos recién en el próximo
-    // paso, y cambiar de dirección se sentía trabado (se demoraba hasta 200ms).
+    // El giro se aplica JUNTO con el paso (más abajo) para que el sprite no
+    // mire la nueva dirección ANTES de moverse (ese era el parpadeo). Excepción:
+    // si estamos QUIETOS giramos en el acto (turn-in-place responsivo; ahí no
+    // hay parpadeo porque no nos estamos deslizando a otra dirección).
     selfFacing = direction;
-    setEntityFacing(own, direction);
+    const midStep = own.tweenDuration > 0 && now - own.tweenStart < own.tweenDuration;
+    if (!midStep) setEntityFacing(own, direction);
 
-    // El PASO respeta el cooldown (el giro de arriba ya se aplicó).
+    // El PASO respeta el cooldown.
     if (now - lastLocalMoveAt < MOVE_COOLDOWN_MS) return;
 
     const delta = DELTAS[direction];
@@ -1479,6 +1537,9 @@ export async function startGameScene(
     stepToggle = !stepToggle;
     audio.play(stepToggle ? SND.paso1 : SND.paso2, 0.7);
 
+    // El giro coincide con el paso real (evita el parpadeo de dirección al
+    // cambiar de rumbo mientras se camina).
+    setEntityFacing(own, direction);
     // Prediccion: movemos el sprite YA (sin esperar el ACK).
     moveEntityTo(character.id, target);
 
@@ -1491,6 +1552,9 @@ export async function startGameScene(
   }
 
   function playSwing(v: EntityVisual, dir: Direction): void {
+    // Girar el sprite hacia donde se efectúa el golpe (antes solo hacía el
+    // lunge y la entidad quedaba mirando su dirección anterior).
+    setEntityFacing(v, dir);
     const delta = DELTAS[dir];
     v.swingStart = performance.now();
     v.swingDx = delta.x;
@@ -2247,11 +2311,28 @@ export async function startGameScene(
   }
 
   function handleDamage(p: Damage): void {
+    // Rugido de la criatura atacante (Snd de NPCs.dat), si el server lo mandó.
+    if (p.wav && p.wav > 0) audio.play(p.wav, 0.75);
     const targetId = p.targetId as unknown as number;
     const attackerId = p.attackerId as unknown as number;
     const target = entityVisuals.get(targetId);
     const targetIsSelf = targetId === character.id;
     const attackerIsSelf = attackerId === character.id;
+
+    // Swing + GIRO del atacante hacia el objetivo — SIEMPRE, acierte o falle.
+    // (Antes esto vivía después del `return` del fallo, así que al fallar la
+    // criatura/jugador no giraba hacia donde pegaba.) El propio ya se animó
+    // localmente al enviar el ataque.
+    if (!attackerIsSelf && target) {
+      const attacker = entityVisuals.get(attackerId);
+      if (attacker) {
+        const dx = Math.sign(target.position.x - attacker.position.x);
+        const dy = Math.sign(target.position.y - attacker.position.y);
+        const dir: Direction =
+          dx === 1 ? "east" : dx === -1 ? "west" : dy === -1 ? "north" : "south";
+        playSwing(attacker, dir);
+      }
+    }
 
     if (target) {
       target.hp = p.hp;
@@ -2299,18 +2380,6 @@ export async function startGameScene(
       }
     }
 
-    // Swing del atacante (el propio ya lo animo localmente al enviar).
-    if (!attackerIsSelf && target) {
-      const attacker = entityVisuals.get(attackerId);
-      if (attacker) {
-        const dx = Math.sign(target.position.x - attacker.position.x);
-        const dy = Math.sign(target.position.y - attacker.position.y);
-        const dir: Direction =
-          dx === 1 ? "east" : dx === -1 ? "west" : dy === -1 ? "north" : "south";
-        playSwing(attacker, dir);
-      }
-    }
-
     if (targetIsSelf) updateSelfHud();
   }
 
@@ -2322,7 +2391,8 @@ export async function startGameScene(
       v.hp = 0;
       v.hpBar.visible = false;
       v.hpBarUntil = 0;
-      audio.play(SND.muerte, 0.8);
+      // Criaturas: su propio sonido (Snd de NPCs.dat). Jugadores: grito humano.
+      audio.play(p.wav && p.wav > 0 ? p.wav : v.kind === "player" ? SND.muerte : 0, 0.8);
       if (v.kind === "player") {
         // Los jugadores no desaparecen (fantasma del AO): sólo se atenúan.
         v.body.alpha = 0.35;
@@ -2562,6 +2632,7 @@ export async function startGameScene(
       if (v.kind === "player") {
         // Los GM conservan su verde; el criminal solo pinta a jugadores.
         v.label.style.fill = nameColor(v.role, p.criminal);
+        v.nameLabel.style.fill = nameColor(v.role, p.criminal);
       }
     }
     // Badge solo para el propio personaje.
@@ -2652,6 +2723,9 @@ export async function startGameScene(
     panelStats.mana = p.mana ?? 0;
     panelStats.maxMana = p.maxMana ?? 0;
     panelStats.level = p.level;
+    // Mantener el label propio (Lv. N) al día al subir de nivel.
+    const selfVisual = entityVisuals.get(character.id);
+    if (selfVisual) { selfVisual.level = p.level; applyNameTag(selfVisual); }
     panelStats.xpInto = p.xp;
     panelStats.xpForNext = p.xpForNextLevel;
     panelStats.hunger = p.hunger ?? 100;
@@ -2693,6 +2767,7 @@ export async function startGameScene(
       v.container.visible = true; // criatura oculta al morir vuelve a mostrarse
       v.hpBar.visible = false;
       v.hpBarUntil = 0;
+      if (v.kind === "player") showEntityHpBar(v);
       snapEntityTo(id, p.position);
     }
     if (id === character.id) {
@@ -2730,15 +2805,17 @@ export async function startGameScene(
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
-    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0);
+    addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0, p.level ?? 1, p.classId ?? 1);
     refreshPlayerList();
   }
 
-  // Tag bajo el nombre: <Clan> tiene prioridad; si no, <Armada Real>/<Legión Oscura>.
+  // Label sobre la cabeza: "Lv. N" arriba y "Nombre - Clase" abajo (siempre
+  // visible para jugadores). Ej: "Lv. 32" / "Jasmine - Guerrero".
   function applyNameTag(v: EntityVisual): void {
     if (v.kind !== "player") return;
-    const tag = v.guild ?? (v.faction > 0 ? (v.faction === 1 ? "Armada Real" : "Legión Oscura") : null);
-    v.label.text = tag ? `${v.name}\n<${tag}>` : v.name;
+    const className = CLASSES[v.classId]?.name ?? "";
+    v.label.text = className ? `Lv. ${v.level.toString()}\n${className}` : `Lv. ${v.level.toString()}`;
+    v.nameLabel.text = v.name;
   }
 
   function handleFactionUpdate(p: FactionUpdate): void {

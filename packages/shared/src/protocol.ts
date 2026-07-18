@@ -207,6 +207,9 @@ export interface MapData {
     readonly guild?: string;
     // Rol GM (0 jugador · 1 Consejero · 2 Semidiós · 3 Dios) — nombre en verde.
     readonly role?: number;
+    // Jugadores: nivel y clase, para el label "Lv. N / Nombre - Clase".
+    readonly level?: number;
+    readonly classId?: number;
     // Overlays de equipo visibles (arma/escudo/casco).
     readonly weaponAnim?: number;
     readonly shieldAnim?: number;
@@ -248,6 +251,9 @@ export interface EntitySpawn {
   readonly guild?: string;
   // Rol GM (0 jugador · 1 Consejero · 2 Semidiós · 3 Dios) — nombre en verde.
   readonly role?: number;
+  // Jugadores: nivel y clase, para el label "Lv. N / Nombre - Clase".
+  readonly level?: number;
+  readonly classId?: number;
   // Overlays de equipo visibles (arma/escudo/casco).
   readonly weaponAnim?: number;
   readonly shieldAnim?: number;
@@ -324,12 +330,17 @@ export interface Damage {
   readonly blocked?: boolean;
   // Daño extra de apuñalada incluido en amount (para el mensaje del log).
   readonly stab?: boolean;
+  // Sonido del atacante si es criatura (Snd de NPCs.dat): rugido al golpear.
+  readonly wav?: number;
 }
 
 // S→C: el objetivo murió (HP llegó a 0). Broadcast al mapa.
 export interface Death {
   readonly op: ServerToClientOp.Death;
   readonly id: EntityId;
+  // Sonido al morir. Criaturas: su Snd propio (NPCs.dat). Ausente = el cliente
+  // usa el grito humano por defecto (jugadores).
+  readonly wav?: number;
 }
 
 // S→C: un personaje muerto reapareció en su punto de spawn con HP al máximo.

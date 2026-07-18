@@ -286,6 +286,13 @@ function generateNpcs() {
       if (dm) drops.push({ item: parseInt(dm[1]), qty: parseInt(dm[2]) });
     }
 
+    // Sonidos del NPC (Snd1/2/3 de NPCs.dat): los reproduce al atacar y al morir.
+    const sounds = [];
+    for (let i = 1; i <= 3; i++) {
+      const s = num(m, `snd${i}`);
+      if (s > 0) sounds.push(s);
+    }
+
     const parts = [
       `name: ${q(name)}`,
       `body: ${num(m, "body")}`,
@@ -313,6 +320,7 @@ function generateNpcs() {
     if (drops.length > 0) {
       parts.push(`drops: [${drops.map((d) => `{ item: ${d.item}, qty: ${d.qty} }`).join(", ")}]`);
     }
+    if (sounds.length > 0) parts.push(`sounds: [${sounds.join(", ")}]`);
 
     lines.push(`  ${number}: { ${parts.join(", ")} },`);
     count++;
@@ -348,6 +356,8 @@ export interface NpcDefData {
   readonly domable?: number;
   readonly shopItems?: readonly number[];
   readonly drops?: ReadonlyArray<{ readonly item: number; readonly qty: number }>;
+  // Sonidos del NPC (Snd1/2/3): se reproducen al atacar y al morir la criatura.
+  readonly sounds?: readonly number[];
 }
 
 export const NPC_DEFS: Record<number, NpcDefData> = {
