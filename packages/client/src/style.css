@@ -864,6 +864,21 @@ h3 {
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.55);
 }
 .ao-stats-panel--open { display: flex; }
+.ao-sp__close {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: #1e1c2a;
+  border: 1px solid #3b3852;
+  color: #c8c4de;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ao-sp__close:hover { background: #2a2838; color: #fff; }
 .ao-sp__head {
   border-bottom: 1px solid #2b2938;
   padding-bottom: 8px;
@@ -1277,6 +1292,13 @@ h3 {
   font-size: 11px;
 }
 .ao-keyconfig__hint { color: var(--text-faint); font-size: 10px; }
+/* Sección de audio dentro de la configuración: música y sonido/ambiente. */
+.ao-keyconfig__audio { margin-top: 12px; padding-top: 10px; border-top: 1px solid #2b2938; }
+.ao-keyconfig__audiohead { font-size: 12px; font-weight: 700; color: #b8b4cc; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+.ao-keyconfig__audiorow { display: flex; align-items: center; gap: 10px; margin: 6px 0; }
+.ao-keyconfig__audiolbl { flex: 0 0 150px; display: flex; align-items: center; gap: 7px; font-size: 13px; color: #d2cee2; cursor: pointer; }
+.ao-keyconfig__audiolbl input { accent-color: #4f8ff0; }
+.ao-keyconfig__slider { flex: 1; accent-color: #4f8ff0; cursor: pointer; }
 
 /* ── Panel: nivel, fila de oro y minimapa (layout referencia AO clásico) ── */
 .ao-panel__level {
@@ -2500,8 +2522,8 @@ html, body { background: #050506; height: 100%; }
 }
 .ao-id__cfg:hover { background: #2a2838; color: #fff; }
 .ao-id__xprow { display: flex; justify-content: space-between; align-items: baseline; margin: 9px 0 4px; }
-.ao-id__xplbl { font-size: 10px; letter-spacing: 1.5px; color: #8a86a4; }
-.ao-id__xppct { font-size: 10px; color: #a8d8a8; }
+.ao-id__xplbl { font-size: 12px; letter-spacing: 1.2px; color: #8a86a4; }
+.ao-id__xppct { font-size: 15px; font-weight: 700; color: #a8d8a8; }
 .ao-frame .ao-box--id .ao-bar--xp {
   height: 8px; border-radius: 4px; background: #0d0c12; border: 1px solid #000; overflow: hidden; position: relative;
 }
@@ -2791,7 +2813,7 @@ html, body { background: #050506; height: 100%; }
 }
 .ao-home__logout:hover { color: #fff; border-color: #2f6fd6; }
 .ao-home__body { max-width: 1120px; margin: 0 auto; padding: 26px 26px 60px; }
-.ao-home__cards { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.ao-home__cards { display: grid; grid-template-columns: 1fr; gap: 20px; }
 .ao-home__card {
   position: relative; border-radius: 16px; padding: 22px 24px; min-height: 150px;
   border: 1px solid #223; background: rgba(18, 24, 44, 0.55); overflow: hidden;
@@ -2917,153 +2939,27 @@ html, body { background: #050506; height: 100%; }
   color: #fff; font-weight: 700; font-size: 12px; cursor: pointer;
 }
 .ao-macropick__freebtn:hover { filter: brightness(1.1); }
+/* Fila elegida (pendiente de Guardar) + pie con botón Guardar. */
+.ao-macropick__row--sel { border-color: #2f6fd6; background: rgba(47, 111, 214, 0.22); }
+.ao-macropick__foot { display: flex; justify-content: flex-end; padding: 8px 12px 10px; border-top: 1px solid #1e2740; margin-top: 4px; }
+.ao-macropick__savebtn {
+  padding: 8px 20px; border-radius: 8px; border: 1px solid #4f8ff0;
+  background: linear-gradient(#3f7fe0, #2f6fd6); color: #fff; font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.ao-macropick__savebtn:hover { filter: brightness(1.1); }
 
 /* Con 11 slots la barra es más ancha: reducir un poco el slot y permitir wrap. */
 .ao-seg--macros .ao-macrobar { flex-wrap: nowrap; justify-content: center; }
 .ao-seg--macros .ao-macrobar__slot { width: 54px; height: 54px; }
 
 /* ══════════════════════════════════════════════════════════════════════
-   PORTAL DE ENTRADA (login + selección/creación de personaje) — skin AO
-   ─────────────────────────────────────────────────────────────────────
-   El AO clásico entra por la "pantalla de conexión": la escena de batalla
-   con el título ARGENTUM ONLINE. Reponemos ese fondo y vestimos el panel
-   con marco de bronce y pergamino cálido, en vez del navy genérico "arte 4".
-   Todo va scopeado bajo .overlay para NO tocar la UI in-game (que sigue azul).
-   Gana al bloque navy de más arriba por especificidad (.overlay .x) + orden.
+   PORTAL DE ENTRADA (login + selección/creación de personaje).
+   Fondo AZUL OSCURO homogéneo con el resto del cliente (home/HUD "arte 4").
+   El panel, botones y tarjetas los pinta el tema navy de más arriba; acá solo
+   fijamos el fondo azul para que todo el flujo previo al juego sea consistente.
    ══════════════════════════════════════════════════════════════════════ */
 .overlay {
-  /* Escena de batalla del AO detrás del panel, oscurecida para leer el HUD. */
   background:
-    linear-gradient(rgba(8, 5, 2, 0.60), rgba(8, 5, 2, 0.80)),
-    url("/ao-assets/ui/pantalla-conexion.png") center center / cover no-repeat fixed;
-  /* Paleta cálida local del portal (no filtra a in-game). */
-  --ao-gold: #d8b45a;
-  --ao-gold-bright: #f2d98d;
-  --ao-bronze: #8a6428;
-  --ao-bronze-dk: #4a3316;
-  --ao-parch: #efe1bf;
-  --ao-ink: #1c1206;
+    radial-gradient(1200px 520px at 50% -10%, #1a2340 0%, transparent 60%),
+    linear-gradient(180deg, #0c0e18 0%, #0a0b12 100%);
 }
-
-.overlay .card {
-  background:
-    radial-gradient(120% 80% at 50% 0%, rgba(90, 60, 24, 0.22), transparent 60%),
-    linear-gradient(160deg, rgba(34, 23, 12, 0.94), rgba(18, 11, 5, 0.96));
-  border: 2px solid var(--ao-bronze);
-  border-radius: 6px;
-  /* Doble filete: hairline dorado interno + relieve + sombra profunda. */
-  box-shadow:
-    inset 0 0 0 1px rgba(240, 214, 138, 0.18),
-    inset 0 2px 24px rgba(0, 0, 0, 0.55),
-    0 26px 70px rgba(0, 0, 0, 0.7);
-  backdrop-filter: blur(2px);
-}
-.overlay .card::before {
-  height: 3px;
-  background: linear-gradient(90deg, transparent, var(--ao-gold), transparent);
-  border-radius: 6px 6px 0 0;
-}
-
-.overlay .brand-title {
-  font-family: Georgia, "Cinzel", serif;
-  color: var(--ao-gold-bright);
-  background: linear-gradient(180deg, #f6e6b0, #c99a3c);
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  letter-spacing: 0.06em;
-  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
-}
-.overlay .brand-sub { color: var(--ao-parch); opacity: 0.72; }
-
-/* Botón principal: piedra/bronce cálido con texto oscuro grabado. */
-.overlay .button {
-  background: linear-gradient(180deg, #e6c874, #b07f2e);
-  color: var(--ao-ink);
-  border: 1px solid #f0d98d;
-  text-shadow: 0 1px 0 rgba(255, 245, 210, 0.35);
-}
-.overlay .button:hover:not(:disabled) {
-  background: linear-gradient(180deg, #f2d98d, #c68f34);
-  box-shadow: 0 6px 20px rgba(216, 180, 90, 0.35);
-  filter: none;
-}
-.overlay .button:disabled {
-  background: rgba(40, 28, 14, 0.7);
-  color: #8a744c;
-  border-color: var(--ao-bronze-dk);
-}
-.overlay .button-secondary {
-  background: rgba(30, 20, 10, 0.6);
-  color: var(--ao-parch);
-  border: 1px solid var(--ao-bronze);
-}
-.overlay .button-secondary:hover:not(:disabled) {
-  background: rgba(46, 32, 16, 0.8);
-  color: var(--ao-gold-bright);
-  border-color: var(--ao-gold);
-}
-.overlay .link-button { color: var(--ao-gold); text-decoration-color: var(--ao-bronze); }
-.overlay .link-button:hover { color: var(--ao-gold-bright); }
-
-.overlay .divider { color: #9a7f4e; }
-.overlay .divider::before, .overlay .divider::after { background: var(--ao-bronze); opacity: 0.5; }
-
-/* Campos: fondo tinta con foco dorado. */
-.overlay .form-row input,
-.overlay .create-form input {
-  background: rgba(10, 6, 2, 0.75);
-  border: 1px solid var(--ao-bronze);
-  color: var(--ao-parch);
-}
-.overlay .form-row input::placeholder,
-.overlay .create-form input::placeholder { color: #8a744c; }
-.overlay .form-row input:focus,
-.overlay .create-form input:focus {
-  border-color: var(--ao-gold);
-  box-shadow: 0 0 0 3px rgba(216, 180, 90, 0.18);
-}
-.overlay .form-row label { color: var(--ao-parch); opacity: 0.8; }
-.overlay .consent-label { color: var(--ao-parch); opacity: 0.85; }
-.overlay .consent-label a { color: var(--ao-gold); }
-.overlay .consent-label input[type="checkbox"] { accent-color: var(--ao-gold); }
-
-/* Selectores de género/raza/clase/cabeza. */
-.overlay .opt-btn {
-  background: rgba(22, 14, 6, 0.7);
-  border: 1px solid var(--ao-bronze);
-  color: var(--ao-parch);
-}
-.overlay .opt-btn:hover { border-color: var(--ao-gold); background: rgba(40, 27, 12, 0.8); }
-.overlay .opt-btn.active {
-  background: linear-gradient(180deg, #e6c874, #b07f2e);
-  color: var(--ao-ink);
-  border-color: #f0d98d;
-}
-.overlay .opt-lbl, .overlay .head-lbl { color: #b79a63; }
-.overlay .opt-desc { color: var(--ao-parch); opacity: 0.72; }
-.overlay .attr-line { color: var(--ao-gold-bright); }
-
-/* Preview del sprite: nicho de piedra con halo cálido. */
-.overlay .create-preview {
-  background: radial-gradient(circle at 50% 80%, rgba(90, 60, 24, 0.28), rgba(10, 6, 2, 0.85));
-  border: 1px solid var(--ao-bronze);
-}
-.overlay .create-preview .char-preview__box {
-  background: radial-gradient(circle at 50% 78%, rgba(216, 180, 90, 0.18), transparent 70%);
-}
-
-/* Tarjetas de personaje. */
-.overlay .char-card {
-  background: rgba(24, 16, 7, 0.72);
-  border: 1px solid var(--ao-bronze);
-}
-.overlay .char-card:hover { border-color: var(--ao-gold); }
-.overlay .char-card.selected {
-  border-color: var(--ao-gold-bright);
-  box-shadow: 0 0 0 1px var(--ao-gold-bright), 0 0 20px rgba(216, 180, 90, 0.35);
-}
-.overlay .char-card.empty { background: rgba(12, 8, 3, 0.5); }
-.overlay .char-name { color: var(--ao-parch); }
-.overlay .char-level { color: var(--ao-gold); }
-.overlay .char-meta { color: #9a7f4e; }

@@ -94,7 +94,7 @@ import { mountCraft, type CraftHandle } from "../ui/craft";
 import { mountInventory, type InventoryHandle, type PanelStats } from "../ui/inventory";
 import { mountKeyConfig, type KeyConfigHandle } from "../ui/key-config";
 import { loadKeymap, type Keymap } from "../ui/keybinds";
-import { mountMacroBar, type MacroBarHandle } from "../ui/macro-bar";
+import { mountMacroBar, type MacroBarHandle, type MacroSlot } from "../ui/macro-bar";
 import { mountMinimap, type MinimapHandle } from "../ui/minimap";
 import { mountWorldMap, type WorldMapHandle } from "../ui/world-map";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
@@ -196,7 +196,8 @@ interface EntityVisual {
   level: number;
   classId: number;
   // Habla sobre la cabeza (ChatOverHead del AO).
-  overheadText: Text | null;
+  // Burbuja de diálogo (globo + texto) sobre la cabeza.
+  overheadText: Container | null;
   overheadUntil: number;
   // Aura de meditación (FX en loop) y estado invisible.
   meditateFx: FxHandle | null;
@@ -1489,6 +1490,8 @@ export async function startGameScene(
   // Nivel actual del personaje (para detectar subidas reales, no el StatsUpdate
   // inicial del login).
   let prevLevel = character.level;
+  // Puntos de atributo sin asignar del último StatsUpdate (para el delta al subir de nivel).
+  let prevStatPoints = 0;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   // Alternador de sonido de pasos (23/24 como el cliente original).
@@ -1708,6 +1711,10 @@ export async function startGameScene(
     selectedSpellId = spellId;
     if (spellId !== null) armedTool = null;
     app.canvas.style.cursor = spellId !== null ? "crosshair" : "default";
+    // Que las entidades (cuyo cursor es "pointer") NO pisen la cruz al pasarles
+    // el mouse por encima durante el casteo: mapeamos "pointer" → "crosshair"
+    // mientras se apunta, y lo restauramos al desarmar.
+    app.renderer.events.cursorStyles.pointer = spellId !== null ? "crosshair" : "pointer";
     if (spellId !== null) {
       const spell = getAoSpell(spellId);
       castBanner.textContent = `⚡ Lanzando ${spell?.name ?? "hechizo"} — click en el objetivo · Esc cancela`;
@@ -1728,6 +1735,9 @@ export async function startGameScene(
     armedTool = item;
     if (item !== null) selectedSpellId = null;
     app.canvas.style.cursor = item !== null ? "crosshair" : "default";
+    // Igual que en el casteo: la herramienta armada mantiene la cruz aunque el
+    // mouse pase sobre una entidad (árbol/roca/agua tienen cursor propio).
+    app.renderer.events.cursorStyles.pointer = item !== null ? "crosshair" : "pointer";
     if (item !== null) {
       castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · Esc cancela`;
       castBanner.classList.add("ao-castbanner--on");
@@ -1991,10 +2001,10 @@ export async function startGameScene(
     if (music <= 0) return;
     const el = new Audio(`/ao-assets/mp3/${music.toString()}.mp3`);
     el.loop = true;
-    el.volume = 0.3;
+    el.volume = audio.musicVol;
     musicEl = el;
     // Si el autoplay está bloqueado, el unlock del primer gesto la arranca.
-    void el.play().catch(() => undefined);
+    if (audio.musicOn) void el.play().catch(() => undefined);
   }
 
   // ── Lluvia global (/LLUVIA de GM — overlay + loop lluviaout.wav) ───────
@@ -2007,8 +2017,8 @@ export async function startGameScene(
       root.appendChild(rainEl);
       rainAudio = new Audio("/ao-assets/wav/lluviaout.wav");
       rainAudio.loop = true;
-      rainAudio.volume = 0.45;
-      void rainAudio.play().catch(() => undefined);
+      rainAudio.volume = audio.volume;
+      if (audio.sfxOn) void rainAudio.play().catch(() => undefined);
       chat?.appendMessage({ fromName: "", text: "Comienza a llover.", timestamp: Date.now(), isSelf: false, kind: "normal" });
     } else if (!raining && rainEl) {
       rainEl.remove();
@@ -2018,6 +2028,21 @@ export async function startGameScene(
       chat?.appendMessage({ fromName: "", text: "Deja de llover.", timestamp: Date.now(), isSelf: false, kind: "normal" });
     }
   }
+
+  // Aplica los settings de audio (config) a la música y la lluvia en vivo.
+  function applyAudioSettings(): void {
+    if (musicEl) {
+      musicEl.volume = audio.musicVol;
+      if (audio.musicOn) void musicEl.play().catch(() => undefined);
+      else musicEl.pause();
+    }
+    if (rainAudio) {
+      rainAudio.volume = audio.volume;
+      if (!audio.sfxOn) rainAudio.pause();
+      else if (rainAudio.paused) void rainAudio.play().catch(() => undefined);
+    }
+  }
+  audio.onChange = applyAudioSettings;
 
   // Los navegadores bloquean el audio hasta el primer gesto del usuario.
   const unlockAudio = (): void => {
@@ -2089,7 +2114,7 @@ export async function startGameScene(
       // Expirar el habla sobre la cabeza.
       if (v.overheadText && now >= v.overheadUntil) {
         v.container.removeChild(v.overheadText);
-        v.overheadText.destroy();
+        v.overheadText.destroy({ children: true });
         v.overheadText = null;
       }
     }
@@ -2268,28 +2293,45 @@ export async function startGameScene(
   function showOverheadText(v: EntityVisual, text: string): void {
     if (v.overheadText) {
       v.container.removeChild(v.overheadText);
-      v.overheadText.destroy();
+      v.overheadText.destroy({ children: true });
       v.overheadText = null;
     }
-    const t = new Text({
+    // Texto oscuro dentro de un globo claro (burbuja de diálogo).
+    const label = new Text({
       text,
       resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
-        fill: "#f2f2f2",
+        fill: "#141414",
         fontFamily: "Verdana, Geneva, sans-serif",
         fontSize: 9,
         fontWeight: "bold",
         align: "center",
-        stroke: { color: "#0a0805", width: 3 },
         wordWrap: true,
-        wordWrapWidth: 110,
+        wordWrapWidth: 108,
       }),
     });
-    t.anchor.set(0.5, 1);
-    // Sobre la cabeza: arriba del sprite (o de la silueta fallback).
-    t.y = v.bodySprite ? v.bodySprite.y - v.bodySprite.height - 4 : -36;
-    v.container.addChild(t);
-    v.overheadText = t;
+    label.anchor.set(0.5, 0.5);
+    const padX = 6;
+    const padY = 4;
+    const w = Math.ceil(label.width) + padX * 2;
+    const h = Math.ceil(label.height) + padY * 2;
+    // El globo se inclina hacia adelante según la dirección que mira el personaje;
+    // la cola apunta de vuelta hacia la boca.
+    const dx = v.facing === "east" ? 12 : v.facing === "west" ? -12 : 0;
+    const tailX = Math.max(-w / 2 + 5, Math.min(w / 2 - 5, -dx));
+    const g = new Graphics();
+    g.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: 0xf6f4ec, alpha: 0.8 }).stroke({ width: 1.5, color: 0x141414 });
+    // Cola triangular (fill que solapa el borde inferior → se ve continua con el globo).
+    g.moveTo(tailX - 5, h / 2 - 2).lineTo(tailX, h / 2 + 6).lineTo(tailX + 5, h / 2 - 2).fill({ color: 0xf6f4ec, alpha: 0.8 });
+    const bubble = new Container();
+    bubble.addChild(g);
+    bubble.addChild(label);
+    // Sobre la cabeza (arriba del sprite o de la silueta fallback), inclinado.
+    const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
+    bubble.x = dx;
+    bubble.y = headTop - 8 - h / 2;
+    v.container.addChild(bubble);
+    v.overheadText = bubble;
     // Duración tipo AO: base + tiempo de lectura por caracteres.
     v.overheadUntil = performance.now() + 2_500 + text.length * 60;
   }
@@ -2301,6 +2343,8 @@ export async function startGameScene(
       text: p.text,
       timestamp: p.timestamp,
       isSelf: fromId === character.id,
+      // Grito (/gritar): naranja destacado.
+      ...(p.yell ? { color: "#f0a030" } : {}),
     });
     const v = entityVisuals.get(fromId);
     if (v) showOverheadText(v, p.text);
@@ -2707,10 +2751,17 @@ export async function startGameScene(
       const cls = p.classN ? ` [${p.classN}]` : "";
       line = `Ves a ${p.name}${p.clan ? ` <${p.clan}>` : ""}${cls} [Nivel: ${p.level.toString()}] - ${estado}`;
     }
+    // Descripción del personaje (sistema /desc del AO), si tiene una.
+    if (p.description) line += ` - "${p.description}"`;
     chat?.appendMessage({ fromName: "", text: line, timestamp: Date.now(), isSelf: false, kind: "global", color });
   }
 
   function handleStatsUpdate(p: StatsUpdate): void {
+    // Deltas para el aviso de subir de nivel (calculados ANTES de pisar los viejos).
+    const dHp = p.maxHp - panelStats.maxHp;
+    const dMana = (p.maxMana ?? 0) - panelStats.maxMana;
+    const dSta = (p.maxSta ?? 0) - panelStats.maxSta;
+    const dPts = (p.statPoints ?? 0) - prevStatPoints;
     // Sincroniza HP propio (p. ej. curación al subir de nivel) y las barras.
     const own = entityVisuals.get(character.id);
     if (own) {
@@ -2740,11 +2791,18 @@ export async function startGameScene(
     pushPanelStats();
     statsPanel?.update(p);
     if (p.level > prevLevel) {
-      // Subir de nivel: SOLO aviso en el chat (sin cartel/popup en pantalla).
+      // Subir de nivel: aviso en el chat global con el desglose de lo ganado.
       audio.play(SND.nivel, 0.9);
-      chat?.appendMessage({ fromName: "", text: `¡Has subido a nivel ${p.level.toString()}!`, timestamp: Date.now(), isSelf: false, kind: "global" });
+      const gains: string[] = [];
+      if (dHp > 0) gains.push(`+${dHp.toString()} vida`);
+      if (dMana > 0) gains.push(`+${dMana.toString()} maná`);
+      if (dSta > 0) gains.push(`+${dSta.toString()} energía`);
+      if (dPts > 0) gains.push(`+${dPts.toString()} pts de atributo`);
+      const extra = gains.length > 0 ? ` — ${gains.join(" · ")}` : "";
+      chat?.appendMessage({ fromName: "", text: `¡Has subido a nivel ${p.level.toString()}!${extra}`, timestamp: Date.now(), isSelf: false, kind: "global" });
       prevLevel = p.level;
     }
+    prevStatPoints = p.statPoints ?? 0;
     // Si la skill de clase no estaba seteada todavía, cargarla ahora.
     if (p.classId && p.classId !== 0 && classSkillId === 0) {
       const skill = getClassSkill(p.classId);
@@ -3051,7 +3109,11 @@ export async function startGameScene(
           setArmedSpell(slot.id);
         }
       },
-    });
+      // Persistir la config de macros en el server (no se pierde al reloguear).
+      onSave: (slots) => {
+        client?.send({ op: ClientToServerOp.SaveMacros, macros: slots });
+      },
+    }, character.macros as ReadonlyArray<MacroSlot | null> | undefined);
 
     shop = mountShop(root, {
       onBuy: (item, qty) => {
@@ -3166,6 +3228,20 @@ export async function startGameScene(
         if (!client) return;
         // Comandos del AO clásico.
         const cmd = text.trim().toLowerCase();
+        // /salir → volver a la selección de personaje.
+        if (cmd === "/salir") { onChangeCharacter(); return; }
+        // /est → estadísticas del personaje en la consola (como el /EST del AO).
+        if (cmd === "/est") {
+          const clsName = CLASSES[character.classId ?? 1]?.name ?? "";
+          const st = panelStats;
+          chat?.appendMessage({ fromName: "", text: `${character.name}${clsName ? ` — ${clsName}` : ""} · Nivel ${st.level.toString()} · Vida ${st.hp.toString()}/${st.maxHp.toString()} · Maná ${st.mana.toString()}/${st.maxMana.toString()} · Energía ${st.sta.toString()}/${st.maxSta.toString()} · FUE ${st.str.toString()} · AGI ${st.agi.toString()}`, timestamp: Date.now(), isSelf: false, kind: "combate" });
+          return;
+        }
+        // /ayuda → lista de comandos disponibles.
+        if (cmd === "/ayuda") {
+          chat?.appendMessage({ fromName: "", text: "Comandos: /salir · /est · /desc <texto> · /online · /uptime · /motd · /gritar <texto> · /gm <texto> · /meditar · /descansar · /seg · /hogar · /ocultarse · /domar · /amigos · /w <nombre> <msg> · /fundarclan <nombre> · /invitarclan <nombre> · /aceptarclan · /salirclan · /cmsg <msg>", timestamp: Date.now(), isSelf: false, kind: "global" });
+          return;
+        }
         if (cmd === "/seg") {
           client.send({ op: ClientToServerOp.SafeToggle } satisfies SafeToggleRequest);
           return;
@@ -3283,6 +3359,7 @@ export async function startGameScene(
       deathPanel.remove();
       blindOverlay.remove();
       npcInfoEl?.remove();
+      audio.onChange = null;
       musicEl?.pause();
       rainAudio?.pause();
       rainEl?.remove();

@@ -11,10 +11,8 @@ interface HomeCallbacks {
 const NAV = [
   { key: "inicio", label: "Inicio", icon: "⌂" },
   { key: "personajes", label: "Personajes", icon: "☰" },
-  { key: "arenas", label: "Arenas", icon: "⚔" },
   { key: "ranking", label: "Ranking", icon: "🏆" },
   { key: "wiki", label: "Wiki", icon: "📖" },
-  { key: "discord", label: "Discord", icon: "💬" },
 ] as const;
 
 // Secciones todavía no implementadas → placeholder "próximamente".
@@ -30,7 +28,7 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
 
   wrap.innerHTML = `
     <header class="ao-home__top">
-      <div class="ao-home__brand"><span class="ao-home__logo">AO</span> AO Web</div>
+      <div class="ao-home__brand"><span class="ao-home__logo">AT</span> AoTum</div>
       <nav class="ao-home__nav">${navButtons}</nav>
       <div class="ao-home__account">
         <span class="ao-home__user">Mi cuenta</span>
@@ -45,20 +43,15 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
           <p class="ao-home__card-desc">Explorá el mundo de Argentum: ciudades, dungeons, criaturas y jugadores.</p>
           <button class="ao-home__card-btn" data-act="world">Ir a personajes</button>
         </div>
-        <div class="ao-home__card ao-home__card--arenas">
-          <div class="ao-home__card-tag">ARENAS</div>
-          <p class="ao-home__card-desc">Combate PvP en arenas. Próximamente.</p>
-          <button class="ao-home__card-btn" data-act="arenas" disabled>Ir a Arenas</button>
-        </div>
       </section>
 
       <section class="ao-home__about">
         <div class="ao-home__about-head">
           <span class="ao-home__about-tag">DE QUÉ SE TRATA</span>
         </div>
-        <h1 class="ao-home__about-title">AO Web — Beta</h1>
+        <h1 class="ao-home__about-title">AoTum — Beta</h1>
         <div class="ao-home__about-text">
-          <p>Un port web de Argentum Online Libre, fiel a los datos y el balance del juego original (todo se parsea de la fuente open source de AO Libre). Corre 100% en el navegador.</p>
+          <p>AoTum es un port web de Argentum Online Libre, fiel a los datos y el balance del juego original (todo se parsea de la fuente open source de AO Libre). Corre 100% en el navegador.</p>
           <p>Es una beta en desarrollo: se van sumando funciones día a día — sonidos, oficios, ordenar hechizos/items y todo lo necesario para una mejor jugabilidad.</p>
           <p>Cualquier feedback o reporte de bug es bienvenido.</p>
         </div>

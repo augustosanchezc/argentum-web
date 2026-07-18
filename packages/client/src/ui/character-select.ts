@@ -115,7 +115,7 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
 
   function render(): void {
     if (loading) {
-      card.innerHTML = `<div class="brand"><div class="brand-title">Argentum Online</div><div class="brand-sub">Cargando personajes...</div></div>`;
+      card.innerHTML = `<div class="brand"><div class="brand-title">AoTum</div><div class="brand-sub">Cargando personajes...</div></div>`;
       return;
     }
     clampHead();

@@ -85,6 +85,7 @@ export function mountStatsPanel(
 
     panel.innerHTML = `
       <div class="ao-sp__head">
+        <button class="ao-sp__close" type="button" title="Cerrar">✕</button>
         <div class="ao-sp__title">Estadísticas</div>
         <div class="ao-sp__sub">${cls} · ${race} · ${gen}</div>
       </div>
@@ -113,6 +114,9 @@ export function mountStatsPanel(
         const stat = btn.dataset.stat as StatKey | undefined;
         if (stat) onAllocStat(stat);
       });
+    });
+    panel.querySelector<HTMLButtonElement>(".ao-sp__close")?.addEventListener("click", () => {
+      panel.classList.remove("ao-stats-panel--open");
     });
   }
 

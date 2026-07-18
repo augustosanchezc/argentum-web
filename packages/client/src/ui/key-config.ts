@@ -10,6 +10,7 @@ import {
   type KeyAction,
   type Keymap,
 } from "./keybinds.js";
+import { audio } from "../audio.js";
 
 export interface KeyConfigHandle {
   open(): void;
@@ -30,6 +31,17 @@ export function mountKeyConfig(
         <button class="ao-keyconfig__close" type="button">✕</button>
       </div>
       <div class="ao-keyconfig__rows"></div>
+      <div class="ao-keyconfig__audio">
+        <div class="ao-keyconfig__audiohead">Audio</div>
+        <div class="ao-keyconfig__audiorow">
+          <label class="ao-keyconfig__audiolbl"><input type="checkbox" id="ao-cfg-musicon"> Música</label>
+          <input type="range" min="0" max="100" id="ao-cfg-musicvol" class="ao-keyconfig__slider">
+        </div>
+        <div class="ao-keyconfig__audiorow">
+          <label class="ao-keyconfig__audiolbl"><input type="checkbox" id="ao-cfg-sfxon"> Sonido / ambiente</label>
+          <input type="range" min="0" max="100" id="ao-cfg-sfxvol" class="ao-keyconfig__slider">
+        </div>
+      </div>
       <div class="ao-keyconfig__footer">
         <button class="ao-keyconfig__reset" type="button">Restaurar por defecto</button>
         <span class="ao-keyconfig__hint">Las flechas siempre mueven, además de WASD.</span>
@@ -85,6 +97,22 @@ export function mountKeyConfig(
     onChange(map);
     render();
   });
+
+  // Controles de audio: música y sonido/ambiente — on/off + volumen (persisten).
+  const musicOnEl = wrap.querySelector<HTMLInputElement>("#ao-cfg-musicon")!;
+  const musicVolEl = wrap.querySelector<HTMLInputElement>("#ao-cfg-musicvol")!;
+  const sfxOnEl = wrap.querySelector<HTMLInputElement>("#ao-cfg-sfxon")!;
+  const sfxVolEl = wrap.querySelector<HTMLInputElement>("#ao-cfg-sfxvol")!;
+  musicOnEl.checked = audio.musicOn;
+  musicVolEl.value = Math.round(audio.musicVol * 100).toString();
+  sfxOnEl.checked = audio.sfxOn;
+  sfxVolEl.value = Math.round(audio.volume * 100).toString();
+  const applyMusic = (): void => { audio.setMusic(musicOnEl.checked, Number(musicVolEl.value) / 100); };
+  const applySfx = (): void => { audio.setSfx(sfxOnEl.checked, Number(sfxVolEl.value) / 100); };
+  musicOnEl.addEventListener("change", applyMusic);
+  musicVolEl.addEventListener("input", applyMusic);
+  sfxOnEl.addEventListener("change", applySfx);
+  sfxVolEl.addEventListener("input", applySfx);
 
   function open(): void {
     wrap.classList.add("ao-keyconfig--open");

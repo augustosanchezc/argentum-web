@@ -77,6 +77,11 @@ export const characters = pgTable(
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'::jsonb`),
+    // Config de la barra de macros del cliente (array opaco de slots).
+    macros: jsonb("macros")
+      .$type<unknown[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     // Economía e inventario
     gold: integer("gold").notNull().default(100),
     inventory: jsonb("inventory")

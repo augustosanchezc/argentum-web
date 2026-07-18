@@ -87,6 +87,7 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           gender: characters.gender,
           headId: characters.headId,
           bodyId: characters.bodyId,
+          macros: characters.macros,
           createdAt: characters.createdAt,
         })
         .from(characters)
@@ -177,6 +178,7 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           gender: characters.gender,
           headId: characters.headId,
           bodyId: characters.bodyId,
+          macros: characters.macros,
           createdAt: characters.createdAt,
         });
 

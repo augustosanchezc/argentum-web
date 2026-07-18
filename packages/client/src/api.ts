@@ -15,6 +15,8 @@ export interface CharacterSummary {
   gender?: number;
   headId?: number;
   bodyId?: number;
+  // Config de macros guardada en el server (array opaco de slots).
+  macros?: unknown[];
   createdAt: string;
 }
 

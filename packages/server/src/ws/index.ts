@@ -829,6 +829,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.PlayerInfo:
           handlePlayerInfo(session, packet);
           break;
+        case ClientToServerOp.SaveMacros: {
+          // Persistencia opaca de la barra de macros (por personaje en la DB).
+          const macros = Array.isArray(packet.macros) ? packet.macros.slice(0, 32) : [];
+          void db.update(characters).set({ macros }).where(eq(characters.id, session.characterId));
+          break;
+        }
         // Banco (E-4.2)
         case ClientToServerOp.BankDepositItem:
           handleBankDepositItem(session, packet);
@@ -3406,6 +3412,49 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (cmd === "/meditar" || cmd === "/med") { handleMeditate(s); return; }
       if (cmd === "/descansar" || cmd === "/rest") { handleRest(s); return; }
       if (cmd === "/seguro" || cmd === "/seg") { handleSafeToggle(s); return; }
+      // Comandos informativos del AO clásico.
+      if (cmd === "/online") {
+        consoleMsg(s, `Hay ${sessions.size().toString()} jugador(es) conectado(s).`, "global");
+        return;
+      }
+      if (cmd === "/uptime") {
+        const secs = Math.floor(process.uptime());
+        const h = Math.floor(secs / 3600);
+        const m = Math.floor((secs % 3600) / 60);
+        consoleMsg(s, `El servidor lleva ${h.toString()}h ${m.toString()}m en línea.`, "global");
+        return;
+      }
+      if (cmd === "/motd") {
+        consoleMsg(s, "AoTum — beta. ¡Bienvenido! Reportá bugs y disfrutá. Que la Diosa te acompañe.", "global");
+        return;
+      }
+      // /gm [texto]: pedido de ayuda a los GMs conectados.
+      if (/^\/gm(\s|$)/i.test(chat.text)) {
+        const msg = chat.text.replace(/^\/gm\s?/i, "").trim().slice(0, 200);
+        let gms = 0;
+        for (const g of sessions.all()) {
+          if (g.role > 0) {
+            consoleMsg(g, `[Pedido GM] ${s.characterName}: ${msg || "(sin detalle)"}`, "global");
+            gms += 1;
+          }
+        }
+        consoleMsg(s, gms > 0 ? "Tu pedido fue enviado a los GMs en línea." : "No hay GMs en línea ahora mismo.", "global");
+        return;
+      }
+      // /gritar <texto> (Yell): grito a todo el mapa, en mayúsculas.
+      const yellMatch = /^\/(?:gritar|grito)\s+(.+)$/i.exec(chat.text);
+      if (yellMatch) {
+        const yell: ChatBroadcast = {
+          op: ServerToClientOp.ChatBroadcast,
+          fromId: s.characterId as EntityId,
+          fromName: s.characterName,
+          text: yellMatch[1]!.trim().slice(0, 200).toUpperCase(),
+          timestamp: Date.now(),
+          yell: true,
+        };
+        broadcastToMap(s.mapId, yell);
+        return;
+      }
       // Comandos GM: cualquier texto que empiece con "/" de un GM.
       if (s.role > 0 && chat.text.startsWith("/")) {
         handleGmCommand(s, chat.text.trim());

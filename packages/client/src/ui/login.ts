@@ -42,7 +42,7 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
     const isLogin = mode === "login";
     card.innerHTML = `
       <div class="brand">
-        <div class="brand-title">Argentum Online</div>
+        <div class="brand-title">AoTum</div>
         <div class="brand-sub">${isLogin ? "Iniciar sesión" : "Crear cuenta"}</div>
       </div>
 

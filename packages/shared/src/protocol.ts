@@ -63,6 +63,8 @@ export enum ClientToServerOp {
   Hide = 0x63,
   // Domar animales (DoDomar): intenta domar la criatura domable más cercana.
   Tame = 0x64,
+  // Guardar la config de la barra de macros (persiste por personaje en la DB).
+  SaveMacros = 0x65,
   // Whisper
   WhisperSend = 0x21,
   // Party (E-4.3)
@@ -297,6 +299,8 @@ export interface ChatBroadcast {
   readonly text: string;
   // Epoch ms del server. El cliente formatea HH:mm con su locale.
   readonly timestamp: number;
+  // Grito (/gritar): el cliente lo muestra en mayúsculas y color destacado.
+  readonly yell?: boolean;
 }
 
 export interface ChatError {
@@ -727,6 +731,12 @@ export interface SafeToggleRequest {
   readonly op: ClientToServerOp.SafeToggle;
 }
 
+// C→S: guarda la config de macros del jugador (opaca para el server).
+export interface SaveMacrosRequest {
+  readonly op: ClientToServerOp.SaveMacros;
+  readonly macros: readonly unknown[];
+}
+
 // S→C: mensaje de consola del server (como el ConsoleMsg del AO).
 export interface ConsoleMsg {
   readonly op: ServerToClientOp.ConsoleMsg;
@@ -940,6 +950,7 @@ export type ClientPacket =
   | CraftRequest
   | RestToggle
   | SafeToggleRequest
+  | SaveMacrosRequest
   | QuestAcceptRequest
   | QuestAbandonRequest
   | GuildCreateRequest

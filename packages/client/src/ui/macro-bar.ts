@@ -54,6 +54,21 @@ export interface MacroCallbacks {
   getItems(): ReadonlyArray<{ item: number; qty: number }>;
   // Hechizos conocidos del jugador (para el selector "hechizo").
   getSpells(): ReadonlyArray<number>;
+  // Persistir la config en el server (además del localStorage). Se llama en
+  // cada cambio; así los macros NO se reinician al reloguear (ni en otro equipo).
+  onSave?(slots: Array<MacroSlot | null>): void;
+}
+
+// Lee la config de macros del localStorage (fallback si el server no tiene).
+function readLocalMacros(key: string): Array<MacroSlot | null> | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Array<MacroSlot | null>;
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface MacroBarHandle {
@@ -83,6 +98,7 @@ export function mountMacroBar(
   parent: HTMLElement,
   characterName: string,
   cb: MacroCallbacks,
+  initialMacros?: ReadonlyArray<MacroSlot | null>,
 ): MacroBarHandle {
   const storageKey = `ao-macros-${characterName}`;
   const bar = document.createElement("div");
@@ -96,23 +112,26 @@ export function mountMacroBar(
   document.body.appendChild(picker);
 
   let slots: Array<MacroSlot | null> = new Array<MacroSlot | null>(SLOT_COUNT).fill(null);
-  try {
-    const raw = localStorage.getItem(storageKey);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Array<MacroSlot | null>;
-      if (Array.isArray(parsed)) slots = parsed.slice(0, SLOT_COUNT);
-      while (slots.length < SLOT_COUNT) slots.push(null);
-    }
-  } catch {
-    // storage corrupto → vacío
+  // Prioridad: config del SERVER (persistente por personaje). Si el server no
+  // tiene nada guardado todavía, se migra desde el localStorage local.
+  const source =
+    initialMacros && initialMacros.length > 0 ? [...initialMacros] : readLocalMacros(storageKey);
+  if (source) {
+    slots = source.slice(0, SLOT_COUNT);
+    while (slots.length < SLOT_COUNT) slots.push(null);
   }
 
   function persist(): void {
     localStorage.setItem(storageKey, JSON.stringify(slots));
+    cb.onSave?.(slots); // persistir también en el server (no se pierde al reloguear).
   }
 
   // Tecla elegida en el selector del picker actual.
   let pendingKey = "";
+  // Slot en modo "presioná una tecla" para reasignar su tecla (-1 = ninguno).
+  let rebinding = -1;
+  // Macro elegido en el picker, pendiente de confirmar con "Guardar".
+  let pendingMacro: MacroSlot | null = null;
 
   function assign(i: number, slot: MacroSlot): void {
     slots[i] = { ...slot, key: pendingKey || defaultKey(i) };
@@ -147,23 +166,34 @@ export function mountMacroBar(
     head.appendChild(close);
     picker.appendChild(head);
 
-    // Selector de TECLA del macro.
+    // Selector de TECLA: se elige PRESIONANDO la tecla (no es desplegable).
+    pendingMacro = null;
     const keyRow = document.createElement("div");
     keyRow.className = "ao-macropick__keyrow";
     const keyLbl = document.createElement("span");
     keyLbl.textContent = "Tecla:";
     keyRow.appendChild(keyLbl);
-    const keySel = document.createElement("select");
-    keySel.className = "ao-macropick__keysel";
-    for (const k of KEY_OPTIONS) {
-      const opt = document.createElement("option");
-      opt.value = k.code;
-      opt.textContent = k.label;
-      if (k.code === pendingKey) opt.selected = true;
-      keySel.appendChild(opt);
-    }
-    keySel.addEventListener("change", () => { pendingKey = keySel.value; });
-    keyRow.appendChild(keySel);
+    const keyBtn = document.createElement("button");
+    keyBtn.type = "button";
+    keyBtn.className = "ao-macropick__keysel";
+    keyBtn.textContent = keyLabel(pendingKey);
+    let capturing = false;
+    const captureHandler = (ev: KeyboardEvent): void => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.code !== "Escape") pendingKey = ev.code;
+      capturing = false;
+      keyBtn.textContent = keyLabel(pendingKey);
+      window.removeEventListener("keydown", captureHandler, true);
+    };
+    keyBtn.addEventListener("click", () => {
+      if (capturing) return;
+      capturing = true;
+      keyBtn.textContent = "Presioná una tecla…";
+      // Captura en fase de captura para ganarle al disparo global de macros.
+      window.addEventListener("keydown", captureHandler, true);
+    });
+    keyRow.appendChild(keyBtn);
     picker.appendChild(keyRow);
 
     const tabsBar = document.createElement("div");
@@ -172,6 +202,13 @@ export function mountMacroBar(
     body.className = "ao-macropick__body";
     picker.appendChild(tabsBar);
     picker.appendChild(body);
+
+    // Selecciona (no asigna) el macro; se confirma con "Guardar".
+    const selectRow = (row: HTMLElement, slot: MacroSlot): void => {
+      pendingMacro = slot;
+      body.querySelectorAll(".ao-macropick__row--sel").forEach((r) => r.classList.remove("ao-macropick__row--sel"));
+      row.classList.add("ao-macropick__row--sel");
+    };
 
     // Fila de un item (usar/equipar) o hechizo.
     const itemRow = (def: ItemDef): HTMLElement => {
@@ -192,7 +229,7 @@ export function mountMacroBar(
       name.className = "ao-macropick__name";
       name.textContent = def.name;
       row.appendChild(name);
-      row.addEventListener("click", () => { assign(i, { kind: "item", id: def.id }); });
+      row.addEventListener("click", () => { selectRow(row, { kind: "item", id: def.id }); });
       return row;
     };
     const spellRow = (sp: { id: number; name: string; manaCost?: number }): HTMLElement => {
@@ -209,7 +246,7 @@ export function mountMacroBar(
         mana.textContent = `${sp.manaCost.toString()} maná`;
         row.appendChild(mana);
       }
-      row.addEventListener("click", () => { assign(i, { kind: "spell", id: sp.id }); });
+      row.addEventListener("click", () => { selectRow(row, { kind: "spell", id: sp.id }); });
       return row;
     };
 
@@ -233,7 +270,7 @@ export function mountMacroBar(
       cmd.className = "ao-macropick__mana";
       cmd.textContent = text;
       row.appendChild(cmd);
-      row.addEventListener("click", () => { assign(i, { kind: "command", id: 0, command: text, label }); });
+      row.addEventListener("click", () => { selectRow(row, { kind: "command", id: 0, command: text, label }); });
       return row;
     };
 
@@ -266,7 +303,7 @@ export function mountMacroBar(
         add.textContent = "Asignar";
         const doAdd = (): void => {
           const txt = input.value.trim();
-          if (txt) assign(i, { kind: "command", id: 0, command: txt, label: txt });
+          if (txt) { pendingMacro = { kind: "command", id: 0, command: txt, label: txt }; add.textContent = "✓ Elegido"; }
         };
         add.addEventListener("click", doAdd);
         input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doAdd(); } });
@@ -285,12 +322,27 @@ export function mountMacroBar(
       tabsBar.appendChild(tab);
     }
 
+    // Pie: botón Guardar (confirma el macro elegido con la tecla presionada).
+    const foot = document.createElement("div");
+    foot.className = "ao-macropick__foot";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.className = "ao-macropick__savebtn";
+    saveBtn.textContent = "Guardar";
+    saveBtn.addEventListener("click", () => {
+      if (pendingMacro) assign(i, pendingMacro);
+      else closePicker();
+    });
+    foot.appendChild(saveBtn);
+    picker.appendChild(foot);
+
     showTab("usar");
     picker.hidden = false;
   }
 
   // Cierra el selector al clickear fuera.
   const onDocClick = (ev: MouseEvent): void => {
+    if (rebinding >= 0 && !bar.contains(ev.target as Node)) { rebinding = -1; render(); }
     if (picker.hidden) return;
     const t = ev.target as Node;
     if (!picker.contains(t) && !bar.contains(t)) closePicker();
@@ -306,7 +358,18 @@ export function mountMacroBar(
 
       const key = document.createElement("span");
       key.className = "ao-macrobar__key";
-      key.textContent = keyLabel(slotKey(slot, i));
+      key.textContent = rebinding === i ? "…" : keyLabel(slotKey(slot, i));
+      if (slot) {
+        // La etiqueta de tecla es clickeable: reasigna el macro a CUALQUIER tecla.
+        key.style.cursor = "pointer";
+        key.title = "Click y presioná una tecla para reasignar";
+        if (rebinding === i) { key.style.color = "#fff"; cell.style.outline = "2px solid #4f8ff0"; }
+        key.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          rebinding = rebinding === i ? -1 : i;
+          render();
+        });
+      }
       cell.appendChild(key);
 
       if (slot) {
@@ -389,6 +452,15 @@ export function mountMacroBar(
   const onKeyDown = (e: KeyboardEvent): void => {
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA")) return;
+    // Modo reasignar: la próxima tecla queda ligada al macro (Esc cancela).
+    if (rebinding >= 0) {
+      e.preventDefault();
+      const slot = slots[rebinding];
+      if (slot && e.code !== "Escape") { slot.key = e.code; persist(); }
+      rebinding = -1;
+      render();
+      return;
+    }
     for (let i = 0; i < SLOT_COUNT; i += 1) {
       const slot = slots[i];
       if (slot && slotKey(slot, i) === e.code) {
