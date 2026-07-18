@@ -82,6 +82,7 @@ export const PANEL_HTML = `<!doctype html>
     <button class="tab" data-tab="online">Online</button>
     <button class="tab" data-tab="spawns">Spawns</button>
     <button class="tab" data-tab="ajustes">Ajustes</button>
+    <button class="tab" data-tab="ayuda">Ayuda</button>
   </div>
 
   <section id="tab-chars">
@@ -190,6 +191,34 @@ export const PANEL_HTML = `<!doctype html>
       </div>
     </div>
   </section>
+
+  <section id="tab-ayuda" class="hidden">
+    <div class="sect">
+      <h3>Comandos de GM</h3>
+      <div class="muted" style="font-size:12px;margin-bottom:10px">Se escriben en el chat del juego. Un GM ve esta lista escribiendo cualquier /comando desconocido. Rangos: Consejero (1) · Semidiós (2) · Dios (3).</div>
+      <table>
+        <thead><tr><th>Comando</th><th>Qué hace</th><th>Rango</th></tr></thead>
+        <tbody>
+          <tr><td>/gmsg &lt;texto&gt;</td><td>Mensaje global de GM a todos los conectados</td><td>Consejero+</td></tr>
+          <tr><td>/invisible</td><td>Toggle invisibilidad (observar sin ser visto)</td><td>Consejero+</td></tr>
+          <tr><td>/lluvia</td><td>Toggle de lluvia global</td><td>Consejero+</td></tr>
+          <tr><td>/morir</td><td>Matarte (herramienta de prueba)</td><td>Consejero+</td></tr>
+          <tr><td>/teleport &lt;mapa&gt; &lt;x&gt; &lt;y&gt;</td><td>Crea un portal FRENTE al GM que lleva a ese punto</td><td>Dios</td></tr>
+          <tr><td>/telep &lt;mapa&gt; &lt;x&gt; &lt;y&gt;</td><td>Teletransportarte vos a ese punto</td><td>Dios</td></tr>
+          <tr><td>/sum &lt;nombre&gt;</td><td>Traer a un jugador a tu posición</td><td>Dios</td></tr>
+          <tr><td>/nivel &lt;n&gt;</td><td>Fijar tu nivel (recalcula vida/maná)</td><td>Dios</td></tr>
+          <tr><td>/oro &lt;n&gt;</td><td>Darte oro</td><td>Dios</td></tr>
+          <tr><td>/item &lt;id&gt; [cant]</td><td>Darte un ítem por su código</td><td>Dios</td></tr>
+          <tr><td>/invocar &lt;npc&gt;</td><td>Spawnear un NPC en tu posición</td><td>Dios</td></tr>
+          <tr><td>/matarnpc</td><td>Insta-matar la criatura atacable más cercana</td><td>Dios</td></tr>
+        </tbody>
+      </table>
+      <h3 style="margin-top:18px">Comandos de jugador</h3>
+      <div class="muted" style="font-size:12px;line-height:1.7">
+        /salir · /est · /ayuda · /desc &lt;texto&gt; · /online · /uptime · /motd · /gritar &lt;texto&gt; · /gm &lt;texto&gt; · /meditar · /descansar · /seg · /hogar · /ocultarse · /domar · /amigos · /w &lt;nombre&gt; &lt;msg&gt; · /fundarclan &lt;nombre&gt; · /invitarclan &lt;nombre&gt; · /aceptarclan · /salirclan · /cmsg &lt;msg&gt;
+      </div>
+    </div>
+  </section>
 </main>
 
 <div id="modal"><div class="card" id="modalCard"></div></div>
@@ -270,8 +299,8 @@ var tabButtons = document.querySelectorAll(".tab");
 for (var i=0;i<tabButtons.length;i++){ tabButtons[i].onclick = function(){
   var t = this.dataset.tab;
   for (var j=0;j<tabButtons.length;j++) tabButtons[j].classList.toggle("active", tabButtons[j].dataset.tab===t);
-  ["chars","creatures","npcs","items","online","spawns","ajustes"].forEach(function(x){ $("tab-"+x).classList.toggle("hidden", x!==t); });
-  if(t==="chars") loadChars(); else if(t==="creatures") loadCreatures(); else if(t==="npcs") loadNpcs(); else if(t==="items") loadItems(); else if(t==="online") loadOnline(); else if(t==="spawns") loadSpawns(); else loadConfig();
+  ["chars","creatures","npcs","items","online","spawns","ajustes","ayuda"].forEach(function(x){ $("tab-"+x).classList.toggle("hidden", x!==t); });
+  if(t==="chars") loadChars(); else if(t==="creatures") loadCreatures(); else if(t==="npcs") loadNpcs(); else if(t==="items") loadItems(); else if(t==="online") loadOnline(); else if(t==="spawns") loadSpawns(); else if(t==="ajustes") loadConfig();
 }; }
 
 async function loadChars(){

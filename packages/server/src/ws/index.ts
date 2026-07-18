@@ -1761,8 +1761,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           (def.type === "helmet" && s.equippedHelmet === pkt.item) ||
           (def.type === "shield" && s.equippedShield === pkt.item);
         // Al EQUIPAR (no al desequipar) se respetan las clases prohibidas del
-        // AO (CP1..CPn de obj.dat). Desequipar siempre se permite.
-        if (!isEquipped && def.forbiddenClasses?.includes(s.classId)) {
+        // AO (CP1..CPn de obj.dat). Desequipar siempre se permite. Los GMs
+        // (Consejero/Semidiós/Dios, role > 0) pueden usar TODO sin restricción.
+        if (!isEquipped && s.role === 0 && def.forbiddenClasses?.includes(s.classId)) {
           consoleMsg(s, "Tu clase no puede usar este objeto.", "global");
           return;
         }
@@ -3258,7 +3259,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telep|matarnpc)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telep|teleport|matarnpc)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3315,10 +3316,54 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         for (const t of sessions.all()) send(t.socket, pkt);
         return;
       }
+      // /INVISIBLE: toggle de invisibilidad del GM (observar sin ser visto).
+      if (/^\/invisible$/i.test(text)) {
+        const now = Date.now();
+        if (s.invisibleUntil > now) {
+          s.invisibleUntil = 0;
+          broadcastEffect(s.mapId, s.characterId, "invisible", false);
+          consoleMsg(s, "Sos visible de nuevo.", "global");
+        } else {
+          const dur = 3650 * 24 * 3600 * 1000; // ~10 años = permanente hasta togglear.
+          s.invisibleUntil = now + dur;
+          broadcastEffect(s.mapId, s.characterId, "invisible", true, dur);
+          consoleMsg(s, "Ahora sos invisible. Escribí /invisible otra vez para verte.", "global");
+        }
+        return;
+      }
       // /TELEP mapa x y: teletransportarse.
       const telep = /^\/telep\s+(\d+)\s+(\d+)\s+(\d+)$/i.exec(text);
       if (telep) {
         doGmTeleport(s, parseInt(telep[1]!, 10), parseInt(telep[2]!, 10), parseInt(telep[3]!, 10));
+        return;
+      }
+      // /TELEPORT mapa x y: crea un portal FRENTE al GM que lleva a (mapa, x, y).
+      const tpCreate = /^\/teleport\s+(\d+)\s+(\d+)\s+(\d+)$/i.exec(text);
+      if (tpCreate) {
+        const toMapId = parseInt(tpCreate[1]!, 10);
+        const toX = parseInt(tpCreate[2]!, 10);
+        const toY = parseInt(tpCreate[3]!, 10);
+        const destMap = getMap(toMapId);
+        if (!destMap || !isWalkable(destMap, toX, toY)) {
+          consoleMsg(s, "Destino inválido (mapa inexistente o coordenada no caminable).", "global");
+          return;
+        }
+        const map = getMap(s.mapId);
+        if (!map) return;
+        // Tile de enfrente según hacia dónde mira el GM.
+        const fx = s.position.x + (s.direction === "east" ? 1 : s.direction === "west" ? -1 : 0);
+        const fy = s.position.y + (s.direction === "south" ? 1 : s.direction === "north" ? -1 : 0);
+        if (!isWalkable(map, fx, fy)) {
+          consoleMsg(s, "No hay lugar libre adelante para poner el teleport.", "global");
+          return;
+        }
+        // Portal en runtime + gráfico del teleport (grh 669) visible en el tile.
+        (map.portals as PortalTile[]).push({ x: fx, y: fy, toMapId, toX, toY });
+        const pkt: MapTileUpdate = {
+          op: ServerToClientOp.MapTileUpdate, x: fx, y: fy, grh3: 669, blocked: false, wav: 3,
+        };
+        broadcastToMap(s.mapId, pkt);
+        consoleMsg(s, `Teleport creado adelante → mapa ${toMapId.toString()} (${toX.toString()}, ${toY.toString()}).`, "global");
         return;
       }
       // /SUM nombre: traer a un jugador a mi posición.
@@ -3395,7 +3440,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /lluvia · /telep <mapa> <x> <y> · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /morir", "global");
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /telep <mapa> <x> <y> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
     }
 
     function handleChat(s: Session, chat: ChatSend): void {

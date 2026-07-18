@@ -112,38 +112,17 @@ function range(min: number | undefined, max: number | undefined): string {
 // Filas de stats de un item, para el tooltip de inspección (click).
 function itemStatsRows(def: ReturnType<typeof getItem>): string {
   if (!def) return "";
+  // Solo se muestra Ataque (armas) o Defensa (armaduras/cascos/escudos), y solo
+  // si el item lo tiene. El resto de items no muestra ninguna fila, y NUNCA se
+  // muestra el valor en oro ni el código del item.
   const rows: Array<[string, string]> = [];
   if (def.type === "weapon") {
     const dmg = range(def.minHit, def.maxHit);
     if (dmg) rows.push(["Ataque", dmg]);
-    if (def.staffDamageBonus) rows.push(["Daño mágico báculo", `+${def.staffDamageBonus.toString()}%`]);
-    if (def.stabs) rows.push(["Apuñala", "sí"]);
-    if (def.ranged) rows.push(["A distancia", def.needsAmmo ? "sí (munición)" : "sí"]);
-  } else if (def.type === "arrow") {
-    const dmg = range(def.minHit, def.maxHit);
-    if (dmg) rows.push(["Daño flecha", `+${dmg}`]);
   } else if (def.type === "armor" || def.type === "helmet" || def.type === "shield") {
     const d = range(def.defenseMin, def.defenseMax);
     if (d) rows.push(["Defensa", d]);
-    const md = range(def.magicDefMin, def.magicDefMax);
-    if (md) rows.push(["Defensa mágica", md]);
-  } else if (def.type === "potion") {
-    const h = range(def.healMin, def.healMax);
-    if (h) rows.push(["Cura", `+${h} HP`]);
-    if (def.restoresMana) rows.push(["Restaura", "maná"]);
-    const ag = range(def.agiBoostMin, def.agiBoostMax);
-    if (ag) rows.push(["Agilidad", `+${ag} (${(def.boostSeconds ?? 0).toString()}s)`]);
-    const st = range(def.strBoostMin, def.strBoostMax);
-    if (st) rows.push(["Fuerza", `+${st} (${(def.boostSeconds ?? 0).toString()}s)`]);
-    if (def.curesPoison) rows.push(["Efecto", "cura veneno"]);
-  } else if (def.type === "food") {
-    if (def.hunger) rows.push(["Hambre", `+${def.hunger.toString()}`]);
-  } else if (def.type === "drink") {
-    if (def.thirst) rows.push(["Sed", `+${def.thirst.toString()}`]);
-    if (def.stamina) rows.push(["Energía", `+${def.stamina.toString()}`]);
   }
-  if (def.value > 0) rows.push(["Valor", `${def.value.toLocaleString("es")} oro`]);
-  // NUNCA se muestra el código del item (solo sus funciones).
   return rows.map(([k, v]) => `<div class="ao-inv__d-row"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 
