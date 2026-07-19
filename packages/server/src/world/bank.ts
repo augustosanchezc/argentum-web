@@ -1,12 +1,17 @@
-import { addItem, countItem, removeItem } from "./inventory.js";
+import { addItem, countItem, removeItem, sanQty } from "./inventory.js";
 import type { Session } from "../ws/sessions.js";
 
 // Operaciones de banco (E-4.2). Todas son síncronas — Node.js es single-threaded,
 // por lo que la secuencia validate→mutate es atómica dentro de un handler de mensaje.
 // Ver ADR-007 para el análisis de atomicidad.
+// Las cantidades vienen del cliente: sanQty() las fuerza a entero positivo
+// (NaN/decimales/negativos evadían los `<= 0` y corrompían oro/stacks).
 
-export function bankDepositItem(s: Session, item: number, qty: number): boolean {
-  if (qty <= 0) return false;
+const MAX_GOLD_OP = 1_000_000_000;
+
+export function bankDepositItem(s: Session, item: number, rawQty: number): boolean {
+  const qty = sanQty(rawQty);
+  if (qty === 0) return false;
   if (countItem(s.inventory, item) < qty) return false;
   const next = removeItem(s.inventory, item, qty);
   if (!next) return false;
@@ -15,8 +20,9 @@ export function bankDepositItem(s: Session, item: number, qty: number): boolean 
   return true;
 }
 
-export function bankWithdrawItem(s: Session, item: number, qty: number): boolean {
-  if (qty <= 0) return false;
+export function bankWithdrawItem(s: Session, item: number, rawQty: number): boolean {
+  const qty = sanQty(rawQty);
+  if (qty === 0) return false;
   if (countItem(s.bankInventory, item) < qty) return false;
   const next = removeItem(s.bankInventory, item, qty);
   if (!next) return false;
@@ -25,15 +31,17 @@ export function bankWithdrawItem(s: Session, item: number, qty: number): boolean
   return true;
 }
 
-export function bankDepositGold(s: Session, amount: number): boolean {
-  if (amount <= 0 || s.gold < amount) return false;
+export function bankDepositGold(s: Session, rawAmount: number): boolean {
+  const amount = sanQty(rawAmount, MAX_GOLD_OP);
+  if (amount === 0 || s.gold < amount) return false;
   s.gold -= amount;
   s.bankGold += amount;
   return true;
 }
 
-export function bankWithdrawGold(s: Session, amount: number): boolean {
-  if (amount <= 0 || s.bankGold < amount) return false;
+export function bankWithdrawGold(s: Session, rawAmount: number): boolean {
+  const amount = sanQty(rawAmount, MAX_GOLD_OP);
+  if (amount === 0 || s.bankGold < amount) return false;
   s.bankGold -= amount;
   s.gold += amount;
   return true;

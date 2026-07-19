@@ -2957,7 +2957,9 @@ export async function startGameScene(
     const idx = p.y * mapWidth + p.x;
     const blockedArr = mapBlocked as number[];
     blockedArr[idx] = p.blocked ? 1 : 0;
-    if (p.x > 0) blockedArr[idx - 1] = p.blocked ? 1 : 0;
+    // Solo el tile indicado: replicar al tile oeste era la convención de
+    // puertas de 2 tiles, pero las puertas ya no se togglean (siempre
+    // abiertas) y para teleports de GM desbloqueaba una pared client-side.
     const apply = (tex: Texture): void => {
       const existing = layer3ByTile.get(idx);
       if (existing) {
@@ -2985,6 +2987,10 @@ export async function startGameScene(
   }
 
   function handleEntityDespawn(p: EntityDespawn): void {
+    // Nunca borrar la PROPIA entidad: un despawn rezagado (p. ej. el close de
+    // una sesión vieja tras reloguear) nos dejaba invisibles y sin poder
+    // movernos (tryStep necesita el visual propio).
+    if ((p.id as unknown as number) === character.id) return;
     removeEntity(p.id as unknown as number);
     refreshPlayerList();
   }

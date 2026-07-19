@@ -13,6 +13,11 @@ export interface Session {
   direction: Direction;
   lastMoveAt: number;
   lastChatAt: number;
+  // Rate-limit de SaveMacros (escrituras jsonb a la DB).
+  lastMacroSaveAt: number;
+  // true = esta sesión fue reemplazada por un relogin del mismo personaje:
+  // su handler de close NO debe despawnear/persistir (la nueva es la dueña).
+  superseded: boolean;
   joinedAt: number;
   lastSeenAt: number;
   // Clase, raza, género y stats primarios
@@ -153,6 +158,10 @@ export class SessionRegistry {
   ): Session {
     const existing = this.byCharacterId.get(characterId);
     if (existing) {
+      // La sesión vieja queda "superseded": su close NO despawnea (borraría la
+      // entidad del personaje recién logueado) ni persiste (pisaría con estado
+      // stale lo que el handshake ya persistió/leyó).
+      existing.superseded = true;
       this.remove(existing.id);
       try {
         existing.socket.close(4008, "REPLACED_BY_NEWER_SESSION");
@@ -174,6 +183,8 @@ export class SessionRegistry {
       direction: "south",
       lastMoveAt: 0,
       lastChatAt: 0,
+      lastMacroSaveAt: 0,
+      superseded: false,
       joinedAt: now,
       lastSeenAt: now,
       classId: 1,

@@ -70,6 +70,7 @@ import {
   type SpellsKnown,
   type WorkRequest,
   getAoSpell,
+  getSkill,
   knownSpellsFor,
   type WhisperSendRequest,
   type WhisperReceived,
@@ -125,6 +126,7 @@ import {
   removeFromSlot,
   removeItem,
   reorderSlots,
+  sanQty,
   shieldDefenseFor,
   rollTotalArmorDefense,
   weaponBonusFor,
@@ -135,7 +137,7 @@ import {
   bankWithdrawGold,
   bankWithdrawItem,
 } from "../world/bank.js";
-import { getMap, isWalkable, isWaterAt, type MapState } from "../world/maps.js";
+import { findLandingTile, getMap, isWalkable, isWaterAt, type MapState } from "../world/maps.js";
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcs, petsOf, randomNpcSound, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
@@ -168,7 +170,7 @@ import {
 } from "../world/guilds.js";
 import { tickDots } from "../world/dots.js";
 import { isCriminal, setCriminal } from "../world/criminal.js";
-import { broadcastToMap, CASPER_BODY, CASPER_HEAD, killPlayer, revivePlayer, stopMeditating } from "./broadcast.js";
+import { broadcastToMap, CASPER_BODY, CASPER_HEAD, DEAD_FOREVER, killPlayer, revivePlayer, stopMeditating } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import {
   bankOpsTotal,
@@ -201,7 +203,8 @@ function buildMapDataPacket(map: MapState): MapData {
     dead: s.deadUntil !== 0 || undefined,
     ...computeVisibleEquip(s),
   }));
-  const npcEntities = npcs.inMap(map.id).map((n) => ({
+  // Solo NPCs vivos: los muertos aparecían "parados" (inatacables) hasta su respawn.
+  const npcEntities = npcs.inMap(map.id).filter((n) => n.deadUntil === 0).map((n) => ({
     id: n.id as EntityId,
     position: { x: n.position.x, y: n.position.y },
     direction: n.direction,
@@ -384,10 +387,21 @@ async function persistPosition(s: Session): Promise<void> {
       equippedShield: s.equippedShield,
       bankInventory: s.bankInventory,
       bankGold: s.bankGold,
+      dead: s.deadUntil !== 0,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
 }
+
+// Autosave periódico de TODAS las sesiones. Sin esto el único guardado era al
+// cerrar el socket: un crash del server revertía todo el progreso (oro,
+// compras, trades) de los jugadores conectados desde su login.
+const AUTOSAVE_INTERVAL_MS = 60_000;
+setInterval(() => {
+  for (const s of sessions.all()) {
+    void persistPosition(s).catch(() => undefined);
+  }
+}, AUTOSAVE_INTERVAL_MS);
 
 interface JwtPayload {
   accountId: number;
@@ -470,6 +484,9 @@ function addGold(s: Session, amount: number): void {
 // `killer` es null si murió por fuente no atribuible a un jugador (criatura,
 // o el envenenador ya se desconectó).
 function resolvePlayerDeath(victim: Session, killer: Session | null): void {
+  // Idempotente: con varios DoTs en el mismo tick, el segundo resultado
+  // "dead" duplicaba la penalización de XP y el contador criminal.
+  if (victim.deadUntil !== 0) return;
   // Cancelar el trade del muerto (usa el registro de módulo, no el closure).
   if (victim.tradeId) {
     const trade = tradeRegistry.remove(victim.tradeId);
@@ -731,6 +748,15 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (session) {
         const closingSession = session;
 
+        // Sesión reemplazada por un relogin del MISMO personaje: no despawnear
+        // (borraría la entidad recién spawneada del relogueado, dejándolo
+        // invisible y sin poder moverse), no sacarlo de la party, y no
+        // persistir (pisaría con estado stale el estado de la sesión nueva).
+        if (closingSession.superseded) {
+          session = null;
+          return;
+        }
+
         if (closingSession.tradeId) {
           cancelTrade(closingSession.tradeId, "DISCONNECT");
         }
@@ -765,6 +791,21 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     socket.on("error", (err: Error) => {
       req.log.error({ err }, "[ws] error en socket");
     });
+
+    // Heartbeat ping/pong: sin esto, un corte sin FIN (móvil, suspensión)
+    // dejaba una sesión zombie parada en el mundo hasta el timeout de TCP.
+    let socketAlive = true;
+    socket.on("pong", () => { socketAlive = true; });
+    const heartbeat = setInterval(() => {
+      if (!socketAlive) {
+        clearInterval(heartbeat);
+        socket.terminate(); // dispara el close handler → persiste y despawnea
+        return;
+      }
+      socketAlive = false;
+      try { socket.ping(); } catch { /* cerrándose */ }
+    }, 30_000);
+    socket.on("close", () => { clearInterval(heartbeat); });
 
     async function handleMessage(raw: Buffer): Promise<void> {
       let packet: AnyPacket;
@@ -834,7 +875,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.SaveMacros: {
           // Persistencia opaca de la barra de macros (por personaje en la DB).
+          // Rate-limit (2s) + tope de tamaño: sin esto, spamear SaveMacros
+          // martillaba la DB con jsonb arbitrario.
+          const mnow = Date.now();
+          if (mnow - session.lastMacroSaveAt < 2_000) break;
           const macros = Array.isArray(packet.macros) ? packet.macros.slice(0, 32) : [];
+          if (JSON.stringify(macros).length > 16_384) break;
+          session.lastMacroSaveAt = mnow;
           void db.update(characters).set({ macros }).where(eq(characters.id, session.characterId));
           break;
         }
@@ -981,7 +1028,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(fromMapId, despawn, s.id);
 
       s.mapId = destMap.id;
-      s.position = { x: portal.toX, y: portal.toY };
+      // A pie, el destino debe ser tierra transitable (hay portales nativos
+      // que apuntan a agua o a celdas selladas → jugador varado). Navegando
+      // se respeta la coord original (los viajes en barco terminan en agua).
+      s.position = s.navigating
+        ? { x: portal.toX, y: portal.toY }
+        : findLandingTile(destMap, { x: portal.toX, y: portal.toY });
       s.direction = "south";
 
       send(s.socket, buildMapDataPacket(destMap));
@@ -1548,7 +1600,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function handleDropItem(s: Session, pkt: DropItemRequest): void {
       if (s.deadUntil !== 0) return;
-      const removed = removeFromSlot(s.inventory, pkt.slot, pkt.qty);
+      // Slot entero válido + qty saneada (NaN/decimales corrompían stacks).
+      if (!Number.isInteger(pkt.slot)) return;
+      const qty = sanQty(pkt.qty);
+      if (qty === 0) return;
+      const removed = removeFromSlot(s.inventory, pkt.slot, qty);
       if (!removed) return;
       if (s.equippedWeapon === removed.item && countItem(removed.slots, removed.item) === 0) {
         s.equippedWeapon = null;
@@ -1830,6 +1886,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function handleAllocStat(s: Session, pkt: AllocStatRequest): void {
       if (s.statPoints <= 0) return;
+      // Validar el stat ANTES de descontar (un stat inválido quemaba el punto).
+      if (!["str", "agi", "int", "con", "car"].includes(pkt.stat)) return;
       s.statPoints -= 1;
       switch (pkt.stat) {
         case "str": s.str += 1; break;
@@ -1955,6 +2013,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function handleShopBuy(s: Session, pkt: ShopBuyRequest): void {
       const def = getItem(pkt.item);
       if (!def || !nearMerchant(s)) return;
+      // El item debe estar en la oferta de ALGÚN comerciante cercano — sin
+      // esto se podía comprar cualquier item del juego a su valor base.
+      let offered = false;
+      for (const n of npcs.inMap(s.mapId)) {
+        if (!n.type.merchant) continue;
+        if (Math.max(Math.abs(n.position.x - s.position.x), Math.abs(n.position.y - s.position.y)) > 3) continue;
+        const offers = getNpcType(n.type.number)?.shopOffers ?? n.type.shopOffers;
+        if (offers.includes(pkt.item)) { offered = true; break; }
+      }
+      if (!offered) return;
       // Cantidad: 1..10.000 (tope de apilado del AO). addItem reparte en slots.
       const qty = Math.max(1, Math.min(Math.floor(pkt.qty) || 1, 10_000));
       // Mismo precio con descuento que mostró la tienda.
@@ -2020,6 +2088,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const ok = bankDepositItem(s, pkt.item, pkt.qty);
       if (!ok) return;
       sendBankUpdate(s);
+      // Recomputar equipo: depositar el arma/armadura equipada dejaba el
+      // bonus "fantasma" (equippedWeapon stale) hasta el próximo update.
+      sendInventoryUpdate(s);
       bankOpsTotal.inc({ op: "deposit_item" });
     }
 
@@ -2174,6 +2245,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleTradeAccept(s: Session): void {
+      if (s.deadUntil !== 0) return; // los fantasmas no comercian
       if (s.tradeId) return;
       const invite = tradeRegistry.getInvite(s.characterId);
       if (!invite) return;
@@ -2190,6 +2262,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleTradeAddItem(s: Session, pkt: TradeAddItemMsg): void {
+      if (s.deadUntil !== 0) return;
       if (!s.tradeId) return;
       const trade = tradeRegistry.getByCharacter(s.characterId);
       if (!trade) return;
@@ -2203,40 +2276,60 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       const def = getItem(pkt.item);
       if (!def) return;
-      if (countItem(s.inventory, pkt.item) < pkt.qty) return;
+      // sanQty: entero positivo o 0. Sin esto, una qty negativa/NaN pasaba los
+      // `<` y en el confirm creaba items de la nada (removeItem con negativo
+      // AUMENTA el stack del oferente y resta al receptor).
+      const qty = sanQty(pkt.qty);
+      if (qty === 0) return;
+      if (countItem(s.inventory, pkt.item) < qty) return;
 
       const existing = offer.items.find((sl) => sl.item === pkt.item);
       if (existing) {
-        const newQty = existing.qty + pkt.qty;
+        const newQty = existing.qty + qty;
         if (countItem(s.inventory, pkt.item) < newQty) return;
         offer.items = offer.items.map((sl) =>
           sl.item === pkt.item ? { item: sl.item, qty: newQty } : sl,
         );
       } else {
-        offer.items = [...offer.items, { item: pkt.item, qty: pkt.qty }];
+        offer.items = [...offer.items, { item: pkt.item, qty }];
       }
 
       sendTradeUpdateForTrade(trade.id);
     }
 
     function handleTradeSetGold(s: Session, pkt: TradeSetGoldMsg): void {
+      if (s.deadUntil !== 0) return;
       if (!s.tradeId) return;
       const trade = tradeRegistry.getByCharacter(s.characterId);
       if (!trade) return;
-      if (pkt.amount < 0 || pkt.amount > s.gold) return;
+      // Entero >= 0 (NaN/decimal/negativo → inválido). NaN evadía ambos checks
+      // y dejaba el oro de las dos partes en NaN al confirmar.
+      const amount =
+        typeof pkt.amount === "number" && Number.isFinite(pkt.amount)
+          ? Math.max(0, Math.floor(pkt.amount))
+          : -1;
+      if (amount < 0 || amount > s.gold) return;
 
       const isA = s.characterId === trade.playerA;
       const offer = isA ? trade.offerA : trade.offerB;
       trade.offerA.confirmed = false;
       trade.offerB.confirmed = false;
-      offer.gold = pkt.amount;
+      offer.gold = amount;
       sendTradeUpdateForTrade(trade.id);
     }
 
     function handleTradeConfirm(s: Session): void {
+      if (s.deadUntil !== 0) return;
       if (!s.tradeId) return;
       const trade = tradeRegistry.getByCharacter(s.characterId);
       if (!trade) return;
+      // Re-chequeo de cercanía al confirmar: ambos vivos, mismo mapa y a
+      // distancia razonable (evita el "trade a distancia" tras alejarse).
+      const other = sessions.getByCharacterId(
+        s.characterId === trade.playerA ? trade.playerB : trade.playerA,
+      );
+      if (!other || other.deadUntil !== 0 || other.mapId !== s.mapId) return;
+      if (chebyshev(s.position, other.position) > 10) return;
 
       const isA = s.characterId === trade.playerA;
       const offer = isA ? trade.offerA : trade.offerB;
@@ -2370,6 +2463,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (!npc.type.attackable || npc.type.merchant || npc.type.banker) return;
         if (chebyshev(s.position, npc.position) > SPELL_RANGE) return;
 
+        // Validar el EFECTO antes de cobrar: clickear una criatura con una
+        // cura/buff (target "ambos") quemaba maná + cooldown en silencio.
+        const hasNpcEffect = spell.subeHp === 2 || spell.paraliza || spell.inmoviliza || spell.envenena;
+        if (!hasNpcEffect) return;
+
         s.lastCastAt = now;
         s.mana -= spell.manaCost;
         s.sta = Math.max(0, s.sta - spell.staCost);
@@ -2385,11 +2483,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           // Paralizar/Inmovilizar criaturas: el control clásico del mago.
           npc.paralyzedUntil = now + (spell.paraliza ? PARALYSIS_MS : IMMOBILIZE_MS);
           broadcastEffect(s.mapId, npc.id, "paralyzed", true, spell.paraliza ? PARALYSIS_MS : IMMOBILIZE_MS);
-        } else if (spell.envenena) {
-          // Sin sistema de veneno para NPCs todavía: daño directo aproximado.
-          damageNpc(s, npc, 5, now);
         } else {
-          return; // hechizo sin efecto válido sobre NPCs (curas, buffs)
+          // Envenenar: sin sistema de veneno para NPCs todavía — daño directo.
+          damageNpc(s, npc, 5, now);
         }
 
         const fx: SkillEffect = {
@@ -2407,11 +2503,22 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Objetivo jugador (incluido uno mismo para curas/buffs).
       if (spell.target === 2) return; // "solo NPCs"
       const target = sessions.getByCharacterId(targetId);
-      if (!target || target.mapId !== s.mapId || target.deadUntil !== 0) return;
+      if (!target || target.mapId !== s.mapId) return;
+      // Los muertos solo son objetivo válido de Resucitar.
+      if (target.deadUntil !== 0 && !spell.revivir) return;
       if (chebyshev(s.position, target.position) > SPELL_RANGE) return;
 
       let amount: number | undefined;
-      if (spell.subeHp === 1) {
+      if (spell.revivir) {
+        // Resucitar (Clérigo): revive a un jugador muerto con la vida completa.
+        // Antes NO tenía rama: el hechizo insignia no hacía nada jamás.
+        if (target.deadUntil === 0) return; // sobre vivos no hace nada
+        revivePlayer(target);
+        sendInventoryUpdate(target);
+        sendStatsUpdate(target);
+        consoleMsg(target, `¡${s.characterName} te ha resucitado!`, "global");
+        consoleMsg(s, `Has resucitado a ${target.characterName}.`, "global");
+      } else if (spell.subeHp === 1) {
         // Cura con +3%/nivel del lanzador.
         amount = spellRoll(spell, s.level);
         target.hp = Math.min(target.maxHp, target.hp + amount);
@@ -2456,6 +2563,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         broadcastEffect(s.mapId, target.characterId, "invisible", true, INVISIBILITY_MS);
       } else if (spell.ceguera || spell.estupidez) {
         if (target.characterId === s.characterId) return;
+        if (s.partyId !== null && s.partyId === target.partyId) return;
         if (!canAttackPlayer(s.mapId, target.mapId)) return;
         if (spell.ceguera) {
           target.blindUntil = now + BLINDNESS_MS;
@@ -2480,6 +2588,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
       } else if (spell.envenena) {
         if (target.characterId === s.characterId) return;
+        if (s.partyId !== null && s.partyId === target.partyId) return;
         if (!canAttackPlayer(s.mapId, target.mapId)) return;
         // Veneno del AO: 1-5 por tick, hasta curarse (Antídoto/Poción Violeta).
         const existing = activeDots.get(target.characterId) ?? [];
@@ -2488,7 +2597,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           activeDots.set(target.characterId, existing);
         }
       } else if (spell.curaVeneno) {
-        activeDots.delete(target.characterId);
+        // Solo quita el VENENO (como la Poción Violeta) — no otros DoTs.
+        const dots = activeDots.get(target.characterId);
+        if (dots) activeDots.set(target.characterId, dots.filter((d) => !d.poison));
       } else {
         return; // efecto no implementado todavía (paralizar, invisibilidad...)
       }
@@ -2894,9 +3005,25 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function handleUseSkill(s: Session, pkt: UseSkillRequest): void {
       if (s.deadUntil !== 0) return;
+      const def = getSkill(pkt.skillId);
+      if (!def) return;
+      // Solo la skill de TU clase (antes cualquier clase usaba cualquier skill).
+      if (def.classId !== s.classId) return;
       stopMeditating(s);
       const targetId = pkt.targetId as unknown as number | undefined;
       const target = targetId ? (sessions.getByCharacterId(targetId) ?? null) : null;
+      const hostile = def.type === "damage" || def.type === "dot";
+      if (target) {
+        // Mismo mapa SIEMPRE (el rango comparaba coords crudas cross-mapa) y
+        // nunca sobre muertos.
+        if (target.mapId !== s.mapId || target.deadUntil !== 0) return;
+        if (hostile) {
+          // Reglas PvP completas: ni a vos mismo, ni a tu party, ni en zona segura.
+          if (target === s) return;
+          if (s.partyId !== null && s.partyId === target.partyId) return;
+          if (!canAttackPlayer(s.mapId, target.mapId)) return;
+        }
+      }
       const result = executeSkill(s, target, pkt.skillId);
       if (!result.ok) return;
 
@@ -2913,6 +3040,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
       broadcastToMap(s.mapId, effect);
       sendStatsUpdate(s);
+      // El objetivo también se entera (antes solo el caster recibía stats) y
+      // la muerte por skill se RESUELVE (antes quedaba "vivo con 0 HP").
+      if (target && target !== s) {
+        sendStatsUpdate(target);
+        syncPartyStats(target);
+        if (target.hp === 0 && target.deadUntil === 0) resolvePlayerDeath(target, s);
+      }
     }
 
     function handleWhisper(s: Session, pkt: WhisperSendRequest): void {
@@ -3177,7 +3311,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleFriendAdd(s: Session, name: string): void {
-      const trimmed = name.trim();
+      if (typeof name !== "string") return;
+      const trimmed = name.trim().slice(0, 32);
       if (!trimmed) return;
       if (trimmed.toLowerCase() === s.characterName.toLowerCase()) {
         consoleMsg(s, "No puedes agregarte a ti mismo.", "global");
@@ -3205,6 +3340,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleFriendRemove(s: Session, name: string): void {
+      if (typeof name !== "string") return;
       const lower = name.trim().toLowerCase();
       const idx = s.friends.findIndex((f) => f.toLowerCase() === lower);
       if (idx === -1) {
@@ -3246,12 +3382,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `El mapa ${mapId.toString()} no está cargado.`, "global");
         return;
       }
+      // Clamp al rango del mapa (coords fuera dejaban al GM inmóvil fuera del
+      // mundo); doMapTransition además reubica a tierra transitable.
+      const cx = Math.max(0, Math.min(Math.floor(x) || 0, dest.width - 1));
+      const cy = Math.max(0, Math.min(Math.floor(y) || 0, dest.height - 1));
       const portal: PortalTile = {
         x: s.position.x,
         y: s.position.y,
         toMapId: mapId,
-        toX: x,
-        toY: y,
+        toX: cx,
+        toY: cy,
       };
       doMapTransition(s, portal);
     }
@@ -3360,6 +3500,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         // Portal en runtime + gráfico del teleport (grh 669) visible en el tile.
         (map.portals as PortalTile[]).push({ x: fx, y: fy, toMapId, toX, toY });
+        // Mutar también el layer3 del MapState: sin esto, quien cargara el
+        // mapa después veía un teleport INVISIBLE (el broadcast solo llegaba
+        // a los presentes).
+        (map.layer3 as number[])[fy * map.width + fx] = 669;
         const pkt: MapTileUpdate = {
           op: ServerToClientOp.MapTileUpdate, x: fx, y: fy, grh3: 669, blocked: false, wav: 3,
         };
@@ -3445,8 +3589,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     }
 
     function handleChat(s: Session, chat: ChatSend): void {
+      if (typeof chat.text !== "string" || chat.text.length > 500) return;
       // /desc <texto>: setear la descripción del personaje (todos los jugadores).
       if (/^\/desc(\s|$)/i.test(chat.text)) {
+        // Con cooldown de chat: cada /desc escribe a la DB (spam = DoS de DB).
+        const dnow = Date.now();
+        if (isOnChatCooldown(s.lastChatAt, dnow)) return;
+        s.lastChatAt = dnow;
         const desc = chat.text.replace(/^\/desc\s?/i, "").trim().slice(0, 200);
         s.description = desc;
         void db.update(characters).set({ description: desc }).where(eq(characters.id, s.characterId));
@@ -3488,14 +3637,27 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
       // /gritar <texto> (Yell): grito a todo el mapa, en mayúsculas.
+      // Con el MISMO anti-flood y filtro que el chat normal (antes lo salteaba:
+      // spam ilimitado al mapa entero sin blocklist).
       const yellMatch = /^\/(?:gritar|grito)\s+(.+)$/i.exec(chat.text);
       if (yellMatch) {
+        const ynow = Date.now();
+        if (isOnChatCooldown(s.lastChatAt, ynow)) {
+          send(s.socket, { op: ServerToClientOp.ChatError, reason: "RATE_LIMITED" } satisfies ChatError);
+          return;
+        }
+        const yv = validateChatText(yellMatch[1]!.trim());
+        if (!yv.ok) {
+          send(s.socket, { op: ServerToClientOp.ChatError, reason: yv.reason } satisfies ChatError);
+          return;
+        }
+        s.lastChatAt = ynow;
         const yell: ChatBroadcast = {
           op: ServerToClientOp.ChatBroadcast,
           fromId: s.characterId as EntityId,
           fromName: s.characterName,
-          text: yellMatch[1]!.trim().slice(0, 200).toUpperCase(),
-          timestamp: Date.now(),
+          text: yv.text.slice(0, 200).toUpperCase(),
+          timestamp: ynow,
           yell: true,
         };
         broadcastToMap(s.mapId, yell);
@@ -3552,6 +3714,21 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
+      // Si el personaje YA tiene una sesión viva (relogin/segunda pestaña),
+      // persistir su estado ANTES de leer la DB. Sin esto, el SELECT leía un
+      // snapshot stale (el estado vivo solo se guardaba al cerrar el socket,
+      // más tarde) → rollback de progreso y dupes de oro/items reproducibles.
+      {
+        const prev = sessions.getByCharacterId(loginReq.characterId as number);
+        if (prev) {
+          try {
+            await persistPosition(prev);
+          } catch (err) {
+            req.log.error({ err }, "[ws] error persistiendo sesión previa en relogin");
+          }
+        }
+      }
+
       const [character] = await db
         .select({
           id: characters.id,
@@ -3597,6 +3774,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           headId: characters.headId,
           bankInventory: characters.bankInventory,
           bankGold: characters.bankGold,
+          dead: characters.dead,
         })
         .from(characters)
         .where(
@@ -3683,9 +3861,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         session.maxHp = maxHpForLevel(character.level);
         session.maxMana = 0;
       }
-      session.hp = character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
-      session.mana = Math.min(character.mana, session.maxMana);
-      session.sta = session.maxSta;
+      // Muerto persistido: sigue fantasma al reconectar (antes un F5 revivía
+      // gratis con vida completa en el mismo tile).
+      if (character.dead) {
+        session.deadUntil = DEAD_FOREVER;
+        session.hp = 0;
+        session.mana = Math.min(character.mana, session.maxMana);
+        session.sta = 0;
+      } else {
+        session.hp = character.hp > 0 ? Math.min(character.hp, session.maxHp) : session.maxHp;
+        session.mana = Math.min(character.mana, session.maxMana);
+        session.sta = session.maxSta;
+      }
 
       session.gold = character.gold;
       session.inventory = character.inventory.map((sl) => ({ ...sl }));

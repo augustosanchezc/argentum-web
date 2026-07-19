@@ -48,9 +48,14 @@ export function killPlayer(s: Session): void {
   s.deadUntil = DEAD_FOREVER;
   stopMeditating(s);
   // Al morir se pierde la montura (el fantasma camina a pie) y los
-  // overlays de equipo (el casper va sin arma/escudo/casco).
+  // overlays de equipo (el casper va sin arma/escudo/casco). También se
+  // corta la navegación y el descanso: revivir "navegando" en tierra te
+  // dejaba clavado, y `resting` regeneraba a ritmo de fogata sin fogata.
   s.mounted = false;
   s.mountBody = 0;
+  s.navigating = false;
+  s.boatBody = 0;
+  s.resting = false;
   s.visibleWeaponAnim = 0;
   s.visibleShieldAnim = 0;
   s.visibleHelmetAnim = 0;

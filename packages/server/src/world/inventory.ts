@@ -1,5 +1,17 @@
 import { getItem, type InventorySlot } from "@ao/shared";
 
+// Tope de apilado por slot (como el cliente asume) y de oro por request.
+export const MAX_STACK = 10_000;
+
+// Sanitiza una cantidad venida DEL CLIENTE: entero positivo finito (clamp a
+// max) o 0 si es inválida (NaN, Infinity, negativa, decimal, no-número).
+// NaN evade los chequeos `<= 0` (NaN <= 0 es false) y corrompía oro/stacks.
+export function sanQty(v: unknown, max: number = MAX_STACK): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+  const n = Math.floor(v);
+  return n > 0 ? Math.min(n, max) : 0;
+}
+
 export function countItem(slots: readonly InventorySlot[], item: number): number {
   return slots.find((s) => s.item === item)?.qty ?? 0;
 }

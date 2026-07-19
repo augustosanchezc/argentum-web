@@ -165,8 +165,8 @@ export class ReconnectingClient {
         token: this.opts.token,
         characterId: this.opts.characterId,
         onPacket: this.opts.onPacket,
-        onClose: () => {
-          this.handleClose();
+        onClose: (ev) => {
+          this.handleClose(ev);
         },
       });
       this.socket = result.socket;
@@ -184,7 +184,8 @@ export class ReconnectingClient {
         reason === "INVALID_TOKEN" ||
         reason === "OUTDATED_CLIENT" ||
         reason === "CHARACTER_NOT_FOUND" ||
-        reason === "LOGIN_REJECTED"
+        reason === "LOGIN_REJECTED" ||
+        reason === "REPLACED_BY_NEWER_SESSION"
       ) {
         this.opts.onStatus({ kind: "failed", reason });
         return;
@@ -193,9 +194,15 @@ export class ReconnectingClient {
     }
   }
 
-  private handleClose(): void {
+  private handleClose(ev?: CloseEvent): void {
     this.socket = null;
     if (this.destroyed) return;
+    // 4008 = otra pestaña/login tomó el personaje. NO reconectar: si no, las
+    // dos pestañas se expulsan mutuamente en loop (ping-pong de kicks).
+    if (ev?.code === 4008) {
+      this.opts.onStatus({ kind: "failed", reason: "REPLACED_BY_NEWER_SESSION" });
+      return;
+    }
     this.scheduleReconnect("DISCONNECTED");
   }
 

@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { InventorySlot, SkillSet } from "@ao/shared";
@@ -106,6 +107,9 @@ export const characters = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`),
     bankGold: integer("bank_gold").notNull().default(0),
+    // Muerto (fantasma). Sin esto, un F5 estando muerto revivía gratis con
+    // vida completa en el mismo tile (el estado de muerte no se persistía).
+    dead: boolean("dead").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

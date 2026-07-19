@@ -40,6 +40,11 @@ export function executeSkill(
     return { ok: false, reason: "COOLDOWN", newCasterMana: caster.mana };
   }
 
+  // Validar el objetivo ANTES de cobrar: las skills damage/dot sin target (el
+  // cliente manda targetId undefined) quemaban maná y cooldown sin efecto.
+  if ((def.type === "damage" || def.type === "dot") && !target) {
+    return { ok: false, reason: "NO_TARGET", newCasterMana: caster.mana };
+  }
   // Skills con objetivo requieren target en rango
   if (def.type !== "buff" && def.range > 0 && target) {
     const dist = manhattan(caster.position, target.position);

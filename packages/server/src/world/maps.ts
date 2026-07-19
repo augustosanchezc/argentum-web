@@ -124,6 +124,27 @@ function findNearestWalkable(
   return origin;
 }
 
+// Tile transitable A PIE (ni bloqueado ni agua) más cercano al origen. Para
+// validar destinos de portales: hay portales nativos cuyo destino cae en agua
+// abierta o en tiles sellados — el jugador quedaba varado para siempre.
+export function findLandingTile(map: MapState, origin: Vector2): Vector2 {
+  const ok = (x: number, y: number): boolean =>
+    x >= 0 && y >= 0 && x < map.width && y < map.height &&
+    map.blocked[y * map.width + x] === 0 && map.water[y * map.width + x] === 0;
+  if (ok(origin.x, origin.y)) return origin;
+  for (let r = 1; r < Math.max(map.width, map.height); r += 1) {
+    for (let dy = -r; dy <= r; dy += 1) {
+      for (let dx = -r; dx <= r; dx += 1) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const x = origin.x + dx;
+        const y = origin.y + dy;
+        if (ok(x, y)) return { x, y };
+      }
+    }
+  }
+  return origin;
+}
+
 // Intenta cargar un mapa; devuelve null si el archivo no existe.
 // Mapa gráfico-de-puerta-cerrada → puerta abierta {item, graphic}, derivado de
 // los pares del catálogo (una puerta CERRADA apunta a su abierta vía
