@@ -2626,6 +2626,9 @@ html, body { background: #050506; height: 100%; }
    cuadradas (aspect-ratio) → los 24 slots entran siempre, sin scroll. */
 .ao-frame .ao-box--items .ao-inv__grid {
   display: grid; grid-template-columns: repeat(5, minmax(0, 52px)); gap: 4px; padding: 6px;
+  /* auto: la fila toma la altura de la celda (cuadrada). Sin esto heredaba
+     grid-auto-rows: 35px de la regla base y las filas se ENCIMABAN. */
+  grid-auto-rows: auto;
   justify-content: center; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
   overflow: visible; align-content: start;
 }
