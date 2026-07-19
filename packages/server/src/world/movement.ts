@@ -2,11 +2,12 @@ import type { Direction, Vector2 } from "@ao/shared";
 import { isWalkable, type MapState } from "./maps.js";
 
 // Cooldown mínimo entre movimientos exitosos en el SERVER. El cliente predice y
-// manda pasos cada ~200ms (5 tiles/s); el server usa un umbral MÁS BAJO (150ms)
+// manda pasos cada ~200ms (5 tiles/s); el server usa un umbral MÁS BAJO (180ms)
 // como MARGEN para el jitter de red: así un paso legítimo del cliente nunca se
 // rechaza por cooldown (lo que provocaba una corrección y un tirón/snap-back
-// cada pocos pasos). La velocidad efectiva la sigue marcando el cliente (5/s).
-export const MOVE_COOLDOWN_MS = 150;
+// cada pocos pasos). 180 (antes 150) achica la ventaja de un cliente modificado
+// de +33% a +11% manteniendo tolerancia a jitter razonable.
+export const MOVE_COOLDOWN_MS = 180;
 
 const DELTAS: Record<Direction, Vector2> = {
   north: { x: 0, y: -1 },

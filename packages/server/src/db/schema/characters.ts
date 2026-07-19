@@ -110,6 +110,10 @@ export const characters = pgTable(
     // Muerto (fantasma). Sin esto, un F5 estando muerto revivía gratis con
     // vida completa en el mismo tile (el estado de muerte no se persistía).
     dead: boolean("dead").notNull().default(false),
+    // Navegando (en barco) + body del barco. Sin esto, desconectarse en el
+    // agua "invalidaba" la posición y te teletransportaba a Ullathorpe.
+    navigating: boolean("navigating").notNull().default(false),
+    boatBody: integer("boat_body").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

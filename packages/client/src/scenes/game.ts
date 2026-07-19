@@ -1215,6 +1215,7 @@ export async function startGameScene(
     const names: string[] = [];
     for (const v of entityVisuals.values()) {
       if (v.kind !== "player") continue; // los NPCs no van en la lista de online
+      if (v.name.startsWith("?")) continue; // placeholder de entidad desconocida
       names.push(v.name);
     }
     playerList.setPlayers(names);
@@ -1233,13 +1234,22 @@ export async function startGameScene(
   // El primer mapa (login) se dibuja recién cuando TODOS sus atlas están listos,
   // para que nunca se vea el terreno en color de fallback. Después ya no.
   let firstMapDrawn = false;
+  // Mientras un MapData se aplica (la carga de atlas puede tardar segundos),
+  // los paquetes entrantes se BUFFEREAN y se re-aplican al terminar: sin esto,
+  // spawns/despawns llegados durante la carga se procesaban contra el mapa
+  // viejo y el snapshot los pisaba (entidades/items fantasma o invisibles).
+  let mapLoadToken = 0;
+  let mapLoading = false;
+  const packetsWhileLoading: AnyPacket[] = [];
 
   // Dibuja las 4 capas con las texturas que YA están en caché; las que falten
   // quedan como fallback de color. Es reejecutable: se vuelve a llamar cuando la
   // precarga en segundo plano trae las texturas nuevas (dibujo progresivo).
   function drawTiles(data: MapData): void {
-    tilesLayer.removeChildren();
-    roofLayer.removeChildren();
+    // destroy() explícito: removeChildren() solo suelta la referencia y los
+    // ~10k sprites del mapa anterior quedaban reteniendo geometría GPU.
+    for (const c of tilesLayer.removeChildren()) c.destroy();
+    for (const c of roofLayer.removeChildren()) c.destroy();
     // Limpiar los objetos de capa 3 del mapa anterior (viven en entitiesLayer).
     for (const s of mapObjectSprites) {
       entitiesLayer.removeChild(s);
@@ -1413,11 +1423,14 @@ export async function startGameScene(
       const isSelf = entId === character.id;
       addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0, ent.level ?? 1, ent.classId ?? 1);
       if (ent.dead) applyDeadVisual(entId);
+      if (ent.invisible) applyInvisibleVisual(entId);
     }
     updateSelfHud();
   }
 
   async function applyMapData(data: MapData): Promise<void> {
+    const loadToken = ++mapLoadToken;
+    mapLoading = true;
     playMapMusic(data.music ?? 0);
     const isTransition = currentMapId !== -1 && data.mapId !== currentMapId;
     currentMapId = data.mapId;
@@ -1432,9 +1445,16 @@ export async function startGameScene(
       transitionFlashEnd = performance.now() + TRANSITION_FLASH_MS;
       audio.play(SND.warp, 0.7);
       chat?.appendMessage({ fromName: "", text: `Has llegado a ${data.name}.`, timestamp: Date.now(), isSelf: false, kind: "global" });
+      // Floaters del mapa anterior (números de daño, etc.): fuera.
+      for (const f of floaters) f.text.destroy();
+      floaters.length = 0;
     }
 
     await renderTiles(data);
+    // Si llegó un MapData más nuevo durante la carga (portales encadenados,
+    // /telep doble), abortar: aplicar entidades/minimapa/nombre del mapa VIEJO
+    // sobre los tiles del nuevo era el desync clásico.
+    if (loadToken !== mapLoadToken) return;
     renderEntities(data);
     clearGroundItems();
     for (const gi of data.groundItems) {
@@ -1462,6 +1482,10 @@ export async function startGameScene(
       minimap?.setPos(ownV.position.x, ownV.position.y);
       updateHudLocation(currentMapName, currentMapId, ownV.position.x, ownV.position.y);
     }
+
+    // Fin de la carga: re-aplicar los paquetes bufferados sobre el mapa nuevo.
+    mapLoading = false;
+    for (const p of packetsWhileLoading.splice(0)) handlePacket(p);
   }
   let currentMapName = "";
 
@@ -2207,6 +2231,12 @@ export async function startGameScene(
 
   // -- Handlers de paquetes del server --
   function handlePacket(packet: AnyPacket): void {
+    // Mapa cargando: buffer (se re-aplican al terminar). Un MapData nuevo
+    // pasa directo — toma el control vía mapLoadToken.
+    if (mapLoading && packet.op !== ServerToClientOp.MapData) {
+      packetsWhileLoading.push(packet);
+      return;
+    }
     switch (packet.op) {
       case ServerToClientOp.MapData:
         void applyMapData(packet);
@@ -2482,6 +2512,16 @@ export async function startGameScene(
     v.hpBarUntil = 0;
     v.body.alpha = 0.35;
     if (id === character.id) showDeathOverlay();
+  }
+
+  // Estado "invisible" al crear la entidad (spawn/MapData): mismo look que el
+  // efecto en vivo — semi-transparente si soy yo, oculto para los demás.
+  function applyInvisibleVisual(id: number): void {
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    v.invisible = true;
+    if (id === character.id) v.container.alpha = 0.45;
+    else v.container.visible = false;
   }
 
   function handleDeath(p: Death): void {
@@ -2924,6 +2964,7 @@ export async function startGameScene(
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
     addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0, p.level ?? 1, p.classId ?? 1);
     if (p.dead) applyDeadVisual(id);
+    if (p.invisible) applyInvisibleVisual(id);
     refreshPlayerList();
   }
 

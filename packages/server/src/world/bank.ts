@@ -1,4 +1,4 @@
-import { addItem, countItem, removeItem, sanQty } from "./inventory.js";
+import { addItem, carryCapacity, countItem, MAX_STACK, removeItem, sanQty } from "./inventory.js";
 import type { Session } from "../ws/sessions.js";
 
 // Operaciones de banco (E-4.2). Todas son síncronas — Node.js es single-threaded,
@@ -13,6 +13,8 @@ export function bankDepositItem(s: Session, item: number, rawQty: number): boole
   const qty = sanQty(rawQty);
   if (qty === 0) return false;
   if (countItem(s.inventory, item) < qty) return false;
+  // Tope de stack en el banco (10k por slot, igual que el inventario).
+  if (countItem(s.bankInventory, item) + qty > MAX_STACK) return false;
   const next = removeItem(s.inventory, item, qty);
   if (!next) return false;
   s.inventory = next;
@@ -24,6 +26,8 @@ export function bankWithdrawItem(s: Session, item: number, rawQty: number): bool
   const qty = sanQty(rawQty);
   if (qty === 0) return false;
   if (countItem(s.bankInventory, item) < qty) return false;
+  // Debe entrar en el inventario (stack 10k + 24 slots).
+  if (carryCapacity(s.inventory, item) < qty) return false;
   const next = removeItem(s.bankInventory, item, qty);
   if (!next) return false;
   s.bankInventory = next;

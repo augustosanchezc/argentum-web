@@ -123,6 +123,7 @@ import {
   armorDefenseFor,
   countItem,
   helmetDefenseFor,
+  carryCapacity,
   removeFromSlot,
   removeItem,
   reorderSlots,
@@ -201,6 +202,7 @@ function buildMapDataPacket(map: MapState): MapData {
     level: s.level,
     classId: s.classId,
     dead: s.deadUntil !== 0 || undefined,
+    invisible: s.invisibleUntil > Date.now() || undefined,
     ...computeVisibleEquip(s),
   }));
   // Solo NPCs vivos: los muertos aparecían "parados" (inatacables) hasta su respawn.
@@ -337,13 +339,17 @@ function parseDirection(raw: string | null | undefined): Direction {
 function resolveSpawn(
   persistedMapId: number,
   persistedPos: Vector2,
+  navigating = false,
 ): { map: MapState; position: Vector2 } {
   const persistedMap = getMap(persistedMapId);
-  if (
-    persistedMap &&
-    isWalkable(persistedMap, persistedPos.x, persistedPos.y)
-  ) {
-    return { map: persistedMap, position: persistedPos };
+  if (persistedMap) {
+    // A pie: tile caminable. Navegando: también vale un tile de agua (antes
+    // desconectarse en barco "invalidaba" la posición y te mandaba a Ulla).
+    const ok = navigating
+      ? isWalkable(persistedMap, persistedPos.x, persistedPos.y) ||
+        isWaterAt(persistedMap, persistedPos.x, persistedPos.y)
+      : isWalkable(persistedMap, persistedPos.x, persistedPos.y);
+    if (ok) return { map: persistedMap, position: persistedPos };
   }
   const fallback = getMap(1);
   if (!fallback) throw new Error("Default map (id=1) is missing");
@@ -388,6 +394,8 @@ async function persistPosition(s: Session): Promise<void> {
       bankInventory: s.bankInventory,
       bankGold: s.bankGold,
       dead: s.deadUntil !== 0,
+      navigating: s.navigating,
+      boatBody: s.boatBody,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -693,6 +701,7 @@ setInterval(() => {
       level: s.level,
       classId: s.classId,
       dead: s.deadUntil !== 0 || undefined,
+      invisible: s.invisibleUntil > Date.now() || undefined,
       ...computeVisibleEquip(s),
     };
     broadcastToMap(home.id, spawnPkt, s.id);
@@ -1058,6 +1067,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         level: s.level,
         classId: s.classId,
         dead: s.deadUntil !== 0 || undefined,
+        invisible: s.invisibleUntil > Date.now() || undefined,
         ...computeVisibleEquip(s),
       };
       broadcastToMap(destMap.id, spawn, s.id);
@@ -1443,6 +1453,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           // Cada item busca su propio tile libre — no se apilan (AO original).
           const dropPos = findDropTile(npc.mapId, npc.position);
           const g = groundItems.spawn(npc.mapId, dropPos, drop.item, drop.qty);
+          if (g.evictedId !== undefined) {
+            broadcastToMap(npc.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+          }
           const spawnPkt: GroundItemSpawn = {
             op: ServerToClientOp.GroundItemSpawn,
             id: g.id as EntityId,
@@ -1582,6 +1595,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (s.deadUntil !== 0) return;
       const g = groundItems.atTile(s.mapId, s.position);
       if (!g) return;
+      // Espacio: tope de stack (10k) + tope de slots (24). El oro no ocupa slot.
+      if (g.item !== GOLD_ITEM && carryCapacity(s.inventory, g.item) < g.qty) {
+        consoleMsg(s, "No tienes espacio en el inventario.", "combate");
+        return;
+      }
       groundItems.remove(g.id);
       // El oro (item 12) va a la bolsa, no al inventario (AO original).
       if (g.item === GOLD_ITEM) {
@@ -1620,6 +1638,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
       s.inventory = removed.slots;
       const g = groundItems.spawn(s.mapId, s.position, removed.item, removed.qty);
+      if (g.evictedId !== undefined) {
+        broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+      }
       const spawn: GroundItemSpawn = {
         op: ServerToClientOp.GroundItemSpawn,
         id: g.id as EntityId,
@@ -1793,6 +1814,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         s.inventory = removed;
         const g = groundItems.spawn(s.mapId, s.position, PRODUCTS.fogata, 1);
+        if (g.evictedId !== undefined) {
+          broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+        }
         const spawnPkt: GroundItemSpawn = {
           op: ServerToClientOp.GroundItemSpawn,
           id: g.id as EntityId,
@@ -2027,8 +2051,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const qty = Math.max(1, Math.min(Math.floor(pkt.qty) || 1, 10_000));
       // Mismo precio con descuento que mostró la tienda.
       const unit = Math.max(1, Math.round(def.value / (1 + s.skills.comerciar / 100)));
-      // Cuántas puede pagar realmente con el oro EN MANO (el del banco no cuenta).
-      const affordable = Math.min(qty, Math.floor(s.gold / unit));
+      // Cuántas puede pagar realmente con el oro EN MANO (el del banco no cuenta)
+      // y cuántas le ENTRAN (tope de stack 10k + tope de 24 slots).
+      const space = carryCapacity(s.inventory, def.id);
+      if (space === 0) {
+        consoleMsg(s, "No tienes espacio en el inventario.", "combate");
+        return;
+      }
+      const affordable = Math.min(qty, Math.floor(s.gold / unit), space);
       if (affordable <= 0) {
         consoleMsg(s, "No tienes suficiente oro.", "combate");
         return;
@@ -2367,12 +2397,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       for (const slot of trade.offerA.items) {
         const removed = removeItem(invA, slot.item, slot.qty);
         if (!removed) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
+        // El receptor tiene que tener espacio (stack 10k / 24 slots): addItem
+        // clampea y el excedente se ESFUMARÍA — mejor cancelar.
+        if (carryCapacity(invB, slot.item) < slot.qty) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
         invA = removed;
         invB = addItem(invB, slot.item, slot.qty);
       }
       for (const slot of trade.offerB.items) {
         const removed = removeItem(invB, slot.item, slot.qty);
         if (!removed) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
+        if (carryCapacity(invA, slot.item) < slot.qty) { cancelTrade(trade.id, "OFFER_INVALID"); return; }
         invB = removed;
         invA = addItem(invA, slot.item, slot.qty);
       }
@@ -3775,6 +3809,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           bankInventory: characters.bankInventory,
           bankGold: characters.bankGold,
           dead: characters.dead,
+          navigating: characters.navigating,
+          boatBody: characters.boatBody,
         })
         .from(characters)
         .where(
@@ -3793,7 +3829,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       let spawnInfo: { map: MapState; position: Vector2 };
       try {
-        spawnInfo = resolveSpawn(character.mapId, { x: character.posX, y: character.posY });
+        spawnInfo = resolveSpawn(
+          character.mapId,
+          { x: character.posX, y: character.posY },
+          character.navigating,
+        );
       } catch {
         sendLoginResponse(socket, false, "MAP_NOT_FOUND");
         socket.close(CLOSE_AUTH_FAILED, "MAP_NOT_FOUND");
@@ -3884,6 +3924,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.headId = character.headId;
       session.bankInventory = character.bankInventory.map((sl) => ({ ...sl }));
       session.bankGold = character.bankGold;
+      // Restaurar navegación (se persiste): reconectar en el agua mantiene el
+      // barco en vez de teletransportar a Ullathorpe.
+      session.navigating = character.navigating;
+      session.boatBody = character.boatBody;
       recomputeEquipment(session);
       // Ropaje: si entra con armadura equipada, mostrar ese body desde el
       // inicio. Igual con los overlays de equipo — así el primer
@@ -3928,6 +3972,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         level: session.level,
         classId: session.classId,
         dead: session.deadUntil !== 0 || undefined,
+        invisible: session.invisibleUntil > Date.now() || undefined,
         ...computeVisibleEquip(session),
       };
       broadcastToMap(map.id, spawn, session.id);

@@ -217,6 +217,9 @@ export interface MapData {
     // Jugadores: muerto (fantasma). El cliente lo dibuja atenuado y, si es el
     // propio, mantiene el velo de muerte al cambiar de mapa.
     readonly dead?: boolean;
+    // Jugadores: invisible (ocultarse / hechizo / GM). Al entrar al mapa el
+    // cliente lo oculta (antes solo se enteraba del cambio en vivo).
+    readonly invisible?: boolean;
     // Overlays de equipo visibles (arma/escudo/casco).
     readonly weaponAnim?: number;
     readonly shieldAnim?: number;
@@ -263,6 +266,8 @@ export interface EntitySpawn {
   readonly classId?: number;
   // Jugadores: muerto (fantasma) — ver MapData.entities.dead.
   readonly dead?: boolean;
+  // Jugadores: invisible — ver MapData.entities.invisible.
+  readonly invisible?: boolean;
   // Overlays de equipo visibles (arma/escudo/casco).
   readonly weaponAnim?: number;
   readonly shieldAnim?: number;

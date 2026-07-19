@@ -1,5 +1,4 @@
 import { CHAT_TEXT_MAX_LENGTH } from "@ao/shared";
-import { containsBlockedWord } from "./blocklist.js";
 
 // 1 mensaje por segundo es lo que usa el AO original. Para chat global
 // alcanza; si quisieramos burst, podriamos sumar token bucket — por ahora
@@ -25,10 +24,8 @@ export function validateChatText(raw: unknown): ChatValidation {
   if (cleaned.length > CHAT_TEXT_MAX_LENGTH) {
     return { ok: false, reason: "TOO_LONG" };
   }
-  // Filtro de contenido ofensivo (T-038). Lista configurable via CHAT_BLOCKLIST.
-  if (containsBlockedWord(cleaned)) {
-    return { ok: false, reason: "BLOCKED" };
-  }
+  // SIN filtro de contenido (decisión de diseño): todo texto está permitido.
+  // Solo se sanean caracteres de control, largo y rate-limit.
 
   return { ok: true, text: cleaned };
 }

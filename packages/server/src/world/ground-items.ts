@@ -12,15 +12,37 @@ export interface GroundItem {
   readonly qty: number;
 }
 
+// Tope de items en el suelo por mapa (anti-DoS de memoria): al superarlo, el
+// más viejo del mapa se elimina. El caller broadcastea su despawn (evicted).
+const MAX_GROUND_ITEMS_PER_MAP = 500;
+
 class GroundItemRegistry {
   private readonly byId = new Map<number, GroundItem>();
   private nextId = GROUND_ID_BASE + 1;
 
-  spawn(mapId: number, position: Vector2, item: number, qty: number): GroundItem {
+  spawn(
+    mapId: number,
+    position: Vector2,
+    item: number,
+    qty: number,
+  ): GroundItem & { evictedId?: number } {
+    let evictedId: number | undefined;
+    // Map preserva orden de inserción → el primero del mapa es el más viejo.
+    let count = 0;
+    let oldest: number | undefined;
+    for (const g of this.byId.values()) {
+      if (g.mapId !== mapId) continue;
+      count += 1;
+      oldest ??= g.id;
+    }
+    if (count >= MAX_GROUND_ITEMS_PER_MAP && oldest !== undefined) {
+      this.byId.delete(oldest);
+      evictedId = oldest;
+    }
     const id = this.nextId++;
     const g: GroundItem = { id, mapId, position: { x: position.x, y: position.y }, item, qty };
     this.byId.set(id, g);
-    return g;
+    return evictedId !== undefined ? { ...g, evictedId } : g;
   }
 
   remove(id: number): void {

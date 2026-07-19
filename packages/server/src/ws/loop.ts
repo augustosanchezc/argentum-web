@@ -68,9 +68,12 @@ function stepDirsToward(from: Vector2, to: Vector2): Direction[] {
 }
 
 // True si el tile es caminable y no está ocupado por un jugador o NPC vivo.
+// Excluye también los tiles de portal: una criatura parada encima bloqueaba
+// el cruce a los jugadores.
 function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number): boolean {
   const map = getMap(mapId);
   if (!map || !isWalkable(map, pos.x, pos.y)) return false;
+  if (map.portals.some((p) => p.x === pos.x && p.y === pos.y)) return false;
   for (const s of sessions.inMap(mapId)) {
     if (s.deadUntil === 0 && s.position.x === pos.x && s.position.y === pos.y) return false;
   }
