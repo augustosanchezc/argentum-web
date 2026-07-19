@@ -1951,11 +1951,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const qty = Math.max(1, Math.min(Math.floor(pkt.qty) || 1, 10_000));
       // Mismo precio con descuento que mostró la tienda.
       const unit = Math.max(1, Math.round(def.value / (1 + s.skills.comerciar / 100)));
-      // Cuántas puede pagar realmente con el oro que tiene.
+      // Cuántas puede pagar realmente con el oro EN MANO (el del banco no cuenta).
       const affordable = Math.min(qty, Math.floor(s.gold / unit));
-      if (affordable <= 0) return;
+      if (affordable <= 0) {
+        consoleMsg(s, "No tienes suficiente oro.", "combate");
+        return;
+      }
       s.gold -= unit * affordable;
       s.inventory = addItem(s.inventory, def.id, affordable);
+      // Si no le alcanzó para todo lo pedido, avisar (evita el "me vendió pocas
+      // y no sé por qué"). El oro puede estar en el banco.
+      if (affordable < qty) {
+        consoleMsg(s, `Compraste ${affordable.toString()} — no te alcanzó el oro para las ${qty.toString()} pedidas.`, "combate");
+      }
       trainSkill(s, "comerciar", true);
       sendInventoryUpdate(s);
     }

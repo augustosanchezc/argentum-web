@@ -744,6 +744,11 @@ h3 {
 .ao-vp__info .ao-shop__iname { font-size: 13px; font-weight: 700; color: #e8e6f2; }
 .ao-vp__info .ao-shop__iprice { font-size: 13px; font-weight: 700; color: #7ab0ff; }
 .ao-vp__info .ao-shop__istat { font-size: 11px; color: #9a96b4; margin-left: auto; }
+.ao-vp__info .ao-shop__alert {
+  margin-left: auto; font-size: 12px; font-weight: 800; color: #ff6b6b;
+  opacity: 0; transition: opacity 0.15s ease;
+}
+.ao-vp__info .ao-shop__alert--on { opacity: 1; }
 .ao-vp__foot { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
 .ao-vp__qtylbl { font-size: 11px; color: #8a86a4; font-weight: 700; display: flex; align-items: center; gap: 6px; }
 .ao-vp__field {

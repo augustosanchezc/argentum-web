@@ -51,6 +51,7 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
         <span class="ao-shop__iname">&nbsp;</span>
         <span class="ao-shop__iprice"></span>
         <span class="ao-shop__istat"></span>
+        <span class="ao-shop__alert"></span>
       </div>
       <div class="ao-vp__foot">
         <label class="ao-vp__qtylbl">Cantidad
@@ -72,11 +73,22 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
   const buyBtn = wrap.querySelector<HTMLButtonElement>(".ao-shop__buy")!;
   const sellBtn = wrap.querySelector<HTMLButtonElement>(".ao-shop__sell")!;
   const closeBtn = wrap.querySelector<HTMLButtonElement>(".ao-vp__close")!;
+  const alertEl = wrap.querySelector<HTMLSpanElement>(".ao-shop__alert")!;
 
   let open = false;
   let offers: ReadonlyArray<ShopOffer> = [];
   let invSlots: ReadonlyArray<InventorySlot> = [];
   let selected: Selection = null;
+  let playerGold = 0;
+  let alertTimer: number | undefined;
+
+  // Aviso rojo temporal en la ventana (ej. "No tienes oro suficiente").
+  function showAlert(msg: string): void {
+    alertEl.textContent = msg;
+    alertEl.classList.add("ao-shop__alert--on");
+    if (alertTimer !== undefined) clearTimeout(alertTimer);
+    alertTimer = window.setTimeout(() => { alertEl.classList.remove("ao-shop__alert--on"); }, 2600);
+  }
 
   function qty(): number {
     const n = Math.floor(Number(qtyEl.value));
@@ -164,7 +176,13 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
   }
 
   buyBtn.addEventListener("click", () => {
-    if (selected?.side === "npc") cb.onBuy(selected.item, qty());
+    if (selected?.side !== "npc") return;
+    // No alcanza ni para una unidad: avisar y no enviar.
+    if (playerGold < selected.unit) {
+      showAlert("No tienes oro suficiente");
+      return;
+    }
+    cb.onBuy(selected.item, qty());
   });
   sellBtn.addEventListener("click", () => {
     if (selected?.side === "user") cb.onSell(selected.item, qty());
@@ -177,6 +195,7 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
       offers = o;
       selected = null;
       qtyEl.value = "1";
+      alertEl.classList.remove("ao-shop__alert--on");
       renderNpc();
       renderUser();
       renderInfo();
@@ -184,8 +203,9 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
     },
     close: () => { setOpen(false); },
     isOpen: () => open,
-    setPlayerInventory: (slots) => {
+    setPlayerInventory: (slots, gold) => {
       invSlots = slots;
+      playerGold = gold;
       if (open) {
         // Si el item seleccionado para vender ya no está, limpiar la selección.
         if (selected?.side === "user" && !slots.some((s) => s && s.item === selected!.item)) {
