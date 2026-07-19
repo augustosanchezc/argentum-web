@@ -63,6 +63,8 @@ export interface InventoryCallbacks {
   onSelectSpell(spellId: number | null): void;
   // Doble-click en un hechizo del libro: agregarlo a la barra de macros.
   onAddSpellMacro?(spellId: number): void;
+  // Botón ℹ de un hechizo: mostrar su info (daño/maná/nivel…) en el chat.
+  onSpellInfo?(spellId: number): void;
   onOpenStats(): void;
   onOpenKeys(): void;
   onOpenQuests(): void;
@@ -194,7 +196,7 @@ export function mountInventory(
       <div class="ao-panel__tab" data-tabpane="inv">
         <div class="ao-inv__grid" role="grid"></div>
         <div class="ao-inv__detail" data-role="detail"><span class="ao-inv__detail-hint">Click en un objeto para ver sus detalles</span></div>
-        <div class="ao-inv__trash" data-role="trash">Arrastrá acá para tirar al suelo</div>
+        <div class="ao-inv__trash" data-role="trash">Arrastrá acá para tirar al suelo · <button type="button" class="ao-inv__dropbtn">🗑 Tirar</button></div>
       </div>
       <div class="ao-panel__tab" data-tabpane="spells" hidden>
         <div class="ao-spells__list"></div>
@@ -244,6 +246,9 @@ export function mountInventory(
   // celda y el `dblclick` nativo se cortaba ("tomaba solo 1").
   let lastClickSlot = -1;
   let lastClickAt = 0;
+  // Slot SELECCIONADO (persistente): lo usan el botón Tirar y las teclas
+  // Usar/Equipar. Se resalta en la grilla.
+  let selectedSlot = -1;
   gridEl.addEventListener("click", (ev) => {
     const cellEl = (ev.target as HTMLElement).closest<HTMLElement>(".ao-inv__cell");
     if (!cellEl?.dataset.slot) return;
@@ -260,9 +265,20 @@ export function mountInventory(
     } else {
       lastClickSlot = idx;
       lastClickAt = now;
+      selectedSlot = idx;
       showDetail(def.id);
       cb.onSelectItem?.(def.id);
+      // Re-marcar la celda seleccionada sin re-render completo.
+      gridEl.querySelectorAll(".ao-inv__cell--sel").forEach((c) => c.classList.remove("ao-inv__cell--sel"));
+      cellEl.classList.add("ao-inv__cell--sel");
     }
+  });
+
+  // Botón Tirar: tira al suelo el stack completo del objeto seleccionado.
+  wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", () => {
+    const slot = selectedSlot >= 0 && selectedSlot < last.slots.length ? last.slots[selectedSlot] : null;
+    if (!slot) return;
+    cb.onDrop(selectedSlot, slot.qty);
   });
 
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
@@ -429,7 +445,14 @@ export function mountInventory(
       row.innerHTML = `
         <span class="ao-spells__name">${spell.name}</span>
         <span class="ao-spells__mana">${spell.manaCost.toString()} MP</span>
+        <button class="ao-spells__infobtn" type="button" title="Info del hechizo">ℹ</button>
       `;
+      // Botón info: muestra los datos del hechizo en el chat. stopPropagation
+      // para no disparar la selección/casteo de la fila.
+      row.querySelector<HTMLButtonElement>(".ao-spells__infobtn")!.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        cb.onSpellInfo?.(id);
+      });
       // Click/doble-click se manejan por delegación en spellsEl (ver arriba):
       // simple = seleccionar+armar casteo; doble = agregar a la barra de macros.
       row.addEventListener("dragstart", (ev) => {
@@ -471,6 +494,7 @@ export function mountInventory(
       const cell = document.createElement("div");
       cell.className = "ao-inv__cell";
       cell.dataset.slot = i.toString();
+      if (i === selectedSlot) cell.classList.add("ao-inv__cell--sel");
 
       const slot = i < last.slots.length ? last.slots[i] : null;
       if (slot) {

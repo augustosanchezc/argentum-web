@@ -3,6 +3,7 @@ import {
   ClientToServerOp,
   CLASSES,
   getAoSpell,
+  CLASS_SPELLBOOK,
   getClassSkill,
   getItem,
   isWaterGraphic,
@@ -1782,6 +1783,28 @@ export async function startGameScene(
     138: "agua", 563: "agua", 543: "agua",
   };
 
+  // Acción USAR del AO (UseInvItem): pociones/comida/bebida, barcos, monturas,
+  // llaves… Las herramientas arman el modo de trabajo y martillo/serrucho
+  // abren su ventana de crafteo. La comparte el doble-click y la tecla Usar.
+  function useItemAction(item: number): void {
+    if (item in TOOL_KIND) {
+      setArmedTool(item);
+      return;
+    }
+    if (item === 389 || item === 565) {
+      craftUi?.open("herreria");
+      return;
+    }
+    if (item === 198 || item === 564) {
+      craftUi?.open("carpinteria");
+      return;
+    }
+    client?.send({ op: ClientToServerOp.UseItem, item } satisfies UseItemRequest);
+  }
+
+  // Tipos que corresponden a EQUIPAR (EquipInvItem del AO), no a Usar.
+  const EQUIP_TYPES = new Set(["weapon", "armor", "helmet", "shield"]);
+
   function setArmedTool(item: number | null): void {
     armedTool = item;
     if (item !== null) selectedSpellId = null;
@@ -2022,13 +2045,25 @@ export async function startGameScene(
       client?.send({ op: ClientToServerOp.Hide });
       return;
     }
-    // Usar / equipar el objeto seleccionado en el inventario (complemento del
-    // doble-click). Sin objeto seleccionado no hace nada.
+    // USAR objeto (U, UseInvItem del AO): solo items usables — pociones,
+    // comida, bebida, barcos, herramientas… El equipo NO se "usa".
     if (e.code === keymap.use) {
       e.preventDefault();
       if (lastSelectedItem !== null) {
-        const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item: lastSelectedItem };
-        client?.send(pkt);
+        const def = getItem(lastSelectedItem);
+        if (def && !EQUIP_TYPES.has(def.type)) useItemAction(lastSelectedItem);
+      }
+      return;
+    }
+    // EQUIPAR objeto (E, EquipInvItem del AO): solo arma/armadura/casco/escudo
+    // (toggle: sobre el ya equipado, desequipa).
+    if (e.code === keymap.equip) {
+      e.preventDefault();
+      if (lastSelectedItem !== null) {
+        const def = getItem(lastSelectedItem);
+        if (def && EQUIP_TYPES.has(def.type)) {
+          client?.send({ op: ClientToServerOp.UseItem, item: lastSelectedItem } satisfies UseItemRequest);
+        }
       }
       return;
     }
@@ -3153,22 +3188,14 @@ export async function startGameScene(
 
     inventory = mountInventory(sideCol, {
       onUse: (item) => {
-        // Herramientas de trabajo: arman el modo (click en el objetivo).
-        if (item in TOOL_KIND) {
-          setArmedTool(item);
+        // Doble-click del AO: usa los usables Y equipa el equipo (el server
+        // resuelve). Las herramientas/crafteo van por useItemAction.
+        const def = getItem(item);
+        if (def && EQUIP_TYPES.has(def.type)) {
+          client?.send({ op: ClientToServerOp.UseItem, item } satisfies UseItemRequest);
           return;
         }
-        // Martillo → ventana de herrería · serrucho → carpintería.
-        if (item === 389 || item === 565) {
-          craftUi?.open("herreria");
-          return;
-        }
-        if (item === 198 || item === 564) {
-          craftUi?.open("carpinteria");
-          return;
-        }
-        const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item };
-        client?.send(pkt);
+        useItemAction(item);
       },
       onSelectItem: (item) => { lastSelectedItem = item; },
       onSell: (item) => {
@@ -3194,6 +3221,40 @@ export async function startGameScene(
       resolveIcon: (grh) => tileset.entry(grh),
       onSelectSpell: (spellId) => {
         setArmedSpell(spellId);
+      },
+      onSpellInfo: (spellId) => {
+        const sp = getAoSpell(spellId);
+        if (!sp) return;
+        const parts: string[] = [];
+        if (sp.subeHp === 2) parts.push(`Daño ${sp.minHp.toString()}-${sp.maxHp.toString()} (+3%/nivel)`);
+        if (sp.subeHp === 1) parts.push(`Cura ${sp.minHp.toString()}-${sp.maxHp.toString()} (+3%/nivel)`);
+        if (sp.paraliza) parts.push("Paraliza");
+        if (sp.inmoviliza) parts.push("Inmoviliza");
+        if (sp.removerParalisis) parts.push("Remueve parálisis");
+        if (sp.invisibilidad) parts.push("Invisibilidad");
+        if (sp.envenena) parts.push("Envenena");
+        if (sp.curaVeneno) parts.push("Cura veneno");
+        if (sp.ceguera) parts.push("Ciega");
+        if (sp.estupidez) parts.push("Estupidiza");
+        if (sp.revivir) parts.push("Resucita (vida completa)");
+        const strMax = sp.strBoostMax ?? sp.strBoost ?? 0;
+        const agiMax = sp.agiBoostMax ?? sp.agiBoost ?? 0;
+        if (strMax > 0) parts.push(`+${(sp.strBoostMin ?? strMax).toString()}-${strMax.toString()} Fuerza`);
+        if (agiMax > 0) parts.push(`+${(sp.agiBoostMin ?? agiMax).toString()}-${agiMax.toString()} Agilidad`);
+        parts.push(`Maná ${sp.manaCost.toString()}`);
+        if (sp.staCost > 0) parts.push(`Energía ${sp.staCost.toString()}`);
+        const ownClass = entityVisuals.get(character.id)?.classId ?? 0;
+        const entry = (CLASS_SPELLBOOK[ownClass] ?? []).find((e) => e.spellId === spellId);
+        if (entry) parts.push(`Nivel ${entry.minLevel.toString()}`);
+        if (sp.minSkill > 0) parts.push(`Skill magia ${sp.minSkill.toString()}`);
+        const words = sp.magicWords ? ` «${sp.magicWords}»` : "";
+        chat?.appendMessage({
+          fromName: "",
+          text: `${sp.name}${words} — ${parts.join(" · ")}`,
+          timestamp: Date.now(),
+          isSelf: false,
+          kind: "global",
+        });
       },
       onAddSpellMacro: (spellId) => {
         const ok = macroBar?.addSpellToFirstFree(spellId) ?? false;
@@ -3242,8 +3303,14 @@ export async function startGameScene(
       getSpells: () => macroSpellIds,
       onTrigger: (slot) => {
         if (slot.kind === "item") {
-          const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item: slot.id };
-          client?.send(pkt);
+          // Equipo → equipar directo; usables → flujo Usar completo (las
+          // herramientas arman el modo de trabajo, martillo abre herrería).
+          const def = getItem(slot.id);
+          if (def && EQUIP_TYPES.has(def.type)) {
+            client?.send({ op: ClientToServerOp.UseItem, item: slot.id } satisfies UseItemRequest);
+          } else {
+            useItemAction(slot.id);
+          }
         } else if (slot.kind === "skill") {
           const pkt: UseSkillRequest = {
             op: ClientToServerOp.UseSkill,
