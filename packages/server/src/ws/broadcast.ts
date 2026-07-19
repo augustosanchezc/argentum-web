@@ -77,13 +77,14 @@ export function killPlayer(s: Session): void {
   broadcastToMap(s.mapId, casper);
 }
 
-// RevivirUsuario del AO: revive con HP = Constitución (cap maxHp),
-// restaura la apariencia y cancela el viaje al hogar.
+// Revive al jugador con el 100% de la vida (decisión de diseño; el AO
+// original revivía con HP = Constitución), restaura la apariencia y cancela
+// el viaje al hogar.
 export function revivePlayer(s: Session): void {
   if (s.deadUntil === 0) return;
   s.deadUntil = 0;
   s.homeTravelUntil = 0;
-  s.hp = Math.min(Math.max(1, s.con), s.maxHp);
+  s.hp = s.maxHp;
   const respawn: Respawn = {
     op: ServerToClientOp.Respawn,
     id: s.characterId as EntityId,

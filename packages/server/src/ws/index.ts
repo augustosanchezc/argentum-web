@@ -168,7 +168,7 @@ import {
 } from "../world/guilds.js";
 import { tickDots } from "../world/dots.js";
 import { isCriminal, setCriminal } from "../world/criminal.js";
-import { broadcastToMap, killPlayer, revivePlayer, stopMeditating } from "./broadcast.js";
+import { broadcastToMap, CASPER_BODY, CASPER_HEAD, killPlayer, revivePlayer, stopMeditating } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import {
   bankOpsTotal,
@@ -188,8 +188,9 @@ function buildMapDataPacket(map: MapState): MapData {
     hp: s.hp,
     maxHp: s.maxHp,
     kind: "player" as const,
-    bodyId: s.visibleBodyId,
-    headId: s.headId,
+    // Muerto = fantasma (casper): el cuerpo vivo NO se filtra al re-entrar.
+    bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
+    headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
     graphic: 0,
     criminal: isCriminal(s),
     faction: s.faction,
@@ -197,6 +198,7 @@ function buildMapDataPacket(map: MapState): MapData {
     role: s.role,
     level: s.level,
     classId: s.classId,
+    dead: s.deadUntil !== 0 || undefined,
     ...computeVisibleEquip(s),
   }));
   const npcEntities = npcs.inMap(map.id).map((n) => ({
@@ -664,8 +666,8 @@ setInterval(() => {
       hp: s.hp,
       maxHp: s.maxHp,
       kind: "player",
-      bodyId: s.visibleBodyId,
-      headId: s.headId,
+      bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
+      headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
       graphic: 0,
       criminal: isCriminal(s),
       faction: s.faction,
@@ -673,6 +675,7 @@ setInterval(() => {
       role: s.role,
       level: s.level,
       classId: s.classId,
+      dead: s.deadUntil !== 0 || undefined,
       ...computeVisibleEquip(s),
     };
     broadcastToMap(home.id, spawnPkt, s.id);
@@ -992,8 +995,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: s.hp,
         maxHp: s.maxHp,
         kind: "player",
-        bodyId: s.visibleBodyId,
-        headId: s.headId,
+        // El muerto sigue muerto al cruzar de mapa (fantasma, no se "resucita").
+        bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
+        headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
         graphic: 0,
         criminal: isCriminal(s),
         faction: s.faction,
@@ -1001,6 +1005,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         role: s.role,
         level: s.level,
         classId: s.classId,
+        dead: s.deadUntil !== 0 || undefined,
         ...computeVisibleEquip(s),
       };
       broadcastToMap(destMap.id, spawn, s.id);
@@ -3726,8 +3731,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: session.hp,
         maxHp: session.maxHp,
         kind: "player",
-        bodyId: session.visibleBodyId,
-        headId: session.headId,
+        bodyId: session.deadUntil !== 0 ? CASPER_BODY : session.visibleBodyId,
+        headId: session.deadUntil !== 0 ? CASPER_HEAD : session.headId,
         graphic: 0,
         criminal: isCriminal(session),
         faction: session.faction,
@@ -3735,6 +3740,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         role: session.role,
         level: session.level,
         classId: session.classId,
+        dead: session.deadUntil !== 0 || undefined,
         ...computeVisibleEquip(session),
       };
       broadcastToMap(map.id, spawn, session.id);

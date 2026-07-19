@@ -1412,6 +1412,7 @@ export async function startGameScene(
       const entId = ent.id as unknown as number;
       const isSelf = entId === character.id;
       addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0, ent.level ?? 1, ent.classId ?? 1);
+      if (ent.dead) applyDeadVisual(entId);
     }
     updateSelfHud();
   }
@@ -2469,6 +2470,20 @@ export async function startGameScene(
     if (targetIsSelf) updateSelfHud();
   }
 
+  // Estado "muerto" al crear una entidad (spawn/MapData con dead: true) — el
+  // mismo look que handleDeath pero sin sonido ni mensajes (no acaba de morir:
+  // ya estaba muerto, p. ej. un fantasma cruzando de mapa).
+  function applyDeadVisual(id: number): void {
+    const v = entityVisuals.get(id);
+    if (!v) return;
+    v.dead = true;
+    v.hp = 0;
+    v.hpBar.visible = false;
+    v.hpBarUntil = 0;
+    v.body.alpha = 0.35;
+    if (id === character.id) showDeathOverlay();
+  }
+
   function handleDeath(p: Death): void {
     const id = p.id as unknown as number;
     const v = entityVisuals.get(id);
@@ -2809,7 +2824,9 @@ export async function startGameScene(
     if (own) {
       own.hp = p.hp;
       own.maxHp = p.maxHp;
-      // El HP propio vive en el panel lateral — sin barra flotante.
+      // Redibujar la barra roja bajo el nombre: sin esto, curas/pociones/regen
+      // (que llegan por StatsUpdate, no por Damage) dejaban la barra congelada.
+      if (!own.dead) showEntityHpBar(own);
     }
     panelStats.hp = p.hp;
     panelStats.maxHp = p.maxHp;
@@ -2906,6 +2923,7 @@ export async function startGameScene(
     const id = p.id as unknown as number;
     if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
     addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0, p.level ?? 1, p.classId ?? 1);
+    if (p.dead) applyDeadVisual(id);
     refreshPlayerList();
   }
 

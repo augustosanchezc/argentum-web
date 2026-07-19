@@ -214,6 +214,9 @@ export interface MapData {
     // Jugadores: nivel y clase, para el label "Lv. N / Nombre - Clase".
     readonly level?: number;
     readonly classId?: number;
+    // Jugadores: muerto (fantasma). El cliente lo dibuja atenuado y, si es el
+    // propio, mantiene el velo de muerte al cambiar de mapa.
+    readonly dead?: boolean;
     // Overlays de equipo visibles (arma/escudo/casco).
     readonly weaponAnim?: number;
     readonly shieldAnim?: number;
@@ -258,6 +261,8 @@ export interface EntitySpawn {
   // Jugadores: nivel y clase, para el label "Lv. N / Nombre - Clase".
   readonly level?: number;
   readonly classId?: number;
+  // Jugadores: muerto (fantasma) — ver MapData.entities.dead.
+  readonly dead?: boolean;
   // Overlays de equipo visibles (arma/escudo/casco).
   readonly weaponAnim?: number;
   readonly shieldAnim?: number;
