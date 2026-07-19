@@ -1644,6 +1644,14 @@ export async function startGameScene(
     const own = entityVisuals.get(character.id);
     if (!own || own.dead) return;
 
+    // Arco sin flecha cargada: la PRIMERA pulsación carga (cursor de cruz);
+    // con la flecha cargada, la tecla dispara en línea recta y el click
+    // dispara al objetivo.
+    if (selfWeaponRanged && !armedArrow) {
+      setArmedArrow(true);
+      return;
+    }
+
     lastLocalAttackAt = now;
     // Feedback inmediato: el swing siempre se anima Y SUENA, haya o no
     // objetivo (el AO reproduce SND_SWING también al golpe al aire).
@@ -1785,16 +1793,40 @@ export async function startGameScene(
   castBanner.className = "ao-castbanner";
   viewportBox.appendChild(castBanner);
 
+  // Flecha "cargada" (modo apuntar del arco): cursor de cruz + cartel; el
+  // próximo click sobre un objetivo dispara. Se carga con la tecla de atacar,
+  // o con U/doble-click sobre las flechas.
+  let armedArrow = false;
+  function setArmedArrow(on: boolean): void {
+    armedArrow = on;
+    if (on) {
+      selectedSpellId = null;
+      armedTool = null;
+    }
+    app.canvas.style.cursor = on ? "crosshair" : "default";
+    app.renderer.events.cursorStyles.pointer = on ? "crosshair" : "pointer";
+    viewportBox.classList.toggle("ao-casting", on || selectedSpellId !== null || armedTool !== null);
+    if (on) {
+      castBanner.textContent = "🏹 Flecha cargada — click en el objetivo · Esc cancela";
+      castBanner.classList.add("ao-castbanner--on");
+    } else if (selectedSpellId === null && armedTool === null) {
+      castBanner.classList.remove("ao-castbanner--on");
+    }
+  }
+
   // Único punto que arma/desarma el casteo: cursor + cartel + estado.
   function setArmedSpell(spellId: number | null): void {
     selectedSpellId = spellId;
-    if (spellId !== null) armedTool = null;
+    if (spellId !== null) {
+      armedTool = null;
+      armedArrow = false;
+    }
     app.canvas.style.cursor = spellId !== null ? "crosshair" : "default";
     app.renderer.events.cursorStyles.pointer = spellId !== null ? "crosshair" : "pointer";
     // Fuerza la cruz por CSS (!important) mientras se apunta: le gana a cualquier
     // cursor inline que PixiJS setee al pasar el mouse sobre entidades/targets.
     // Es el método robusto: evita que "desaparezca la cruz" sobre un objetivo.
-    viewportBox.classList.toggle("ao-casting", spellId !== null || armedTool !== null);
+    viewportBox.classList.toggle("ao-casting", spellId !== null || armedTool !== null || armedArrow);
     if (spellId !== null) {
       const spell = getAoSpell(spellId);
       castBanner.textContent = `⚡ Lanzando ${spell?.name ?? "hechizo"} — click en el objetivo · Esc cancela`;
@@ -1819,6 +1851,12 @@ export async function startGameScene(
       setArmedTool(item);
       return;
     }
+    // Flechas: usarlas CARGA la flecha (modo apuntar, cursor de cruz).
+    if (getItem(item)?.type === "arrow") {
+      if (selfWeaponRanged) setArmedArrow(true);
+      else chat?.appendMessage({ fromName: "", text: "Necesitás un arco equipado para cargar flechas.", timestamp: Date.now(), isSelf: false, kind: "combate" });
+      return;
+    }
     if (item === 389 || item === 565) {
       craftUi?.open("herreria");
       return;
@@ -1835,11 +1873,14 @@ export async function startGameScene(
 
   function setArmedTool(item: number | null): void {
     armedTool = item;
-    if (item !== null) selectedSpellId = null;
+    if (item !== null) {
+      selectedSpellId = null;
+      armedArrow = false;
+    }
     app.canvas.style.cursor = item !== null ? "crosshair" : "default";
     app.renderer.events.cursorStyles.pointer = item !== null ? "crosshair" : "pointer";
     // Igual que el casteo: fuerza la cruz por CSS mientras la herramienta está armada.
-    viewportBox.classList.toggle("ao-casting", selectedSpellId !== null || item !== null);
+    viewportBox.classList.toggle("ao-casting", selectedSpellId !== null || item !== null || armedArrow);
     if (item !== null) {
       castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · Esc cancela`;
       castBanner.classList.add("ao-castbanner--on");
@@ -1849,6 +1890,7 @@ export async function startGameScene(
   }
 
   function clearSpellSelection(): void {
+    setArmedArrow(false);
     setArmedSpell(null);
     setArmedTool(null);
     inventory?.clearSpellSelection();
@@ -1932,6 +1974,13 @@ export async function startGameScene(
       const v = entityVisuals.get(entId);
       if (v) {
         const isOther = entId !== character.id;
+        // Flecha cargada: el click DISPARA al objetivo (jugador o criatura)
+        // y descarga (one-shot, como el casteo).
+        if (armedArrow && isOther && !v.dead) {
+          clickAttack(entId);
+          setArmedArrow(false);
+          return;
+        }
         if (isOther && e.altKey && v.kind === "player") {
           const pkt: PartyInviteRequest = { op: ClientToServerOp.PartyInvite, targetId: entId as unknown as EntityId };
           client.send(pkt);
