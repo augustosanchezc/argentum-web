@@ -2486,8 +2486,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // IntervaloLanzaHechizo (1400ms) + castear tras golpear (GolpeMagia).
       if (now - s.lastCastAt < INTERVALS.spell) return;
       if (now - s.lastAttackAt < INTERVALS.golpeMagia) return;
-      if (s.mana < spell.manaCost) return;
-      if (s.sta < spell.staCost) return;
+      // Con AVISO (como el AO): fallar en silencio hacía creer que el juego
+      // se rompía ("tengo maná y no lanza" — era la ENERGÍA agotada).
+      if (s.mana < spell.manaCost) {
+        consoleMsg(s, "No tienes suficiente maná.", "combate");
+        return;
+      }
+      if (s.sta < spell.staCost) {
+        consoleMsg(s, `Estás muy cansado para lanzar este hechizo (energía ${s.sta.toString()}/${spell.staCost.toString()} necesaria).`, "combate");
+        return;
+      }
 
       const targetId = pkt.targetId as unknown as number;
       stopMeditating(s);
@@ -2499,7 +2507,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         const npc = npcs.get(targetId);
         if (!npc || npc.mapId !== s.mapId || npc.deadUntil !== 0) return;
         if (!npc.type.attackable || npc.type.merchant || npc.type.banker) return;
-        if (chebyshev(s.position, npc.position) > SPELL_RANGE) return;
+        if (chebyshev(s.position, npc.position) > SPELL_RANGE) {
+          consoleMsg(s, "Estás muy lejos para lanzar ese hechizo.", "combate");
+          return;
+        }
 
         // Validar el EFECTO antes de cobrar: clickear una criatura con una
         // cura/buff (target "ambos") quemaba maná + cooldown en silencio.
@@ -2544,7 +2555,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!target || target.mapId !== s.mapId) return;
       // Los muertos solo son objetivo válido de Resucitar.
       if (target.deadUntil !== 0 && !spell.revivir) return;
-      if (chebyshev(s.position, target.position) > SPELL_RANGE) return;
+      if (chebyshev(s.position, target.position) > SPELL_RANGE) {
+        consoleMsg(s, "Estás muy lejos para lanzar ese hechizo.", "combate");
+        return;
+      }
 
       let amount: number | undefined;
       if (spell.revivir) {
