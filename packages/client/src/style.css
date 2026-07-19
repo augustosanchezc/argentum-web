@@ -635,10 +635,7 @@ h3 {
   cursor: grab;
 }
 .ao-inv__cell--filled:hover { border-color: var(--gold); transform: translateY(-1px); }
-.ao-inv__cell--equipped {
-  outline: 2px solid #58d968;
-  outline-offset: -2px;
-}
+/* Equipado: SOLO el tilde ✓ (sin recuadro verde — pedido del usuario). */
 /* Tilde de "equipado" (arriba-izquierda; la cantidad va abajo-derecha). */
 .ao-inv__cell--equipped::after {
   content: "✓";
@@ -2090,7 +2087,7 @@ h3 {
 }
 .ao-frame .ao-inv__cell--filled { background: #14100a; border-color: #4a3c1e; }
 .ao-frame .ao-inv__cell--filled:hover { border-color: var(--a1-gold); }
-.ao-frame .ao-inv__cell--equipped { border-color: #6fbf6f; box-shadow: 0 0 6px rgba(111, 191, 111, 0.4); }
+/* (equipado sin borde verde: el indicador es solo el tilde ✓) */
 .ao-frame .ao-inv__trash {
   font-size: 9px; text-align: center; color: #7a6a44;
   padding: 5px; margin: 6px; border: 1px dashed #3a2f18; border-radius: 5px;
@@ -2626,13 +2623,20 @@ html, body { background: #050506; height: 100%; }
    cuadradas (aspect-ratio) → los 24 slots entran siempre, sin scroll. */
 .ao-frame .ao-box--items .ao-inv__grid {
   display: grid; grid-template-columns: repeat(5, minmax(0, 52px)); gap: 4px; padding: 6px;
-  /* auto: la fila toma la altura de la celda (cuadrada). Sin esto heredaba
-     grid-auto-rows: 35px de la regla base y las filas se ENCIMABAN. */
+  /* auto + start: la celda define su altura por aspect-ratio (cuadrada).
+     Con el stretch default la celda se estiraba a la fila (inflada por los
+     sprites altos) e IGNORABA el aspect-ratio → rectángulos encimados. */
   grid-auto-rows: auto;
+  align-items: start;
   justify-content: center; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
   overflow: visible; align-content: start;
 }
 .ao-frame .ao-box--items .ao-inv__cell { aspect-ratio: 1; width: 100%; height: auto; border-radius: 5px; background: #16151e; border: 1px solid #2b2a38; overflow: hidden; }
+/* El ícono NO participa del layout (absolute + centrado): su tamaño nativo
+   (sprites de 20 a 100px) inflaba la altura de la fila. fitIcons() lo escala. */
+.ao-frame .ao-box--items .ao-inv__cell .ao-inv__cell-icon {
+  position: absolute; inset: 0; margin: auto;
+}
 .ao-frame .ao-box--items .ao-inv__cell--filled { background: #1c1b28; border-color: #46445c; }
 .ao-frame .ao-box--items .ao-inv__trash { flex: 0 0 auto; font-size: 8px; text-align: center; color: #6a6784; padding: 3px; margin-top: 5px; border: 1px dashed #33313f; border-radius: 5px; }
 /* #3: la grilla mantiene su tamaño (todos los slots visibles); el panel de

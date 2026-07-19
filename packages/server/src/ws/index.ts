@@ -1708,6 +1708,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           const amount = randInt(def.healMin ?? def.heal ?? healMax, healMax);
           s.hp = Math.min(s.maxHp, s.hp + amount);
           consumeOne(s, pkt.item);
+          consoleMsg(s, "", "global", SND_BEBER); // glup clásico del AO
         } else if (def.restoresMana || (def.manaHeal ?? 0) > 0) {
           if (s.maxMana === 0) return; // clase sin maná (no la usa)
           // Poción Azul del AO (InvUsuario.bas L1882):
@@ -1717,6 +1718,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           // Se consume aunque el maná esté lleno (AO).
           s.mana = Math.min(s.maxMana, s.mana + gain);
           consumeOne(s, pkt.item);
+          consoleMsg(s, "", "global", SND_BEBER);
         } else if (agiMax > 0 || strMax > 0) {
           // Drogas del AO: Amarilla (+AGI, InvUsuario L1820) / Verde (+STR, L1843),
           // bonus RandomNumber(Min, Max), temporales. Cap del AO (InvUsuario
@@ -1726,12 +1728,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           if (strMax > 0) s.strBonus = Math.min(randInt(def.strBoostMin ?? def.strBoost ?? strMax, strMax), s.str);
           s.buffUntil = Date.now() + (def.boostSeconds ?? 40) * 1000;
           consumeOne(s, pkt.item);
+          consoleMsg(s, "", "global", SND_BEBER);
         } else if (def.curesPoison) {
           // Poción Violeta: quita el veneno (InvUsuario.bas L1897).
           const dots = activeDots.get(s.characterId);
           if (!dots?.some((d) => d.poison)) return;
           activeDots.set(s.characterId, dots.filter((d) => !d.poison));
           consumeOne(s, pkt.item);
+          consoleMsg(s, "", "global", SND_BEBER);
         }
       } else if (def.objType === 31) {
         // Barco (DoNavega): junto al agua para zarpar, junto a tierra para
@@ -3265,6 +3269,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     // ── Puertas y carteles (AccionParaPuerta / AccionParaCartel) ─────────
 
     const SND_PUERTA = 5;
+    const SND_BEBER = 46; // glup clásico del AO al tomar pociones/beber
 
     function handleTileInteract(s: Session, x: number, y: number): void {
       const map = getMap(s.mapId);

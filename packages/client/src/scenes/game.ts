@@ -233,8 +233,12 @@ interface EntityVisual {
   maxHp: number;
   dead: boolean;
   facing: Direction;
-  // Animacion de golpe: lunge en la direccion swingDx/swingDy.
+  // Animacion de golpe: SOLO el arma se desplaza en swingDx/swingDy (el
+  // cuerpo queda quieto). swingAppliedX/Y = offset ya aplicado al sprite del
+  // arma (para sumar deltas sin acumular error).
   swingStart: number; // 0 = sin swing
+  swingAppliedX: number;
+  swingAppliedY: number;
   swingDx: number;
   swingDy: number;
   // Sprite del AO (0 = usa silueta fallback).
@@ -881,6 +885,8 @@ export async function startGameScene(
       dead,
       facing,
       swingStart: 0,
+      swingAppliedX: 0,
+      swingAppliedY: 0,
       swingDx: 0,
       swingDy: 0,
       bodyId,
@@ -1000,6 +1006,10 @@ export async function startGameScene(
         sp.anchor.set(0.5, 1);
         sp.y = TILE_BOTTOM;
         v.weaponSprite = sp;
+        // Sprite nuevo en posición base: resetear el offset de swing aplicado
+        // (si se re-crea a mitad de un golpe, no debe quedar corrido).
+        v.swingAppliedX = 0;
+        v.swingAppliedY = 0;
         v.container.addChildAt(sp, anchorIdx());
       } else missing = true;
     }
@@ -2191,8 +2201,8 @@ export async function startGameScene(
         v.walkFrame = 0;
         refreshCharTextures(v);
       }
-      // Swing de ataque: lunge breve en la direccion del golpe, sumado
-      // al render interpolado. Se aplica cada frame.
+      // Swing de ataque: SOLO el arma hace el movimiento hacia el objetivo —
+      // el personaje queda quieto (pedido del usuario: sin lunge del cuerpo).
       let ox = 0;
       let oy = 0;
       if (v.swingStart > 0) {
@@ -2200,13 +2210,20 @@ export async function startGameScene(
         if (st >= 1) {
           v.swingStart = 0;
         } else {
-          const k = Math.sin(st * Math.PI) * 8;
+          const k = Math.sin(st * Math.PI) * 10;
           ox = v.swingDx * k;
           oy = v.swingDy * k;
         }
       }
-      v.container.x = v.renderX + ox;
-      v.container.y = v.renderY + oy;
+      v.container.x = v.renderX;
+      v.container.y = v.renderY;
+      if (v.weaponSprite) {
+        // Delta contra lo ya aplicado: no acumula error y vuelve solo a 0.
+        v.weaponSprite.x += ox - v.swingAppliedX;
+        v.weaponSprite.y += oy - v.swingAppliedY;
+      }
+      v.swingAppliedX = ox;
+      v.swingAppliedY = oy;
       // y-sort: el zIndex por Y decide la oclusión con los árboles/paredes
       // de la capa 3 (que usan el pie del objeto como zIndex).
       v.container.zIndex = v.renderY + TILE_SIZE / 2;
@@ -2704,8 +2721,11 @@ export async function startGameScene(
 
   // Mensajes de consola del server (trabajos, seguros, avisos).
   function handleConsoleMsg(p: ConsoleMsg): void {
-    const kind = p.kind === "chat" ? "normal" : p.kind;
-    chat?.appendMessage({ fromName: "", text: p.text, timestamp: Date.now(), isSelf: false, kind });
+    // Texto vacío = solo sonido (p. ej. el glup de la poción) — sin línea en el chat.
+    if (p.text) {
+      const kind = p.kind === "chat" ? "normal" : p.kind;
+      chat?.appendMessage({ fromName: "", text: p.text, timestamp: Date.now(), isSelf: false, kind });
+    }
     if ((p.wav ?? 0) > 0) audio.play(p.wav!, 0.7);
   }
 
