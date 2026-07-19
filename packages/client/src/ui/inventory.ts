@@ -274,6 +274,26 @@ export function mountInventory(
     }
   });
 
+  // Escala cada ícono al tamaño REAL de su celda: los sprites del AO tienen
+  // tamaño nativo variable (un hacha ~50px) y las celdas son responsivas —
+  // sin esto, en pantallas chicas los íconos desbordaban y se encimaban.
+  // Se re-aplica en cada render y ante cualquier resize (ResizeObserver).
+  function fitIcons(): void {
+    const cell = gridEl.querySelector<HTMLElement>(".ao-inv__cell");
+    if (!cell) return;
+    const size = cell.clientWidth;
+    if (size <= 0) return;
+    gridEl.querySelectorAll<HTMLElement>(".ao-inv__cell-icon").forEach((img) => {
+      const w = Number(img.dataset.w ?? 0);
+      const h = Number(img.dataset.h ?? 0);
+      if (!w || !h) return;
+      const k = Math.min(1, (size - 4) / Math.max(w, h));
+      img.style.transform = `scale(${k.toFixed(3)})`;
+    });
+  }
+  const gridResizeObserver = new ResizeObserver(() => { fitIcons(); });
+  gridResizeObserver.observe(gridEl);
+
   // Botón Tirar: tira al suelo el stack completo del objeto seleccionado.
   wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", () => {
     const slot = selectedSlot >= 0 && selectedSlot < last.slots.length ? last.slots[selectedSlot] : null;
@@ -514,6 +534,9 @@ export function mountInventory(
             img.style.height = `${icon.h.toString()}px`;
             img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
             img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
+            // Medidas nativas del sprite: fitIcons() lo escala a la celda.
+            img.dataset.w = icon.w.toString();
+            img.dataset.h = icon.h.toString();
             cell.appendChild(img);
           } else {
             const label = document.createElement("span");
@@ -569,6 +592,7 @@ export function mountInventory(
 
       gridEl.appendChild(cell);
     }
+    fitIcons();
   }
 
   trashEl.addEventListener("dragover", (ev) => {
@@ -636,6 +660,7 @@ export function mountInventory(
     isOpen: () => open,
     destroy: () => {
       if (buffTimer) clearInterval(buffTimer);
+      gridResizeObserver.disconnect();
       document.removeEventListener("click", onDocClick);
       wrap.remove();
     },
