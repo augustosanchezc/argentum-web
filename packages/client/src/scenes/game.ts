@@ -745,19 +745,21 @@ export async function startGameScene(
       // El mundo se escala 2x: el texto se rasteriza a resolución doble
       // (por el zoom y el devicePixelRatio) para que quede nítido.
       resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
+      // Jugadores: "Lv. N / Clase" va más chico que el nombre (info
+      // secundaria). NPCs: el label es su nombre al hover — tamaño normal.
       style: new TextStyle({
         fill: labelFill,
         fontFamily: "Verdana, Geneva, sans-serif",
-        fontSize: 10,
+        fontSize: kind === "player" ? 7.5 : 10,
         fontWeight: "bold",
         align: "center",
-        stroke: { color: "#0a0805", width: 3 },
+        stroke: { color: "#0a0805", width: kind === "player" ? 2 : 3 },
       }),
     });
     // Label SOBRE la cabeza: "Lv. N" y la clase (2 líneas).
     // Las criaturas/NPCs solo muestran el nombre al pasar el mouse.
     label.anchor.set(0.5, 1);
-    label.y = -42;
+    label.y = -40;
     if (kind !== "player") label.visible = false;
     c.addChild(label);
 
