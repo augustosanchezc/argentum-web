@@ -142,7 +142,9 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
   }
 
   function renderNpc(): void {
-    fillGrid(npcGrid, "npc", offers.map((o) => ({ item: o.item, qty: 0, unit: o.price })));
+    // Stock del vendedor: 10.000 (tope de apilado). El server no lleva stock —
+    // es infinito— así que siempre se muestra 10.000: nunca se agota.
+    fillGrid(npcGrid, "npc", offers.map((o) => ({ item: o.item, qty: 10_000, unit: o.price })));
   }
 
   function renderUser(): void {
