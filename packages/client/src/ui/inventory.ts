@@ -233,6 +233,32 @@ export function mountInventory(
   const goldEl = wrap.querySelector<HTMLElement>(".ao-inv__gold")!;
   const minimapSlot = wrap.querySelector<HTMLDivElement>(".ao-panel__minimap-slot")!;
   const gridEl = wrap.querySelector<HTMLDivElement>(".ao-inv__grid")!;
+  // Click simple = ver detalle; doble-click = usar (poteo). Se detecta por
+  // ÍNDICE DE SLOT + tiempo (no por el nodo DOM) con delegación en gridEl —que
+  // persiste—, así el doble-click sobrevive al `replaceChildren` que dispara
+  // cada InventoryUpdate. Antes, al usar 1 poción el re-render reemplazaba la
+  // celda y el `dblclick` nativo se cortaba ("tomaba solo 1").
+  let lastClickSlot = -1;
+  let lastClickAt = 0;
+  gridEl.addEventListener("click", (ev) => {
+    const cellEl = (ev.target as HTMLElement).closest<HTMLElement>(".ao-inv__cell");
+    if (!cellEl?.dataset.slot) return;
+    const idx = Number(cellEl.dataset.slot);
+    const slot = idx >= 0 && idx < last.slots.length ? last.slots[idx] : null;
+    if (!slot) return;
+    const def = getItem(slot.item);
+    if (!def) return;
+    const now = Date.now();
+    if (idx === lastClickSlot && now - lastClickAt < 400) {
+      lastClickSlot = -1;
+      lastClickAt = 0;
+      cb.onUse(def.id);
+    } else {
+      lastClickSlot = idx;
+      lastClickAt = now;
+      showDetail(def.id);
+    }
+  });
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
   const spellsEl = wrap.querySelector<HTMLDivElement>(".ao-spells__list")!;
   const zoneEl = wrap.querySelector<HTMLDivElement>(".ao-panel__zone")!;
@@ -454,12 +480,7 @@ export function mountInventory(
             cell.appendChild(qty);
           }
 
-          cell.addEventListener("click", () => {
-            showDetail(def.id);
-          });
-          cell.addEventListener("dblclick", () => {
-            cb.onUse(def.id);
-          });
+          // click/doble-click se manejan por delegación en gridEl (ver arriba).
           cell.addEventListener("contextmenu", (ev) => {
             ev.preventDefault();
             cb.onSell(def.id);

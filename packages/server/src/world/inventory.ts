@@ -63,12 +63,15 @@ export function reorderSlots(
   from: number,
   to: number,
 ): InventorySlot[] | null {
-  if (from < 0 || to < 0 || from >= slots.length || to >= slots.length) return null;
-  if (from === to) return slots.map((s) => ({ ...s }));
+  if (from < 0 || from >= slots.length || to < 0) return null;
   const out = slots.map((s) => ({ ...s }));
-  const tmp = out[from];
-  out[from] = out[to];
-  out[to] = tmp;
+  // El inventario es "empacado" (sin huecos): soltar en una celda vacía (to
+  // fuera de rango) mueve el item al final = primer espacio disponible. Se
+  // MUEVE (splice) en vez de swap, para poder reubicarlo en cualquier posición.
+  const dest = Math.min(to, out.length - 1);
+  if (from === dest) return out;
+  const [moved] = out.splice(from, 1);
+  out.splice(dest, 0, moved);
   return out;
 }
 

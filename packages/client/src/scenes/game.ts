@@ -1718,10 +1718,11 @@ export async function startGameScene(
     selectedSpellId = spellId;
     if (spellId !== null) armedTool = null;
     app.canvas.style.cursor = spellId !== null ? "crosshair" : "default";
-    // Que las entidades (cuyo cursor es "pointer") NO pisen la cruz al pasarles
-    // el mouse por encima durante el casteo: mapeamos "pointer" → "crosshair"
-    // mientras se apunta, y lo restauramos al desarmar.
     app.renderer.events.cursorStyles.pointer = spellId !== null ? "crosshair" : "pointer";
+    // Fuerza la cruz por CSS (!important) mientras se apunta: le gana a cualquier
+    // cursor inline que PixiJS setee al pasar el mouse sobre entidades/targets.
+    // Es el método robusto: evita que "desaparezca la cruz" sobre un objetivo.
+    viewportBox.classList.toggle("ao-casting", spellId !== null || armedTool !== null);
     if (spellId !== null) {
       const spell = getAoSpell(spellId);
       castBanner.textContent = `⚡ Lanzando ${spell?.name ?? "hechizo"} — click en el objetivo · Esc cancela`;
@@ -1742,9 +1743,9 @@ export async function startGameScene(
     armedTool = item;
     if (item !== null) selectedSpellId = null;
     app.canvas.style.cursor = item !== null ? "crosshair" : "default";
-    // Igual que en el casteo: la herramienta armada mantiene la cruz aunque el
-    // mouse pase sobre una entidad (árbol/roca/agua tienen cursor propio).
     app.renderer.events.cursorStyles.pointer = item !== null ? "crosshair" : "pointer";
+    // Igual que el casteo: fuerza la cruz por CSS mientras la herramienta está armada.
+    viewportBox.classList.toggle("ao-casting", selectedSpellId !== null || item !== null);
     if (item !== null) {
       castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · Esc cancela`;
       castBanner.classList.add("ao-castbanner--on");

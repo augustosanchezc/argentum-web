@@ -636,8 +636,22 @@ h3 {
 }
 .ao-inv__cell--filled:hover { border-color: var(--gold); transform: translateY(-1px); }
 .ao-inv__cell--equipped {
-  outline: 2px solid var(--gold-bright);
+  outline: 2px solid #58d968;
   outline-offset: -2px;
+}
+/* Tilde de "equipado" (arriba-izquierda; la cantidad va abajo-derecha). */
+.ao-inv__cell--equipped::after {
+  content: "✓";
+  position: absolute;
+  top: 0;
+  left: 2px;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  color: #8fe98f;
+  text-shadow: 0 1px 2px #000, 0 0 2px #000;
+  pointer-events: none;
+  z-index: 3;
 }
 .ao-inv__cell--dragging { opacity: 0.4; }
 .ao-inv__cell--drop-target {
@@ -1799,6 +1813,13 @@ h3 {
   width: min(100%, 840px);
   height: min(100%, 600px);
   transform-origin: center center;
+}
+/* Modo casteo/trabajo: la cruz se fuerza con !important, ganándole al cursor
+   inline que PixiJS setea al pasar sobre entidades/targets (por eso "desaparecía"). */
+.ao-viewbox.ao-casting,
+.ao-viewbox.ao-casting canvas.ao-viewport,
+.ao-viewbox.ao-casting * {
+  cursor: crosshair !important;
 }
 /* Botón de pantalla completa (esquina sup. izq. del stage). */
 .ao-fsbtn {
