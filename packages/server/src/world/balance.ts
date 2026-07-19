@@ -28,6 +28,7 @@ const CLASS_KEY: Record<number, string> = {
   4: "cazador", // Arquero
   5: "asesino",
   6: "druida",
+  7: "paladin",
 };
 
 export interface ClassMods {

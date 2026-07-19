@@ -48,6 +48,7 @@ import {
   type GuildTagUpdate,
   type MapTileUpdate,
   type GoHomeRequest,
+  type CancelGoHomeRequest,
   type InteractRequest,
   type InventoryReorderRequest,
   type InventoryUpdate,
@@ -448,25 +449,42 @@ export async function startGameScene(
   deathPanel.className = "ao-deathpanel";
   deathPanel.innerHTML = `
     <div class="ao-deathpanel__title">☠ Estás muerto</div>
-    <div class="ao-deathpanel__hint">Caminá como fantasma hasta un sacerdote para revivir…</div>
-    <button type="button" class="ao-deathpanel__home">🏠 Volver al hogar (Ullathorpe)</button>
+    <div class="ao-deathpanel__hint">Esperá a que un sacerdote u otro personaje te reviva, o viajá a la ciudad.</div>
+    <button type="button" class="ao-deathpanel__home">🏠 Ir a la ciudad</button>
+    <button type="button" class="ao-deathpanel__cancel" hidden>✖ Cancelar viaje</button>
   `;
   stageEl.appendChild(deathPanel);
   const deathHomeBtn = deathPanel.querySelector<HTMLButtonElement>(".ao-deathpanel__home")!;
+  const deathCancelBtn = deathPanel.querySelector<HTMLButtonElement>(".ao-deathpanel__cancel")!;
   let homeCountdown: ReturnType<typeof setInterval> | null = null;
+  function stopHomeCountdown(): void {
+    if (homeCountdown) { clearInterval(homeCountdown); homeCountdown = null; }
+  }
+  // Restaura los botones al estado inicial (no viajando).
+  function resetHomeUi(): void {
+    stopHomeCountdown();
+    deathHomeBtn.disabled = false;
+    deathHomeBtn.textContent = "🏠 Ir a la ciudad";
+    deathCancelBtn.hidden = true;
+  }
   deathHomeBtn.addEventListener("click", () => {
     client?.send({ op: ClientToServerOp.GoHome } satisfies GoHomeRequest);
     deathHomeBtn.disabled = true;
-    // Cuenta regresiva en vivo (10s = HOME_TRAVEL_MS del server) para que se
-    // vea que está viajando y no parezca colgado.
-    let secs = 10;
-    deathHomeBtn.textContent = `🏠 Viajando al hogar… ${secs}s`;
-    if (homeCountdown) clearInterval(homeCountdown);
+    deathCancelBtn.hidden = false; // permite cancelar mientras viaja
+    // Cuenta regresiva en vivo (3s = HOME_TRAVEL_MS del server).
+    let secs = 3;
+    deathHomeBtn.textContent = `🏠 Viajando… ${secs}s`;
+    stopHomeCountdown();
     homeCountdown = setInterval(() => {
       secs -= 1;
-      deathHomeBtn.textContent = secs > 0 ? `🏠 Viajando al hogar… ${secs}s` : "🏠 Llegando al hogar…";
-      if (secs <= 0 && homeCountdown) { clearInterval(homeCountdown); homeCountdown = null; }
+      deathHomeBtn.textContent = secs > 0 ? `🏠 Viajando… ${secs}s` : "🏠 Llegando…";
+      if (secs <= 0) stopHomeCountdown();
     }, 1000);
+  });
+  // Cancelar el viaje: seguís muerto donde estás (para que otro te reviva).
+  deathCancelBtn.addEventListener("click", () => {
+    client?.send({ op: ClientToServerOp.CancelGoHome } satisfies CancelGoHomeRequest);
+    resetHomeUi();
   });
 
   function layoutCombatHud(): void {
@@ -493,9 +511,7 @@ export async function startGameScene(
   function hideDeathOverlay(): void {
     deathOverlay.visible = false;
     deathPanel.classList.remove("ao-deathpanel--on");
-    deathHomeBtn.disabled = false;
-    deathHomeBtn.textContent = "🏠 Volver al hogar (Ullathorpe)";
-    if (homeCountdown) { clearInterval(homeCountdown); homeCountdown = null; }
+    resetHomeUi();
   }
 
   function centerStatus(): void {
@@ -1492,6 +1508,8 @@ export async function startGameScene(
   let classSkillId = 0; // ID de la skill del personaje (0 = sin skill conocida)
   // Hechizo del libro seleccionado para lanzar (click en objetivo = cast).
   let selectedSpellId: number | null = null;
+  // Último objeto del inventario clickeado (para la tecla "Usar / Equipar").
+  let lastSelectedItem: number | null = null;
   // Teclas configurables (panel ⚙). Las flechas siempre mueven.
   let keymap: Keymap = loadKeymap();
   // Nivel actual del personaje (para detectar subidas reales, no el StatsUpdate
@@ -1971,6 +1989,22 @@ export async function startGameScene(
       e.preventDefault();
       const pkt: RestToggle = { op: ClientToServerOp.Rest };
       client?.send(pkt);
+      return;
+    }
+    // Ocultarse (skill del AO).
+    if (e.code === keymap.hide) {
+      e.preventDefault();
+      client?.send({ op: ClientToServerOp.Hide });
+      return;
+    }
+    // Usar / equipar el objeto seleccionado en el inventario (complemento del
+    // doble-click). Sin objeto seleccionado no hace nada.
+    if (e.code === keymap.use) {
+      e.preventDefault();
+      if (lastSelectedItem !== null) {
+        const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item: lastSelectedItem };
+        client?.send(pkt);
+      }
       return;
     }
     const dir = codeToDirection(e.code);
@@ -3071,6 +3105,7 @@ export async function startGameScene(
         const pkt: UseItemRequest = { op: ClientToServerOp.UseItem, item };
         client?.send(pkt);
       },
+      onSelectItem: (item) => { lastSelectedItem = item; },
       onSell: (item) => {
         const pkt: ShopSellRequest = { op: ClientToServerOp.ShopSell, item, qty: 1 };
         client?.send(pkt);
@@ -3094,6 +3129,19 @@ export async function startGameScene(
       resolveIcon: (grh) => tileset.entry(grh),
       onSelectSpell: (spellId) => {
         setArmedSpell(spellId);
+      },
+      onAddSpellMacro: (spellId) => {
+        const ok = macroBar?.addSpellToFirstFree(spellId) ?? false;
+        const sp = getAoSpell(spellId);
+        chat?.appendMessage({
+          fromName: "",
+          text: ok
+            ? `«${sp?.name ?? "Hechizo"}» agregado a la barra de macros.`
+            : "No hay slots de macro libres.",
+          timestamp: Date.now(),
+          isSelf: false,
+          kind: "global",
+        });
       },
       onOpenStats: () => {
         const panel = root.querySelector<HTMLElement>(".ao-stats-panel");

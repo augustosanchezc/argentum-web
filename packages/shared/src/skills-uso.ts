@@ -90,6 +90,7 @@ export const INITIAL_SKILLS: Record<number, Partial<SkillSet>> = {
   4: { proyectiles: 10 },           // Arquero
   5: { apunalar: 5, armas: 5 },     // Asesino
   6: { magia: 10 },                 // Druida
+  7: { armas: 7, magia: 3 },        // Paladín (guerrero sagrado híbrido)
 };
 
 export function initialSkillsFor(classId: number): SkillSet {

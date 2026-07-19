@@ -118,6 +118,19 @@ export const CLASSES: Record<number, ClassDef> = {
     allowedArmorTypes: ["robe", "light"],
     startBodyId: 3, startHeadId: 6,
   },
+  7: {
+    id: 7,
+    name: "Paladín",
+    description: "Humano. Guerrero sagrado: tanque con escudo que también cura y bendice.",
+    // Humano (+1F +1A +2Co). Tanque híbrido: alta CON/FUE + algo de INT para curar.
+    str: 22, agi: 19, int: 20, con: 23, car: 20,
+    baseHp: 26, hpPerLevel: 5,
+    baseMp: 10, mpPerLevel: 4,
+    modVida: 9.5, hitPerLevel: 2, hitPerLevelOver35: 2, manaK: 1.5, aumentoSta: 15,
+    allowedWeapons: ["sword", "mace"],
+    allowedArmorTypes: ["heavy", "medium", "light"],
+    startBodyId: 1, startHeadId: 1,
+  },
 };
 
 export function getClass(id: number): ClassDef | undefined {

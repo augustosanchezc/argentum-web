@@ -135,7 +135,7 @@ import {
   bankWithdrawGold,
   bankWithdrawItem,
 } from "../world/bank.js";
-import { getMap, isWalkable, isWaterAt, setTileBlocked, setTileObject, type MapState } from "../world/maps.js";
+import { getMap, isWalkable, isWaterAt, type MapState } from "../world/maps.js";
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcs, petsOf, randomNpcSound, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
@@ -318,7 +318,7 @@ const CLOSE_INVALID_PACKET = 4003;
 const CLOSE_PROTOCOL_VERSION = 4005;
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 // Viaje al hogar tras morir (cuenta regresiva en vivo en el cliente).
-const HOME_TRAVEL_MS = 10_000;
+const HOME_TRAVEL_MS = 3_000;
 
 const VALID_DIRECTIONS: ReadonlySet<Direction> = new Set([
   "north", "south", "east", "west",
@@ -888,6 +888,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.GoHome:
           handleGoHome(session);
+          break;
+        case ClientToServerOp.CancelGoHome:
+          handleCancelGoHome(session);
           break;
         case ClientToServerOp.Work:
           handleWork(session, packet);
@@ -2862,9 +2865,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function handleGoHome(s: Session): void {
       if (s.deadUntil === 0) return; // "Debes estar muerto..."
       if (s.homeTravelUntil > 0) return; // ya viajando
-      // Viaje al hogar: 10s (el AO usa hasta 60 según distancia; acá lo
-      // dejamos ágil para el web con cuenta regresiva en vivo en el cliente).
+      // Viaje al hogar: 3s (ágil). Se puede cancelar para esperar a que otro
+      // personaje/sacerdote te reviva donde estás.
       s.homeTravelUntil = Date.now() + HOME_TRAVEL_MS;
+    }
+
+    // Cancelar el viaje al hogar en curso (seguís muerto donde estás).
+    function handleCancelGoHome(s: Session): void {
+      if (s.homeTravelUntil > 0) s.homeTravelUntil = 0;
     }
 
     function handleMeditate(s: Session): void {
@@ -3103,31 +3111,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
 
       if (def.objType === 6) {
-        // Puerta (AccionParaPuerta, Acciones.bas L263).
-        if ((def.llave ?? 0) !== 0) {
-          consoleMsg(s, "La puerta está cerrada con llave.", "global");
-          return;
-        }
-        // El campo `cerrada` del obj.dat no es fiable (no se parsea): el estado
-        // real de la puerta lo da si su tile está bloqueado. Si está bloqueada
-        // → abrir (indexAbierta + liberar); si no → cerrar (indexCerrada + bloquear).
-        const isClosed = map.blocked[y * map.width + x] === 1;
-        const counterpartId = isClosed ? (def.indexAbierta ?? 0) : (def.indexCerrada ?? 0);
-        const counterpart = counterpartId > 0 ? getItem(counterpartId) : undefined;
-        if (!counterpart) return;
-        const nowBlocked = !isClosed; // al cerrarla bloquea; al abrirla libera
-        setTileObject(map, x, y, counterpartId);
-        setTileBlocked(map, x, y, nowBlocked);
-        setTileBlocked(map, x - 1, y, nowBlocked); // las puertas ocupan 2 tiles (AO)
-        const pkt: MapTileUpdate = {
-          op: ServerToClientOp.MapTileUpdate,
-          x,
-          y,
-          grh3: counterpart.graphic,
-          blocked: nowBlocked,
-          wav: SND_PUERTA,
-        };
-        broadcastToMap(s.mapId, pkt);
+        // #6: las puertas están SIEMPRE abiertas (se abren al cargar el mapa,
+        // incluso las de llave). No se cierran nunca → la interacción es un
+        // no-op (solo suena la puerta). Ver el loop de apertura en maps.ts.
+        void SND_PUERTA;
       }
     }
 

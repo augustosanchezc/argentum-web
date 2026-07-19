@@ -22,10 +22,11 @@ function newbieKit(classId: number): {
     4: 859, // Arquero → Arco (Newbie)
     5: 460, // Asesino → Daga (Newbie)
     6: 460, // Druida → Daga (Newbie)
+    7: 861, // Paladín → Espada (Newbie)
   };
   const weapon = weaponByClass[classId] ?? 460;
   const armor = 463;
-  const usesMana = classId === 2 || classId === 3 || classId === 6;
+  const usesMana = classId === 2 || classId === 3 || classId === 6 || classId === 7;
 
   const inventory: InventorySlot[] = [
     { item: weapon, qty: 1 },
@@ -45,7 +46,7 @@ function newbieKit(classId: number): {
 
 const NAME_RE = /^[a-zA-Z0-9]{3,16}$/u;
 const MAX_CHARACTERS_PER_ACCOUNT = 5;
-const VALID_CLASS_IDS = [1, 2, 3, 4, 5, 6];
+const VALID_CLASS_IDS = [1, 2, 3, 4, 5, 6, 7];
 
 interface CreateCharacterBody {
   name: string;
@@ -62,7 +63,7 @@ const createCharacterSchema = {
     additionalProperties: false,
     properties: {
       name: { type: "string", minLength: 3, maxLength: 16 },
-      classId: { type: "integer", minimum: 1, maximum: 6 },
+      classId: { type: "integer", minimum: 1, maximum: 7 },
       race: { type: "integer", minimum: 1, maximum: 5 },
       gender: { type: "integer", minimum: 1, maximum: 2 },
       head: { type: "integer", minimum: 1, maximum: 1000 },

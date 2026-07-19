@@ -224,7 +224,7 @@ export const PANEL_HTML = `<!doctype html>
 <div id="modal"><div class="card" id="modalCard"></div></div>
 
 <script>
-var CLASSES = {1:"Guerrero",2:"Mago",3:"Clérigo",4:"Cazador",5:"Asesino",6:"Druida"};
+var CLASSES = {1:"Guerrero",2:"Mago",3:"Clérigo",4:"Cazador",5:"Asesino",6:"Druida",7:"Paladín"};
 var FACTIONS = {0:"—",1:"Armada Real",2:"Legión Oscura"};
 var NPCTYPES = {0:"Criatura",1:"Sacerdote",2:"Guardia",3:"Especial",4:"Banquero",5:"Enlistador",6:"Dragón",7:"Timbero",8:"G. Caos",9:"Artesano",10:"Pretoriano",11:"Gobernador"};
 var FIELDS = [

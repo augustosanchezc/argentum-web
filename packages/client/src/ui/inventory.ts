@@ -57,8 +57,12 @@ export interface InventoryCallbacks {
   onReorder(from: number, to: number): void;
   onDrop(slot: number, qty: number): void;
   resolveIcon(graphicId: number): IconRect | null;
+  // Objeto clickeado en el inventario (para la tecla "Usar / Equipar").
+  onSelectItem?(item: number): void;
   // Hechizo seleccionado para lanzar (null = deseleccionado).
   onSelectSpell(spellId: number | null): void;
+  // Doble-click en un hechizo del libro: agregarlo a la barra de macros.
+  onAddSpellMacro?(spellId: number): void;
   onOpenStats(): void;
   onOpenKeys(): void;
   onOpenQuests(): void;
@@ -257,10 +261,36 @@ export function mountInventory(
       lastClickSlot = idx;
       lastClickAt = now;
       showDetail(def.id);
+      cb.onSelectItem?.(def.id);
     }
   });
+
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
   const spellsEl = wrap.querySelector<HTMLDivElement>(".ao-spells__list")!;
+
+  // Hechizos: click simple = seleccionar + armar casteo; DOBLE-click = agregar
+  // el hechizo a la barra de macros (primer slot libre), con la tecla que el
+  // usuario podrá reasignar. Delegación por spellId + tiempo (sobrevive al
+  // replaceChildren de renderSpells), igual que la grilla de items.
+  let lastClickSpell = -1;
+  let lastClickSpellAt = 0;
+  spellsEl.addEventListener("click", (ev) => {
+    const row = (ev.target as HTMLElement).closest<HTMLElement>(".ao-spells__row");
+    if (!row?.dataset.spellId) return;
+    const id = Number(row.dataset.spellId);
+    const now = Date.now();
+    if (id === lastClickSpell && now - lastClickSpellAt < 400) {
+      lastClickSpell = -1;
+      lastClickSpellAt = 0;
+      cb.onAddSpellMacro?.(id);
+    } else {
+      lastClickSpell = id;
+      lastClickSpellAt = now;
+      selectedSpell = id;
+      renderSpells();
+      cb.onSelectSpell(id);
+    }
+  });
   const zoneEl = wrap.querySelector<HTMLDivElement>(".ao-panel__zone")!;
   const xpFill = wrap.querySelector<HTMLElement>(".ao-bar--xp i")!;
   const xpPctEl = wrap.querySelector<HTMLElement>(".ao-id__xppct")!;
@@ -392,21 +422,16 @@ export function mountInventory(
       if (!spell) continue;
       const row = document.createElement("div");
       row.className = "ao-spells__row";
+      row.dataset.spellId = id.toString();
       if (selectedSpell === id) row.classList.add("ao-spells__row--selected");
       row.draggable = true;
-      row.title = `«${spell.magicWords}» — maná ${spell.manaCost.toString()}`;
+      row.title = `«${spell.magicWords}» — maná ${spell.manaCost.toString()} · doble-click: agregar a macros`;
       row.innerHTML = `
         <span class="ao-spells__name">${spell.name}</span>
         <span class="ao-spells__mana">${spell.manaCost.toString()} MP</span>
       `;
-      // Click en el hechizo = seleccionar Y armar el modo casteo directo
-      // (aparece el crosshair; después click en el objetivo lo lanza). Es una
-      // acción deliberada, no hover — así que respeta el flujo del AO.
-      row.addEventListener("click", () => {
-        selectedSpell = id;
-        renderSpells();
-        cb.onSelectSpell(id);
-      });
+      // Click/doble-click se manejan por delegación en spellsEl (ver arriba):
+      // simple = seleccionar+armar casteo; doble = agregar a la barra de macros.
       row.addEventListener("dragstart", (ev) => {
         ev.dataTransfer?.setData("text/plain", `spell:${id.toString()}`);
       });

@@ -46,6 +46,13 @@ export const CLASS_SPELLBOOK: Record<number, ReadonlyArray<SpellbookEntry>> = {
     { spellId: 10, minLevel: 18 }, // Devolver Movilidad
     { spellId: 24, minLevel: 24 }, // Inmovilizar
   ],
+  // Paladín: guerrero sagrado. Poca magia de soporte: cura + buffs + anti-control.
+  7: [
+    { spellId: 3, minLevel: 1 },   // Curar Heridas Leves
+    { spellId: 20, minLevel: 8 },  // Fuerza (bendición)
+    { spellId: 10, minLevel: 14 }, // Devolver Movilidad
+    { spellId: 5, minLevel: 20 },  // Curar Heridas Graves
+  ],
 };
 
 export function knownSpellsFor(classId: number, level: number): number[] {

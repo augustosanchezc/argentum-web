@@ -1550,6 +1550,20 @@ h3 {
 }
 .ao-deathpanel__home:hover:not(:disabled) { filter: brightness(1.25); }
 .ao-deathpanel__home:disabled { opacity: 0.6; cursor: default; }
+.ao-deathpanel__cancel {
+  width: 100%;
+  margin-top: 7px;
+  padding: 7px 0;
+  background: rgba(110, 31, 31, 0.35);
+  border: 1px solid #6e1f1f;
+  border-radius: 4px;
+  color: #f0b6b6;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+}
+.ao-deathpanel__cancel:hover { filter: brightness(1.25); }
+.ao-deathpanel__cancel[hidden] { display: none; }
 
 /* Barra de energía (stamina) */
 .ao-bar--sp i { background: linear-gradient(180deg, #d9c24a, #96842c); }
@@ -2349,7 +2363,7 @@ html, body { background: #050506; height: 100%; }
 .ao-frame .ao-stage .ao-hud { display: none; }
 
 /* El minimapa vive en el box 3 (vitales) del panel Arte 3. */
-.ao-vitals__map .ao-panel__minimap-slot { display: block; width: 86px; height: 78px; }
+.ao-vitals__map .ao-panel__minimap-slot { display: block; width: 100%; height: auto; }
 
 /* Contador de conectados: solo el número, arriba-derecha, cajita compacta. */
 .ao-frame .ao-stage .ao-players {
@@ -2604,14 +2618,21 @@ html, body { background: #050506; height: 100%; }
 }
 .ao-frame .ao-box--items .ao-panel__tab { flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
 .ao-frame .ao-box--items .ao-panel__tab[hidden] { display: none; }
+/* #3: inventario SIEMPRE completo, sin scrollbars. Columnas responsivas
+   (minmax → se achican cuando el panel es angosto, tope 52px) + celdas
+   cuadradas (aspect-ratio) → los 24 slots entran siempre, sin scroll. */
 .ao-frame .ao-box--items .ao-inv__grid {
-  display: grid; grid-template-columns: repeat(5, 52px); grid-auto-rows: 52px; gap: 4px; padding: 6px;
+  display: grid; grid-template-columns: repeat(5, minmax(0, 52px)); gap: 4px; padding: 6px;
   justify-content: center; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
-  overflow-y: auto; align-content: start;
+  overflow: visible; align-content: start;
 }
-.ao-frame .ao-box--items .ao-inv__cell { aspect-ratio: auto; width: 52px; height: 52px; border-radius: 5px; background: #16151e; border: 1px solid #2b2a38; }
+.ao-frame .ao-box--items .ao-inv__cell { aspect-ratio: 1; width: 100%; height: auto; border-radius: 5px; background: #16151e; border: 1px solid #2b2a38; }
 .ao-frame .ao-box--items .ao-inv__cell--filled { background: #1c1b28; border-color: #46445c; }
-.ao-frame .ao-box--items .ao-inv__trash { font-size: 8px; text-align: center; color: #6a6784; padding: 3px; margin-top: 5px; border: 1px dashed #33313f; border-radius: 5px; }
+.ao-frame .ao-box--items .ao-inv__trash { flex: 0 0 auto; font-size: 8px; text-align: center; color: #6a6784; padding: 3px; margin-top: 5px; border: 1px dashed #33313f; border-radius: 5px; }
+/* #3: la grilla mantiene su tamaño (todos los slots visibles); el panel de
+   detalle es el que cede espacio y hace scroll si falta lugar. */
+.ao-frame .ao-box--items .ao-panel__tab[data-tabpane="inv"] .ao-inv__grid { flex: 0 0 auto; }
+.ao-frame .ao-box--items .ao-inv__detail { flex: 1 1 auto; min-height: 2.4em; overflow-y: auto; }
 .ao-frame .ao-spells__list {
   flex: 1 1 auto; overflow-y: auto; background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px;
   padding: 4px; display: flex; flex-direction: column; gap: 1px; min-height: 150px;
@@ -2635,13 +2656,15 @@ html, body { background: #050506; height: 100%; }
 
 /* ── Box 3: vitales ───────────────────────────────────────────────────── */
 .ao-panel__zone { text-align: center; font-size: 12px; font-weight: 600; color: #cbc7de; margin: 0 0 8px; }
-.ao-vitals__main { display: flex; gap: 10px; align-items: center; margin-bottom: 9px; }
-.ao-vitals__bars { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 8px; }
-.ao-frame .ao-vitals__bars .ao-bar { height: 18px; border-radius: 9px; background: #0d0c13; border: 1px solid #000; position: relative; overflow: hidden; margin: 0; }
+/* #4: el MAPA es el elemento dominante (~70%) y las barras van compactas
+   abajo (~30%). Layout vertical: minimapa grande arriba, barras finas debajo. */
+.ao-vitals__main { display: flex; flex-direction: column-reverse; gap: 8px; align-items: stretch; margin-bottom: 9px; }
+.ao-vitals__bars { flex: 0 0 auto; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.ao-frame .ao-vitals__bars .ao-bar { height: 15px; border-radius: 8px; background: #0d0c13; border: 1px solid #000; position: relative; overflow: hidden; margin: 0; }
 .ao-frame .ao-vitals__bars .ao-bar i { position: absolute; inset: 0; width: 0; transition: width .15s; }
 .ao-frame .ao-vitals__bars .ao-bar--hp i { background: linear-gradient(#e64545, #a81c1c); }
 .ao-frame .ao-vitals__bars .ao-bar--mp i { background: linear-gradient(#4a78e6, #2444aa); }
-.ao-frame .ao-vitals__bars .ao-bar span { position: absolute; inset: 0; text-align: center; font-size: 11px; line-height: 18px; color: #fff; font-weight: 700; text-shadow: 0 1px 1px #000; }
+.ao-frame .ao-vitals__bars .ao-bar span { position: absolute; inset: 0; text-align: center; font-size: 10px; line-height: 15px; color: #fff; font-weight: 700; text-shadow: 0 1px 1px #000; }
 .ao-vitals__map { flex: 0 0 100px; width: 100px; }
 .ao-vitals__map .ao-panel__minimap-slot { cursor: pointer; }
 .ao-vitals__map .ao-minimap { margin: 0; }
@@ -2669,15 +2692,15 @@ html, body { background: #050506; height: 100%; }
 .ao-id__menu[hidden] { display: none; }
 .ao-drug[hidden] { display: none; }
 
-/* Minimapa dentro del box 3 (vitales): tamaño fijo compacto para que el
-   canvas no colapse a 0x0 y no invada el resto del panel. */
-.ao-vitals__map { flex: 0 0 86px; width: 86px; display: flex; flex-direction: column; gap: 5px; }
-.ao-vitals__map .ao-minimap { width: 86px; height: 78px; margin: 0; display: flex; flex-direction: column; }
-.ao-vitals__map .ao-minimap__frame { width: 86px; height: 66px; overflow: hidden; border-radius: 5px; }
-.ao-vitals__map .ao-minimap__canvas { width: 86px !important; height: 66px !important; display: block; }
-.ao-vitals__map .ao-minimap__coords { font-size: 9px; margin-top: 2px; text-align: center; color: #a49ac0; }
+/* #4: minimapa GRANDE (ocupa el ancho del panel). El canvas se dibuja a 100x100
+   y se estira; con image-rendering pixelated queda nítido y el punto usa %. */
+.ao-vitals__map { flex: 0 0 auto; width: 100%; display: flex; flex-direction: column; gap: 5px; }
+.ao-vitals__map .ao-minimap { width: 100%; margin: 0; display: flex; flex-direction: column; }
+.ao-vitals__map .ao-minimap__frame { width: 100%; height: 132px; overflow: hidden; border-radius: 7px; position: relative; }
+.ao-vitals__map .ao-minimap__canvas { width: 100% !important; height: 132px !important; display: block; image-rendering: pixelated; }
+.ao-vitals__map .ao-minimap__coords { font-size: 10px; margin-top: 2px; text-align: center; color: #a49ac0; }
 .ao-vitals__mapbtn {
-  width: 86px; padding: 6px 0; font-size: 11px; font-weight: 600; color: #cdd8ee;
+  width: 100%; padding: 6px 0; font-size: 11px; font-weight: 600; color: #cdd8ee;
   background: linear-gradient(#1c2438, #141a28); border: 1px solid #2f6fd6;
   border-radius: 7px; cursor: pointer; white-space: nowrap;
 }

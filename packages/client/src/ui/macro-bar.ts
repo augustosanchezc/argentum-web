@@ -74,6 +74,9 @@ function readLocalMacros(key: string): Array<MacroSlot | null> | null {
 export interface MacroBarHandle {
   // Setea el macro por defecto (skill de clase en slot 1) si el slot está vacío.
   setDefaultSkill(skillId: number): void;
+  // Agrega un hechizo al primer slot libre (doble-click en el libro). Devuelve
+  // false si no hay slots libres.
+  addSpellToFirstFree(spellId: number): boolean;
   destroy(): void;
 }
 
@@ -479,6 +482,16 @@ export function mountMacroBar(
         persist();
         render();
       }
+    },
+    addSpellToFirstFree: (spellId) => {
+      // Si ya está en un slot, no duplicar.
+      if (slots.some((s) => s?.kind === "spell" && s.id === spellId)) return true;
+      const i = slots.findIndex((s) => s === null);
+      if (i < 0) return false;
+      slots[i] = { kind: "spell", id: spellId, key: defaultKey(i) };
+      persist();
+      render();
+      return true;
     },
     destroy: () => {
       window.removeEventListener("keydown", onKeyDown);

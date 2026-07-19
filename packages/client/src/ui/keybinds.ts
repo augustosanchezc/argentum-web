@@ -10,6 +10,8 @@ export type KeyAction =
   | "pickup"
   | "meditate"
   | "rest"
+  | "hide"
+  | "use"
   | "inventory"
   | "stats";
 
@@ -22,6 +24,8 @@ export const ACTION_LABELS: Record<KeyAction, string> = {
   pickup: "Agarrar",
   meditate: "Meditar",
   rest: "Descansar (fogata)",
+  hide: "Ocultarse",
+  use: "Usar / Equipar objeto",
   inventory: "Mostrar/ocultar panel",
   stats: "Estadísticas",
 };
@@ -37,6 +41,8 @@ const DEFAULTS: Record<KeyAction, string> = {
   pickup: "KeyG",
   meditate: "KeyM",
   rest: "KeyR",
+  hide: "KeyH",
+  use: "KeyE",
   inventory: "KeyI",
   stats: "KeyC",
 };

@@ -69,6 +69,13 @@ export const SKILLS: Record<number, SkillDef> = {
     mpCost: 24, cooldownMs: 8_000, range: 6,
     type: "dot", dotDamage: 5, dotTicks: 5,
   },
+  // Paladín: Castigo Sagrado — golpe cuerpo a cuerpo potenciado con energía sagrada.
+  7: {
+    id: 7, name: "Castigo Sagrado", classId: 7, key: "1",
+    description: "Golpe sagrado que aumenta el daño del ataque. Cuesta algo de maná.",
+    mpCost: 8, cooldownMs: 7_000, range: 1,
+    type: "damage", dmgMultiplier: 1.6,
+  },
 };
 
 export function getSkill(id: number): SkillDef | undefined {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { isWaterGraphic, type Vector2 } from "@ao/shared";
+import { getItem, isWaterGraphic, type Vector2 } from "@ao/shared";
 import { AO_MAP_HEIGHT, AO_MAP_WIDTH, loadAoMap } from "./ao-map-loader.js";
 
 export interface PortalTile {
@@ -125,6 +125,26 @@ function findNearestWalkable(
 }
 
 // Intenta cargar un mapa; devuelve null si el archivo no existe.
+// Mapa gráfico-de-puerta-cerrada → puerta abierta {item, graphic}, derivado de
+// los pares del catálogo (una puerta CERRADA apunta a su abierta vía
+// indexAbierta). Sirve para abrir puertas con llave (indexAbierta 0) por gráfico.
+let _doorOpenByClosedGrh: Map<number, { item: number; graphic: number }> | null = null;
+function doorOpenByClosedGrh(): Map<number, { item: number; graphic: number }> {
+  if (_doorOpenByClosedGrh) return _doorOpenByClosedGrh;
+  const m = new Map<number, { item: number; graphic: number }>();
+  for (let id = 1; id <= 2000; id += 1) {
+    const d = getItem(id);
+    if (!d || d.objType !== 6) continue;
+    const openId = d.indexAbierta ?? 0;
+    if (openId > 0 && openId !== id) {
+      const openDef = getItem(openId);
+      if (openDef) m.set(d.graphic, { item: openId, graphic: openDef.graphic });
+    }
+  }
+  _doorOpenByClosedGrh = m;
+  return m;
+}
+
 function tryLoadMap(mapId: number): MapState | null {
   try {
     const raw = loadAoMap({ mapId, dataDir: MAPS_DIR });
@@ -179,6 +199,29 @@ function tryLoadMap(mapId: number): MapState | null {
       const idx = extra.y * raw.width + extra.x;
       layer3[idx] = extra.grh;
       objects.set(idx, { item: extra.objId, amount: 1 });
+    }
+
+    // #6: TODAS las puertas siempre abiertas (incluso con llave). Al cargar el
+    // mapa abrimos cada puerta (objType 6): gráfico de puerta abierta + tile
+    // transitable. Nunca se cierran (handleTileInteract las ignora).
+    for (const [idx, obj] of objects) {
+      const def = getItem(obj.item);
+      if (!def || def.objType !== 6) continue;
+      let openId = obj.item;
+      let openGrh = def.graphic;
+      if ((def.indexAbierta ?? 0) > 0) {
+        // Variante con contraparte abierta directa.
+        openId = def.indexAbierta!;
+        openGrh = getItem(openId)?.graphic ?? def.graphic;
+      } else {
+        // Puerta con llave (indexAbierta 0): mapear por gráfico cerrado→abierto.
+        const byGrh = doorOpenByClosedGrh().get(def.graphic);
+        if (byGrh) { openId = byGrh.item; openGrh = byGrh.graphic; }
+      }
+      objects.set(idx, { item: openId, amount: obj.amount });
+      layer3[idx] = openGrh;
+      blocked[idx] = 0;
+      if (idx % raw.width > 0) blocked[idx - 1] = 0; // tile oeste (puerta = 2 tiles)
     }
 
     const fallbackSpawn: Vector2 = { x: 50, y: 50 };

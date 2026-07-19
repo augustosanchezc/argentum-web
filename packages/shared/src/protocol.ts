@@ -65,6 +65,8 @@ export enum ClientToServerOp {
   Tame = 0x64,
   // Guardar la config de la barra de macros (persiste por personaje en la DB).
   SaveMacros = 0x65,
+  // Cancelar el viaje al hogar en curso (para esperar a que otro te reviva).
+  CancelGoHome = 0x66,
   // Whisper
   WhisperSend = 0x21,
   // Party (E-4.3)
@@ -703,6 +705,11 @@ export interface GoHomeRequest {
   readonly op: ClientToServerOp.GoHome;
 }
 
+// C→S: cancelar el viaje al hogar en curso (seguís muerto donde estás).
+export interface CancelGoHomeRequest {
+  readonly op: ClientToServerOp.CancelGoHome;
+}
+
 // -- Trabajos (Trabajo.bas del AO) --
 
 // C→S: aplicar una herramienta sobre un tile (hacha→árbol, piquete→
@@ -946,6 +953,7 @@ export type ClientPacket =
   | MeditateToggle
   | CastSpellRequest
   | GoHomeRequest
+  | CancelGoHomeRequest
   | WorkRequest
   | CraftRequest
   | RestToggle
