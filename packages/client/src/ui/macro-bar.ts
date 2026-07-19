@@ -393,6 +393,10 @@ export function mountMacroBar(
             img.style.height = `${icon.h.toString()}px`;
             img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
             img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
+            // Escala por sprite para caber en el slot de 54px (los grandes se
+            // recortaban con el scale fijo 1.35; los chicos se agrandan).
+            const k = Math.min(48 / Math.max(icon.w, icon.h), 1.5);
+            img.style.transform = `scale(${k.toFixed(3)})`;
             cell.appendChild(img);
             iconed = true;
           }

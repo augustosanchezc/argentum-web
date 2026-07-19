@@ -1443,6 +1443,8 @@ export async function startGameScene(
       addEntity(entId, ent.position, ent.name, isSelf, ent.hp, ent.maxHp, ent.kind, ent.direction, ent.bodyId, ent.headId, ent.criminal ?? false, ent.faction ?? 0, ent.guild ?? null, ent.weaponAnim ?? 0, ent.shieldAnim ?? 0, ent.helmetAnim ?? 0, ent.role ?? 0, ent.level ?? 1, ent.classId ?? 1);
       if (ent.dead) applyDeadVisual(entId);
       if (ent.invisible) applyInvisibleVisual(entId);
+      // Aura de meditación de quien YA estaba meditando al entrar al mapa.
+      if (ent.meditating) handleMeditateUpdate({ op: ServerToClientOp.MeditateUpdate, id: ent.id, meditating: true });
     }
     updateSelfHud();
   }
@@ -1648,16 +1650,22 @@ export async function startGameScene(
     playSwing(own, selfFacing);
     audio.play(SND.swing, 0.8);
 
-    // Buscamos un objetivo vivo en el tile que tenemos en frente.
+    // Objetivo vivo hacia el frente. Melee: el tile adyacente. Con ARCO: el
+    // primer objetivo en LÍNEA RECTA hasta 8 tiles (la tecla de atacar no
+    // servía para tirar flechas — solo detectaba adyacentes).
     const delta = DELTAS[selfFacing];
-    const tx = own.position.x + delta.x;
-    const ty = own.position.y + delta.y;
+    const range = selfWeaponRanged ? 8 : 1;
     let targetId: number | null = null;
-    for (const [id, v] of entityVisuals) {
-      if (id === character.id || v.dead) continue;
-      if (v.position.x === tx && v.position.y === ty) {
-        targetId = id;
-        break;
+    for (let step = 1; step <= range && targetId === null; step += 1) {
+      const tx = own.position.x + delta.x * step;
+      const ty = own.position.y + delta.y * step;
+      for (const [id, v] of entityVisuals) {
+        if (id === character.id || v.dead) continue;
+        if (v.kind === "merchant" || v.kind === "banker") continue;
+        if (v.position.x === tx && v.position.y === ty) {
+          targetId = id;
+          break;
+        }
       }
     }
     if (targetId === null) return;
@@ -2687,6 +2695,11 @@ export async function startGameScene(
     const targetId = p.targetId as unknown as number | undefined;
     const isSelfCaster = casterId === character.id;
 
+    // Palabras mágicas del AO: el caster las "dice" sobre su cabeza.
+    const casterVisual = entityVisuals.get(casterId);
+    const spellWords = getAoSpell(p.skillId)?.magicWords;
+    if (casterVisual && spellWords) showOverheadText(casterVisual, spellWords);
+
     // Mostramos floater cuando somos el lanzador, y suena el WAV real
     // del hechizo (campo WAV de Hechizos.dat).
     if (isSelfCaster) {
@@ -2892,7 +2905,7 @@ export async function startGameScene(
         <span class="ao-npcinfo__name">${escapeHtml(p.name)}</span>
         <button class="ao-npcinfo__close" title="Cerrar">✕</button>
       </div>
-      <div class="ao-npcinfo__sub">#${p.number.toString()} · ${p.maxHp.toLocaleString("es")} HP</div>
+      <div class="ao-npcinfo__sub">#${p.number.toString()} · Vida ${p.hp.toLocaleString("es")} / ${p.maxHp.toLocaleString("es")}</div>
       <div class="ao-npcinfo__stat"><span>Experiencia</span><b>${p.xpReward.toLocaleString("es")}</b></div>
       <div class="ao-npcinfo__sectitle">Oro <small>(por probabilidad)</small></div>${goldRows}
       <div class="ao-npcinfo__sectitle">Drops <small>(por probabilidad)</small></div>${dropRows}
@@ -3038,6 +3051,7 @@ export async function startGameScene(
     addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0, p.level ?? 1, p.classId ?? 1);
     if (p.dead) applyDeadVisual(id);
     if (p.invisible) applyInvisibleVisual(id);
+    if (p.meditating) handleMeditateUpdate({ op: ServerToClientOp.MeditateUpdate, id: p.id, meditating: true });
     refreshPlayerList();
   }
 
@@ -3127,15 +3141,14 @@ export async function startGameScene(
 
   function applyFsScale(): void {
     if (!viewportBox.isConnected) return;
-    if (document.fullscreenElement) {
-      const r = stageEl.getBoundingClientRect();
-      const s = Math.max(1, Math.min(r.width / 840, r.height / 600));
-      viewportBox.style.transform = `scale(${s.toFixed(4)})`;
-      fsBtn.classList.add("ao-fsbtn--on");
-    } else {
-      viewportBox.style.transform = "";
-      fsBtn.classList.remove("ao-fsbtn--on");
-    }
+    // Escala SIEMPRE (no solo en fullscreen): en 4K el juego se agranda; en
+    // pantallas bajas (720p) se encoge manteniendo los 21x15 tiles — el ratio
+    // y la coincidencia con el alcance de casteo quedan intactos.
+    const r = stageEl.getBoundingClientRect();
+    const s = Math.min(r.width / 840, r.height / 600);
+    viewportBox.style.transform =
+      Number.isFinite(s) && s > 0 && Math.abs(s - 1) > 0.01 ? `scale(${s.toFixed(4)})` : "";
+    fsBtn.classList.toggle("ao-fsbtn--on", document.fullscreenElement !== null);
   }
   fsBtn.addEventListener("click", () => {
     if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
@@ -3143,6 +3156,7 @@ export async function startGameScene(
   });
   const onFsChange = (): void => { applyFsScale(); };
   document.addEventListener("fullscreenchange", onFsChange);
+  applyFsScale(); // escala inicial (viewbox fijo 840x600 → espacio real)
 
   const onResize = (): void => {
     centerStatus();

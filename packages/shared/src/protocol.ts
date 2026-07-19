@@ -220,6 +220,8 @@ export interface MapData {
     // Jugadores: invisible (ocultarse / hechizo / GM). Al entrar al mapa el
     // cliente lo oculta (antes solo se enteraba del cambio en vivo).
     readonly invisible?: boolean;
+    // Jugadores: meditando (para ver el aura al entrar al mapa).
+    readonly meditating?: boolean;
     // Overlays de equipo visibles (arma/escudo/casco).
     readonly weaponAnim?: number;
     readonly shieldAnim?: number;
@@ -268,6 +270,8 @@ export interface EntitySpawn {
   readonly dead?: boolean;
   // Jugadores: invisible — ver MapData.entities.invisible.
   readonly invisible?: boolean;
+  // Jugadores: meditando — ver MapData.entities.meditating.
+  readonly meditating?: boolean;
   // Overlays de equipo visibles (arma/escudo/casco).
   readonly weaponAnim?: number;
   readonly shieldAnim?: number;
@@ -429,6 +433,8 @@ export interface NpcInfoResponse {
   readonly number: number;
   readonly name: string;
   readonly maxHp: number;
+  // Vida ACTUAL de la criatura clickeada.
+  readonly hp: number;
   readonly xpReward: number;
   // Entradas de oro (item 12) con su cantidad y probabilidad.
   readonly gold: ReadonlyArray<{ readonly qty: number; readonly chance: number }>;

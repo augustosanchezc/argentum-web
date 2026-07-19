@@ -45,6 +45,30 @@ const CAOS_RANKS: Array<[number, string]> = [
   [1300, "Ejecutor Imperial"],
 ];
 
+// ── Recompensas por rango ──────────────────────────────────────────────────
+// Armaduras faccionarias: NO se caen al morir (junto con los items newbie).
+export const FACTION_ARMOR_IDS: ReadonlySet<number> = new Set([
+  195, 243, 390, 391, 392, 393, // Placas Completa / +1 / +2 (+variantes E/G)
+  369, 379, 677, 678,           // Legionarias
+]);
+
+// Premios acumulativos por kills de facción: oro + armadura especial.
+// `factionRewards` de la sesión guarda cuántos ya cobró (índice).
+export const FACTION_REWARDS: Record<number, ReadonlyArray<{ kills: number; gold: number; armor?: number }>> = {
+  [FACTION_ARMADA]: [
+    { kills: 0, gold: 5_000, armor: 195 },    // al enlistarse: Placas Completa
+    { kills: 130, gold: 10_000 },             // Soldado
+    { kills: 320, gold: 25_000, armor: 390 }, // Capitán: Placas +1
+    { kills: 640, gold: 50_000, armor: 391 }, // General: Placas +2
+  ],
+  [FACTION_CAOS]: [
+    { kills: 0, gold: 5_000, armor: 677 },    // al enlistarse: Vestimenta Legionaria
+    { kills: 160, gold: 10_000, armor: 369 }, // Alma Corrupta: Armadura Legionaria
+    { kills: 400, gold: 25_000, armor: 390 },
+    { kills: 900, gold: 50_000, armor: 391 },
+  ],
+};
+
 export function factionRank(faction: number, kills: number): string {
   const ranks = faction === FACTION_ARMADA ? ARMADA_RANKS : CAOS_RANKS;
   let title = ranks[0]![1];

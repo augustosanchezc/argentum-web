@@ -34,12 +34,16 @@ export function createItemCell(opts: ItemCellOpts): HTMLDivElement {
 
   const icon = def.graphic > 0 ? opts.resolveIcon(def.graphic) : null;
   if (icon) {
+    // Tamaño NATIVO del sprite + transform scale para caber en 32px: el clamp
+    // viejo (min(w,32)) RECORTABA los sprites grandes (se veía solo la esquina).
     const img = document.createElement("div");
     img.className = "ao-cell__icon";
-    img.style.width = `${Math.min(icon.w, 32).toString()}px`;
-    img.style.height = `${Math.min(icon.h, 32).toString()}px`;
+    img.style.width = `${icon.w.toString()}px`;
+    img.style.height = `${icon.h.toString()}px`;
     img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
     img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
+    const k = Math.min(1, 32 / Math.max(icon.w, icon.h));
+    img.style.transform = `scale(${k.toFixed(3)})`;
     cell.appendChild(img);
   } else {
     const label = document.createElement("span");

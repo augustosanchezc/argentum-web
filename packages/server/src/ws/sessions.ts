@@ -65,6 +65,16 @@ export interface Session {
   // Muerto: 0 = vivo. Los jugadores NO auto-reviven (fantasma del AO):
   // reviven por sacerdote o llegando al hogar.
   deadUntil: number;
+  // Fianzas: crímenes perdonados (criminal = citizensKilled > pardonedKills)
+  // y fianzas pagadas (el precio crece por Fibonacci).
+  pardonedKills: number;
+  bailsPaid: number;
+  // Recompensas de facción ya cobradas (índice en FACTION_REWARDS).
+  factionRewards: number;
+  // Ocultarse (skill): true mientras está escondido — caminar lo rompe
+  // (salvo Asesino con armadura de Asesino). Distinto de la invisibilidad
+  // por hechizo (que no se rompe al caminar).
+  hiding: boolean;
   // Viaje al hogar (goHome): epoch ms de llegada (0 = sin viaje).
   homeTravelUntil: number;
   // Economía e inventario
@@ -217,6 +227,10 @@ export class SessionRegistry {
       navigating: false,
       boatBody: 0,
       deadUntil: 0,
+      pardonedKills: 0,
+      bailsPaid: 0,
+      factionRewards: 0,
+      hiding: false,
       homeTravelUntil: 0,
       gold: 0,
       inventory: [],

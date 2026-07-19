@@ -1,5 +1,3 @@
-import { ServerToClientOp, type CriminalUpdate, type EntityId } from "@ao/shared";
-import { broadcastToMap } from "../ws/broadcast.js";
 import type { Session } from "../ws/sessions.js";
 import { sessions } from "../ws/sessions.js";
 import { trainSkill } from "./skill-training.js";
@@ -82,17 +80,7 @@ export function tickRegen(sendFn: (s: Session) => void, dt: number = REGEN_INTER
       changed = true;
     }
 
-    // Expiración del estado criminal: el nombre vuelve a azul para todos.
-    if (s.criminalUntil > 0 && now >= s.criminalUntil) {
-      s.criminalUntil = 0;
-      const pkt: CriminalUpdate = {
-        op: ServerToClientOp.CriminalUpdate,
-        id: s.characterId as EntityId,
-        criminal: false,
-        expiresAt: 0,
-      };
-      broadcastToMap(s.mapId, pkt);
-    }
+    // (El estado criminal ya NO expira solo: se paga fianza al sacerdote.)
 
     // Con hambre o sed en 0 se corta la sanación y la energía (AO: flags Hambre/Sed).
     const starving = s.hunger <= 0 || s.thirst <= 0;

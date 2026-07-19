@@ -36,6 +36,7 @@ import {
   type EntityId,
   type EntitySpawn,
   type EntityUpdate,
+  type InventorySlot,
   type GroundItemDespawn,
   type GroundItemSpawn,
   type InteractRequest,
@@ -142,7 +143,7 @@ import { findLandingTile, getMap, isWalkable, isWaterAt, type MapState } from ".
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcDeathSound, npcs, petsOf, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
-import { setPetAttackHandler } from "./loop.js";
+import { setPetAttackHandler, setPlayerDeathHandler } from "./loop.js";
 import { weather } from "../world/weather.js";
 import { accounts } from "../db/schema/accounts.js";
 import { partyRegistry } from "../world/party.js";
@@ -155,6 +156,8 @@ import { activeDots, executeSkill } from "../world/skills.js";
 import {
   ENLISTER_FACTION,
   FACTION_NAMES,
+  FACTION_ARMOR_IDS,
+  FACTION_REWARDS,
   canEnlistArmada,
   canEnlistCaos,
   factionKills,
@@ -170,7 +173,7 @@ import {
   validGuildName,
 } from "../world/guilds.js";
 import { tickDots } from "../world/dots.js";
-import { isCriminal, setCriminal } from "../world/criminal.js";
+import { bailPrice, isCriminal, setCriminal } from "../world/criminal.js";
 import { broadcastToMap, CASPER_BODY, CASPER_HEAD, DEAD_FOREVER, killPlayer, revivePlayer, stopMeditating } from "./broadcast.js";
 import { decode, encode } from "./codec.js";
 import {
@@ -203,6 +206,7 @@ function buildMapDataPacket(map: MapState): MapData {
     classId: s.classId,
     dead: s.deadUntil !== 0 || undefined,
     invisible: s.invisibleUntil > Date.now() || undefined,
+    meditating: s.meditating || undefined,
     ...computeVisibleEquip(s),
   }));
   // Solo NPCs vivos: los muertos aparecían "parados" (inatacables) hasta su respawn.
@@ -298,6 +302,7 @@ function broadcastEffect(
 
 // Atacar o castear rompe la invisibilidad propia (AO).
 function breakInvisibility(s: Session): void {
+  s.hiding = false;
   if (s.invisibleUntil > Date.now()) {
     s.invisibleUntil = 0;
     broadcastEffect(s.mapId, s.characterId, "invisible", false);
@@ -396,6 +401,9 @@ async function persistPosition(s: Session): Promise<void> {
       dead: s.deadUntil !== 0,
       navigating: s.navigating,
       boatBody: s.boatBody,
+      pardonedKills: s.pardonedKills,
+      bailsPaid: s.bailsPaid,
+      factionRewards: s.factionRewards,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -491,9 +499,78 @@ function addGold(s: Session, amount: number): void {
 // contadores de facción y lo marca criminal si la víctima era ciudadana.
 // `killer` es null si murió por fuente no atribuible a un jugador (criatura,
 // o el envenenador ya se desconectó).
+// ConsoleMsg a nivel módulo (la versión del closure no está disponible acá).
+function notify(s: Session, text: string, wav?: number): void {
+  const pkt: ConsoleMsg = {
+    op: ServerToClientOp.ConsoleMsg,
+    text,
+    kind: "global",
+    ...(wav !== undefined ? { wav } : {}),
+  };
+  send(s.socket, pkt);
+}
+
+// Muerte AO original: se CAEN TODOS los items al piso — salvo los newbie y
+// las armaduras faccionarias (recompensa que no se pierde).
+function dropAllItemsOnDeath(victim: Session): void {
+  const kept: InventorySlot[] = [];
+  let dropped = 0;
+  for (const slot of victim.inventory) {
+    const def = getItem(slot.item);
+    if (!def || def.newbie || FACTION_ARMOR_IDS.has(slot.item)) {
+      kept.push(slot);
+      continue;
+    }
+    const pos = findDropTile(victim.mapId, victim.position);
+    const g = groundItems.spawn(victim.mapId, pos, slot.item, slot.qty);
+    if (g.evictedId !== undefined) {
+      broadcastToMap(victim.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+    }
+    broadcastToMap(victim.mapId, {
+      op: ServerToClientOp.GroundItemSpawn,
+      id: g.id as EntityId,
+      position: { x: g.position.x, y: g.position.y },
+      item: g.item,
+      qty: g.qty,
+    } satisfies GroundItemSpawn);
+    dropped += 1;
+  }
+  victim.inventory = kept;
+  // Limpiar el equipo que se cayó.
+  const still = (it: number | null): boolean => it !== null && kept.some((sl) => sl.item === it);
+  if (!still(victim.equippedWeapon)) victim.equippedWeapon = null;
+  if (!still(victim.equippedArmor)) victim.equippedArmor = null;
+  if (!still(victim.equippedHelmet)) victim.equippedHelmet = null;
+  if (!still(victim.equippedShield)) victim.equippedShield = null;
+  if (dropped > 0) notify(victim, "¡Has perdido tus pertenencias al morir!");
+}
+
+// Premios de facción: al alcanzar cada umbral de kills, oro + armadura
+// faccionaria (que no se cae al morir). `factionRewards` = ya cobrados.
+function checkFactionRewards(s: Session): void {
+  const table = FACTION_REWARDS[s.faction];
+  if (!table) return;
+  const kills = s.faction === FACTION_ARMADA ? s.criminalsKilled : s.citizensKilled;
+  let changed = false;
+  while (s.factionRewards < table.length && kills >= table[s.factionRewards]!.kills) {
+    const r = table[s.factionRewards]!;
+    addGold(s, r.gold);
+    if (r.armor !== undefined && carryCapacity(s.inventory, r.armor) >= 1) {
+      s.inventory = addItem(s.inventory, r.armor, 1);
+    }
+    notify(s, `¡La ${FACTION_NAMES[s.faction] ?? "facción"} te recompensa! +${r.gold.toLocaleString("es")} de oro${r.armor !== undefined ? " y una armadura faccionaria" : ""}.`, 6);
+    s.factionRewards += 1;
+    changed = true;
+  }
+  if (changed) {
+    sendInventoryUpdate(s);
+    sendStatsUpdate(s);
+  }
+}
+
 function resolvePlayerDeath(victim: Session, killer: Session | null): void {
   // Idempotente: con varios DoTs en el mismo tick, el segundo resultado
-  // "dead" duplicaba la penalización de XP y el contador criminal.
+  // "dead" duplicaba la penalización y el contador criminal.
   if (victim.deadUntil !== 0) return;
   // Cancelar el trade del muerto (usa el registro de módulo, no el closure).
   if (victim.tradeId) {
@@ -509,9 +586,10 @@ function resolvePlayerDeath(victim: Session, killer: Session | null): void {
 
   const victimWasCriminal = isCriminal(victim);
   killPlayer(victim);
-  const prog = levelProgress(victim.level, victim.xp);
-  const xpPenalty = Math.floor(prog.xpIntoLevel * 0.1);
-  if (xpPenalty > 0) victim.xp = Math.max(0, victim.xp - xpPenalty);
+  // AO original: al morir se caen TODOS los items (salvo newbie/facción).
+  // Sin penalización de XP (la del AO es perder las cosas).
+  dropAllItemsOnDeath(victim);
+  sendInventoryUpdate(victim);
   sendStatsUpdate(victim);
 
   // Facción/criminal: solo si el matador es otro jugador (sigue conectado).
@@ -525,10 +603,12 @@ function resolvePlayerDeath(victim: Session, killer: Session | null): void {
         op: ServerToClientOp.CriminalUpdate,
         id: killer.characterId as EntityId,
         criminal: true,
-        expiresAt: killer.criminalUntil,
+        expiresAt: 0, // persistente: se paga fianza al sacerdote
       };
       broadcastToMap(killer.mapId, criminalPkt);
     }
+    // Premios de facción al alcanzar umbrales de kills.
+    checkFactionRewards(killer);
     sendStatsUpdate(killer);
   }
 }
@@ -702,6 +782,7 @@ setInterval(() => {
       classId: s.classId,
       dead: s.deadUntil !== 0 || undefined,
       invisible: s.invisibleUntil > Date.now() || undefined,
+    meditating: s.meditating || undefined,
       ...computeVisibleEquip(s),
     };
     broadcastToMap(home.id, spawnPkt, s.id);
@@ -1070,6 +1151,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         classId: s.classId,
         dead: s.deadUntil !== 0 || undefined,
         invisible: s.invisibleUntil > Date.now() || undefined,
+    meditating: s.meditating || undefined,
         ...computeVisibleEquip(s),
       };
       broadcastToMap(destMap.id, spawn, s.id);
@@ -1170,6 +1252,22 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(s.mapId, update);
 
       // Fantasma: revivir si hay un sacerdote cerca.
+      // Caminar rompe el OCULTARSE (AO) — salvo el Asesino con armadura de
+      // Asesino equipada (sigilo de la clase). La invisibilidad por hechizo
+      // no se rompe al caminar.
+      if (s.hiding) {
+        const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
+        const stealthy = s.classId === 5 && (armor?.name.includes("Asesino") ?? false);
+        if (!stealthy) {
+          s.hiding = false;
+          if (s.invisibleUntil > Date.now()) {
+            s.invisibleUntil = 0;
+            broadcastEffect(s.mapId, s.characterId, "invisible", false);
+            consoleMsg(s, "¡Has vuelto a ser visible!", "combate");
+          }
+        }
+      }
+
       checkPriestRevive(s);
 
       const portal = map.portals.find(
@@ -1207,7 +1305,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (now - s.lastAttackAt < interval) return null;
 
       // Stamina del AO: cada golpe requiere >=10 y consume 1-10.
-      if (s.sta < 10) return null;
+      if (s.sta < 10) {
+        consoleMsg(s, "Estás muy cansado para luchar.", "combate");
+        return null;
+      }
 
       const mods = getClassMods(s.classId);
       const prep: AttackPrep = {
@@ -1222,7 +1323,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (ranged && weapon?.needsAmmo) {
         // Buscar flechas en el inventario (LanzarProyectil del AO).
         const arrowSlot = s.inventory.find((sl) => getItem(sl.item)?.type === "arrow" && sl.qty > 0);
-        if (!arrowSlot) return null; // "No tienes municiones."
+        if (!arrowSlot) {
+          consoleMsg(s, "¡No tienes municiones!", "combate");
+          return null;
+        }
         const arrowDef = getItem(arrowSlot.item);
         prep.ammoItem = arrowSlot.item;
         prep.ammoMin = arrowDef?.minHit ?? 0;
@@ -1409,6 +1513,55 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     // Aplica daño a un NPC (melee o hechizo) y resuelve muerte: oro, drops
     // dispersos, XP compartida en party, respawn programado.
+    // Otorga XP con level-up (recalcula skills/HP/MP/hechizos como siempre).
+    function grantXp(recv: Session, amount: number): void {
+      if (amount <= 0) return;
+      const gain = applyXpGain(recv.level, recv.xp, amount);
+      recv.xp = gain.totalXp;
+      if (gain.leveledUp) {
+        recv.level = gain.level;
+        recv.skills = skillsForLevel(recv.level);
+        const classDef = getClass(recv.classId);
+        if (classDef) {
+          recv.maxHp = calcMaxHp(classDef, recv.level, recv.con);
+          recv.maxMana = calcMaxMp(classDef, recv.level, recv.int_);
+          recv.maxSta = calcMaxSta(classDef, recv.level);
+        } else {
+          recv.maxHp = maxHpForLevel(recv.level);
+        }
+        recv.hp = recv.maxHp;
+        recv.mana = recv.maxMana;
+        partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
+        sendSpellsKnown(recv);
+      }
+      sendStatsUpdate(recv);
+    }
+
+    // XP de combate como el AO 0.13: POR DAÑO hecho (no al último golpe). En
+    // party se reparte PONDERADO POR NIVEL entre los miembros vivos CERCANOS
+    // (mismo mapa, ≤20 tiles).
+    function awardCombatXp(s: Session, amount: number): void {
+      if (amount <= 0) return;
+      const party = partyRegistry.getByCharacter(s.characterId);
+      if (!party) {
+        grantXp(s, amount);
+        return;
+      }
+      const nearby = Array.from(party.members.keys())
+        .map((id) => sessions.getByCharacterId(id))
+        .filter((m): m is Session =>
+          !!m && m.mapId === s.mapId && m.deadUntil === 0 && chebyshev(m.position, s.position) <= 20);
+      if (nearby.length === 0) {
+        grantXp(s, amount);
+        return;
+      }
+      const totalLevel = nearby.reduce((t, m) => t + m.level, 0);
+      for (const m of nearby) {
+        grantXp(m, Math.max(1, Math.floor((amount * m.level) / totalLevel)));
+      }
+      broadcastPartyUpdate(party.id);
+    }
+
     function damageNpc(
       s: Session,
       npc: NpcInstance,
@@ -1418,7 +1571,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       attackerEntityId?: number,
       magic = false,
     ): void {
+      const prevHp = npc.hp;
       npc.hp = Math.max(0, npc.hp - amount);
+      // XP por daño efectivo, proporcional a la vida del NPC.
+      const effective = Math.min(amount, prevHp);
+      awardCombatXp(s, Math.floor((npc.type.xpReward * effective) / npc.type.maxHp));
 
       // Las mascotas del atacante asisten contra este NPC (FollowAmo).
       if (npc.hp > 0 && npc.ownerCharacterId !== s.characterId) {
@@ -1472,44 +1629,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         if (gold > 0) addGold(s, gold);
 
-        const party = partyRegistry.getByCharacter(s.characterId);
-        const xpReceivers: Session[] = party
-          ? Array.from(party.members.keys())
-              .map((id) => sessions.getByCharacterId(id))
-              .filter((ms): ms is Session => !!ms && ms.mapId === s.mapId && ms.deadUntil === 0)
-          : [s];
-        const xpShare = Math.max(1, Math.floor(npc.type.xpReward / xpReceivers.length));
-        for (const recv of xpReceivers) {
-          const gain = applyXpGain(recv.level, recv.xp, xpShare);
-          recv.xp = gain.totalXp;
-          if (gain.leveledUp) {
-            recv.level = gain.level;
-            // Skills suben con el nivel (100 al nivel 34).
-            recv.skills = skillsForLevel(recv.level);
-            // AO Libre: los atributos son fijos; por nivel no se dan puntos de atributo.
-            // Recalcular HP/MP máximos con la clase del personaje
-            const classDef = getClass(recv.classId);
-            if (classDef) {
-              recv.maxHp = calcMaxHp(classDef, recv.level, recv.con);
-              recv.maxMana = calcMaxMp(classDef, recv.level, recv.int_);
-              recv.maxSta = calcMaxSta(classDef, recv.level);
-            } else {
-              recv.maxHp = maxHpForLevel(recv.level);
-            }
-            recv.hp = recv.maxHp;
-            recv.mana = recv.maxMana;
-            if (party) partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
-            // Al subir de nivel pueden desbloquearse hechizos del libro.
-            sendSpellsKnown(recv);
-          }
-          sendStatsUpdate(recv);
-        }
-        if (party) broadcastPartyUpdate(party.id);
+        // (La XP ya se otorgó POR DAÑO en cada golpe — awardCombatXp.)
         sendInventoryUpdate(s);
         // Progreso de misiones del que mató.
         questKillProgress(s, npc.type.number);
         req.log.info(
-          { attacker: s.characterId, npc: npc.id, xpShare, gold },
+          { attacker: s.characterId, npc: npc.id, gold },
           "[ws] NPC eliminado",
         );
         npcKillsTotal.inc();
@@ -1518,6 +1643,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     // Golpe de mascota contra NPC (NpcAtacaNpc): impacto por poderes del
     // NPCs.dat; el kill lo resuelve damageNpc (XP/drops al amo, como el AO).
+    // Morir a manos de un NPC = misma resolución que PvP (drop de items, etc.).
+    setPlayerDeathHandler(resolvePlayerDeath);
     setPetAttackHandler((owner, target, petId, now) => {
       const pet = npcs.get(petId);
       if (!pet) return;
@@ -1896,6 +2023,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         number: t.number,
         name: t.name,
         maxHp: t.maxHp,
+        hp: npc.hp,
         xpReward: t.xpReward,
         gold,
         drops,
@@ -1979,6 +2107,26 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           revivePlayer(s);
           sendInventoryUpdate(s); // re-broadcastea los overlays de equipo
           consoleMsg(s, "¡Has sido resucitado!", "global", 213); // SND_RESUCITAR
+        } else if (s.faction !== 2 && s.citizensKilled > s.pardonedKills) {
+          // FIANZA: el sacerdote perdona los crímenes por oro. El precio crece
+          // por Fibonacci (500, 500, 1000, 1500, 2500…). La Legión no tiene perdón.
+          const price = bailPrice(s.bailsPaid);
+          if (s.gold < price) {
+            consoleMsg(s, `Sacerdote: "Puedo perdonar tus crímenes por ${price.toLocaleString("es")} monedas de oro." (no te alcanza)`, "global");
+          } else {
+            s.gold -= price;
+            s.pardonedKills = s.citizensKilled;
+            s.bailsPaid += 1;
+            s.criminalUntil = 0;
+            broadcastToMap(s.mapId, {
+              op: ServerToClientOp.CriminalUpdate,
+              id: s.characterId as EntityId,
+              criminal: false,
+              expiresAt: 0,
+            } satisfies CriminalUpdate);
+            consoleMsg(s, `El sacerdote perdona tus crímenes por ${price.toLocaleString("es")} de oro. Volvés a ser ciudadano. (La próxima fianza costará ${bailPrice(s.bailsPaid).toLocaleString("es")}.)`, "global", 214);
+            sendInventoryUpdate(s);
+          }
         } else if (s.hp < s.maxHp) {
           s.hp = s.maxHp;
           consoleMsg(s, "El sacerdote te ha curado.", "global", 214); // SND_CURAR
@@ -2008,6 +2156,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         s.faction = enlistFaction;
         consoleMsg(s, `¡Bienvenido a la ${FACTION_NAMES[enlistFaction]!}! Tu rango: ${factionRank(enlistFaction, factionKills(s))}.`, "global", 6);
+        // Premio de enlistamiento (oro + armadura faccionaria que no se cae).
+        checkFactionRewards(s);
         const fPkt: FactionUpdate = {
           op: ServerToClientOp.FactionUpdate,
           id: s.characterId as EntityId,
@@ -2234,6 +2384,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
       }
 
+      // Máximo 5 miembros como el AO original.
+      if (party.members.size >= 5) {
+        consoleMsg(s, "La party está completa (máximo 5 miembros).", "global");
+        if (inviterSession) consoleMsg(inviterSession, "Tu party está completa (máximo 5).", "global");
+        return;
+      }
       partyRegistry.addMember(party, s.characterId, s.characterName);
       partyRegistry.updateMemberStats(s.characterId, s.hp, s.maxHp);
       s.partyId = party.id;
@@ -3352,6 +3508,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           (-0.000001 * q ** 3 + 0.00009229 * q ** 2 - 0.0088 * q + 0.9571) * INTERVALO_OCULTO,
         );
         s.invisibleUntil = now + Math.floor(secs * 1000);
+        s.hiding = true; // caminar lo rompe (salvo Asesino con su armadura)
         broadcastEffect(s.mapId, s.characterId, "invisible", true, Math.floor(secs * 1000));
         consoleMsg(s, "¡Te has escondido entre las sombras!", "global");
         trainSkill(s, "ocultarse", true);
@@ -3841,6 +3998,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           dead: characters.dead,
           navigating: characters.navigating,
           boatBody: characters.boatBody,
+          pardonedKills: characters.pardonedKills,
+          bailsPaid: characters.bailsPaid,
+          factionRewards: characters.factionRewards,
         })
         .from(characters)
         .where(
@@ -3904,6 +4064,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.faction = character.faction;
       session.citizensKilled = character.citizensKilled;
       session.criminalsKilled = character.criminalsKilled;
+      session.pardonedKills = character.pardonedKills;
+      session.bailsPaid = character.bailsPaid;
+      session.factionRewards = character.factionRewards;
       session.friends = [...character.friends];
       // Privilegios frescos de la cuenta (GMs — panel /admin).
       const [acc] = await db
@@ -4003,6 +4166,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         classId: session.classId,
         dead: session.deadUntil !== 0 || undefined,
         invisible: session.invisibleUntil > Date.now() || undefined,
+        meditating: session.meditating || undefined,
         ...computeVisibleEquip(session),
       };
       broadcastToMap(map.id, spawn, session.id);

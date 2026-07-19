@@ -114,6 +114,12 @@ export const characters = pgTable(
     // agua "invalidaba" la posición y te teletransportaba a Ullathorpe.
     navigating: boolean("navigating").notNull().default(false),
     boatBody: integer("boat_body").notNull().default(0),
+    // Sistema de fianzas: crímenes perdonados (criminal = citizensKilled >
+    // pardonedKills) y cantidad de fianzas pagadas (precio Fibonacci).
+    pardonedKills: integer("pardoned_kills").notNull().default(0),
+    bailsPaid: integer("bails_paid").notNull().default(0),
+    // Recompensas de facción ya cobradas (índice en la tabla de premios).
+    factionRewards: integer("faction_rewards").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -170,7 +170,9 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   broadcastToMap(npc.mapId, damage);
 
   if (target.hp === 0) {
-    killPlayer(target);
+    // Misma resolución que PvP/veneno (drop de items, cancelar trade).
+    if (playerDeathFn) playerDeathFn(target, null);
+    else killPlayer(target);
   }
 }
 
@@ -202,6 +204,15 @@ type PetAttackFn = (owner: Session, target: NpcInstance, petId: number, now: num
 let petAttackFn: PetAttackFn | null = null;
 export function setPetAttackHandler(fn: PetAttackFn): void {
   petAttackFn = fn;
+}
+
+// Resolución de muerte de jugador (resolvePlayerDeath de ws/index): inyectada
+// para que morir a manos de un NPC tenga las MISMAS consecuencias (drop de
+// items, cancelar trade) que morir en PvP/veneno. killer = null (fue un NPC).
+type PlayerDeathFn = (victim: Session, killer: Session | null) => void;
+let playerDeathFn: PlayerDeathFn | null = null;
+export function setPlayerDeathHandler(fn: PlayerDeathFn): void {
+  playerDeathFn = fn;
 }
 
 // IA de mascota (FollowAmo del AO): asiste al objetivo del amo o lo sigue.

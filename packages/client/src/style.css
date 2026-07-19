@@ -735,7 +735,8 @@ h3 {
 .ao-vp .ao-cell--empty { background: #131219; }
 .ao-vp .ao-cell--clickable:hover { border-color: #46445c; background: #1c1b28; }
 .ao-vp .ao-cell--sel { border-color: #2f6fd6; background: rgba(47, 111, 214, 0.22); box-shadow: inset 0 0 0 1px #2f6fd6; }
-.ao-vp .ao-cell__icon { width: 40px; height: 40px; }
+/* El ícono usa su tamaño nativo inline + transform scale (item-cell.ts). */
+.ao-vp .ao-cell__icon { position: absolute; inset: 0; margin: auto; transform-origin: center center; }
 .ao-vp .ao-cell__qty { color: #7ab0ff; font-size: 11px; font-weight: 700; }
 .ao-vp__info {
   margin-top: 12px; min-height: 20px; display: flex; align-items: center; gap: 12px;
@@ -1667,7 +1668,7 @@ h3 {
 }
 .ao-cell--clickable { cursor: pointer; }
 .ao-cell--clickable:hover { border-color: var(--gold-bright); background: rgba(212, 175, 55, 0.18); }
-.ao-cell__icon { background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; }
+.ao-cell__icon { background-repeat: no-repeat; image-rendering: pixelated; pointer-events: none; transform-origin: center center; }
 .ao-cell__name { font-size: 9px; font-weight: 700; color: var(--parchment); }
 .ao-cell__qty {
   position: absolute;
@@ -1833,8 +1834,11 @@ h3 {
    el borde de lo que ves coincide con el alcance de casteo. */
 .ao-viewbox {
   position: relative;
-  width: min(100%, 840px);
-  height: min(100%, 600px);
+  /* Tamaño FIJO 21x15 tiles: applyFsScale lo escala (transform) al espacio
+     disponible en CUALQUIER pantalla, sin cambiar cuántos tiles se ven. */
+  width: 840px;
+  height: 600px;
+  flex: 0 0 auto;
   transform-origin: center center;
 }
 /* Modo casteo/trabajo: la cruz se fuerza con !important, ganándole al cursor
@@ -3007,7 +3011,9 @@ html, body { background: #050506; height: 100%; }
   position: absolute; bottom: 2px; right: 5px; z-index: 2;
   font-size: 10px; color: #c9d3ea; font-weight: 800; text-shadow: 0 1px 2px #000; top: auto; left: auto;
 }
-.ao-seg--macros .ao-macrobar__icon { image-rendering: pixelated; transform: scale(1.35); }
+/* El ícono del macro se escala por sprite (inline, macro-bar.ts) — el 1.35
+   fijo recortaba los sprites grandes contra el overflow del slot. */
+.ao-seg--macros .ao-macrobar__icon { image-rendering: pixelated; position: absolute; inset: 0; margin: auto; transform-origin: center center; }
 .ao-seg--macros .ao-macrobar__name {
   font-family: "Alegreya SC", Georgia, serif;
   font-size: 10.5px; color: #e6dfbe; text-align: center; padding: 0 3px 8px;
