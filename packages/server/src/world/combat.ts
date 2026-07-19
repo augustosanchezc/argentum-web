@@ -26,7 +26,7 @@ export const DEFAULT_INTERVALS: Readonly<Record<IntervalKey, number>> = {
 export const INTERVALS: Record<IntervalKey, number> = { ...DEFAULT_INTERVALS };
 
 export const RESPAWN_DELAY_MS = 3_000; // NPCs (jugadores ya no auto-reviven)
-export const RANGED_RANGE = 8;         // RANGO_VISION_X del AO
+export const RANGED_RANGE = 10;        // mismo alcance que los hechizos (SPELL_RANGE)
 
 // (El interim skillFromLevel fue reemplazado por skills POR USO reales —
 // ver world/skill-training.ts y Session.skills.)

@@ -1651,10 +1651,10 @@ export async function startGameScene(
     audio.play(SND.swing, 0.8);
 
     // Objetivo vivo hacia el frente. Melee: el tile adyacente. Con ARCO: el
-    // primer objetivo en LÍNEA RECTA hasta 8 tiles (la tecla de atacar no
-    // servía para tirar flechas — solo detectaba adyacentes).
+    // primer objetivo en LÍNEA RECTA hasta 10 tiles (mismo alcance que un
+    // hechizo; la tecla de atacar solo detectaba adyacentes).
     const delta = DELTAS[selfFacing];
-    const range = selfWeaponRanged ? 8 : 1;
+    const range = selfWeaponRanged ? 10 : 1;
     let targetId: number | null = null;
     for (let step = 1; step <= range && targetId === null; step += 1) {
       const tx = own.position.x + delta.x * step;
@@ -1715,9 +1715,9 @@ export async function startGameScene(
     if (!own || own.dead || target.dead) return;
     const dx = target.position.x - own.position.x;
     const dy = target.position.y - own.position.y;
-    // Con arco: hasta 8 tiles (rango de proyectiles del AO). Melee: adyacente.
+    // Con arco: hasta 10 tiles (mismo alcance que un hechizo). Melee: adyacente.
     if (selfWeaponRanged) {
-      if (Math.max(Math.abs(dx), Math.abs(dy)) > 8) return;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 10) return;
     } else if (Math.abs(dx) + Math.abs(dy) !== 1) {
       return; // no adyacente
     }
