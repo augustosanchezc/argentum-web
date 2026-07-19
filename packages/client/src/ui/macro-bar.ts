@@ -112,7 +112,9 @@ export function mountMacroBar(
   const picker = document.createElement("div");
   picker.className = "ao-macropick";
   picker.hidden = true;
-  document.body.appendChild(picker);
+  // Dentro del contenedor de la barra (no body): en fullscreen el elemento
+  // fullscreen tapa a los hermanos de <body> y el picker no se veía.
+  parent.appendChild(picker);
 
   let slots: Array<MacroSlot | null> = new Array<MacroSlot | null>(SLOT_COUNT).fill(null);
   // Prioridad: config del SERVER (persistente por personaje). Si el server no

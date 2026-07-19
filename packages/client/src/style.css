@@ -815,8 +815,9 @@ h3 {
 .ao-party__hp { color: var(--text-dim); font-size: 11px; }
 
 .ao-party-invite {
-  position: fixed;
-  bottom: 100px;
+  /* Absolute dentro del viewbox (fixed se rompía con el scale de fullscreen). */
+  position: absolute;
+  bottom: 40px;
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-card);
@@ -1494,9 +1495,12 @@ h3 {
 
 /* ── Cartel de modo casteo (visible SOLO con hechizo armado) ── */
 .ao-castbanner {
-  position: fixed;
-  top: 130px;
-  left: calc((100vw - 244px) / 2);
+  /* Absolute dentro del viewbox (su padre): centrado REAL sobre el juego.
+     El fixed viejo usaba el ancho del panel de la gen-1 (244px) → siempre
+     descentrado, y en fullscreen el transform del viewbox lo rompía. */
+  position: absolute;
+  top: 14px;
+  left: 50%;
   transform: translateX(-50%);
   padding: 6px 16px;
   background: rgba(20, 40, 70, 0.9);
@@ -2554,7 +2558,9 @@ html, body { background: #050506; height: 100%; }
   flex: 1 1 auto; width: 100%; height: 100%;
   display: flex; flex-direction: column; gap: 10px;
   padding: 0; margin: 0; border: none; background: transparent;
-  overflow: hidden; box-shadow: none;
+  /* auto (no hidden): en notebooks 768p/720p el panel no entra completo —
+     sin scroll de rescate quedaban la grilla cortada y "Lanzar" invisible. */
+  overflow-y: auto; overflow-x: hidden; box-shadow: none;
 }
 .ao-frame .ao-inv:not(.ao-inv--open) { display: none; }
 

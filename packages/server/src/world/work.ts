@@ -28,8 +28,9 @@ export const PRODUCTS = {
   fogata: 63,
 } as const;
 
-// WAVs de trabajo (Declares.bas): talar 13, pescar 14, minar 15.
-export const WORK_WAV = { talar: 13, pescar: 14, minar: 15 } as const;
+// WAVs de trabajo (Declares.bas): talar 13, pescar 14, minar 15,
+// herrero 41, carpintero 42.
+export const WORK_WAV = { talar: 13, pescar: 14, minar: 15, herreria: 41, carpinteria: 42 } as const;
 
 export const WORK_INTERVAL_MS = 850; // IntervaloTrabajo del Server.ini
 

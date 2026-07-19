@@ -20,7 +20,7 @@ import {
 import { trainSkill } from "../world/skill-training.js";
 import { isCriminal } from "../world/criminal.js";
 import { getMap, isWalkable } from "../world/maps.js";
-import { npcs, randomNpcSound, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
+import { npcAttackSound, npcs, rollNpcDamage, type NpcInstance } from "../world/npcs.js";
 import { rerollCreatureType } from "../world/map-spawns.js";
 import { rollArmorDefenseFor } from "../world/inventory.js";
 import { broadcastToMap, killPlayer, stopMeditating } from "./broadcast.js";
@@ -127,7 +127,7 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   if (dirs[0]) npc.direction = dirs[0];
   stopMeditating(target);
   // Sonido de la criatura al golpear (rugido/Snd de NPCs.dat), 0 = sin sonido.
-  const snd = randomNpcSound(npc.type);
+  const snd = npcAttackSound(npc.type); // Snd1 = ataque (canon MODULO_NPCs.bas)
 
   // Impacto del AO (NpcImpacto): PoderAtaque del NPC contra la evasión del
   // jugador (+escudo). Si falla y hay escudo, puede rechazar el golpe.

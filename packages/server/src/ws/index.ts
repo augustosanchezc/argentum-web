@@ -141,7 +141,7 @@ import {
 import { findLandingTile, getMap, isWalkable, isWaterAt, type MapState } from "../world/maps.js";
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
-import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcs, petsOf, randomNpcSound, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
+import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcDeathSound, npcs, petsOf, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
 import { setPetAttackHandler } from "./loop.js";
 import { weather } from "../world/weather.js";
 import { accounts } from "../db/schema/accounts.js";
@@ -724,6 +724,8 @@ setInterval(() => {
       amount: r.damage,
       hp: r.newHp,
       maxHp: target.maxHp,
+      // Veneno/DoT: sin animación de golpe del "atacante" en el cliente.
+      magic: true,
     };
     broadcastToMap(target.mapId, dmgPkt);
     if (r.dead) {
@@ -1089,6 +1091,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           revivePlayer(s);
           sendInventoryUpdate(s); // re-broadcastea los overlays de equipo
           sendStatsUpdate(s);
+          consoleMsg(s, "¡Has sido resucitado!", "global", 213); // SND_RESUCITAR
           return;
         }
       }
@@ -1413,6 +1416,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       now: number,
       stabbed = false,
       attackerEntityId?: number,
+      magic = false,
     ): void {
       npc.hp = Math.max(0, npc.hp - amount);
 
@@ -1431,13 +1435,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         hp: npc.hp,
         maxHp: npc.type.maxHp,
         ...(stabbed ? { stab: true } : {}),
+        ...(magic ? { magic: true } : {}),
       };
       broadcastToMap(s.mapId, damage);
 
       if (npc.hp === 0) {
         npc.deadUntil = now + npc.type.respawnMs;
         npc.targetCharacterId = null;
-        const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId, wav: randomNpcSound(npc.type) };
+        const death: Death = { op: ServerToClientOp.Death, id: npc.id as EntityId, wav: npcDeathSound(npc.type) };
         broadcastToMap(npc.mapId, death);
 
         // Oro: en AO el oro se dropea como item 12 de la tabla Drop (cada entrada
@@ -1761,7 +1766,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           s.boatBody = def.bodyId ?? 0;
           // Zarpar: el personaje entra al agua.
           s.position = { x: s.position.x + shore[0], y: s.position.y + shore[1] };
-          consoleMsg(s, "Comenzás a navegar.", "global", 3);
+          consoleMsg(s, "Comenzás a navegar.", "global", 55); // CONVERSION_BARCO
           trainSkill(s, "navegacion", true);
         } else {
           const land = DIRS.find(([dx, dy]) => isWalkable(map, s.position.x + dx, s.position.y + dy, false));
@@ -1772,7 +1777,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           s.navigating = false;
           s.boatBody = 0;
           s.position = { x: s.position.x + land[0], y: s.position.y + land[1] };
-          consoleMsg(s, "Dejás de navegar.", "global");
+          consoleMsg(s, "Dejás de navegar.", "global", 55);
         }
         // Mover + cambiar apariencia para todos.
         const update: EntityUpdate = {
@@ -1830,13 +1835,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         };
         broadcastToMap(s.mapId, spawnPkt);
         trainSkill(s, "supervivencia", true);
-        consoleMsg(s, "Has hecho una fogata. Usá Descansar (R) para recuperarte junto a ella.", "global");
+        consoleMsg(s, "Has hecho una fogata. Usá Descansar (R) para recuperarte junto a ella.", "global", 14); // SND_FOGATA
         sendInventoryUpdate(s);
       } else if (def.type === "food") {
         if (s.deadUntil !== 0) return;
         if (s.hunger >= 100) return;
         s.hunger = Math.min(100, s.hunger + (def.hunger ?? 10));
         consumeOne(s, pkt.item);
+        consoleMsg(s, "", "global", 7); // SND_COMIDA (masticar)
       } else if (def.type === "drink") {
         if (s.deadUntil !== 0) return;
         // Las bebidas restauran sed (MinAgu) y también energía (MinST) del AO.
@@ -1846,6 +1852,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         s.thirst = Math.min(100, s.thirst + (def.thirst ?? 0));
         if (staGain > 0) s.sta = Math.min(s.maxSta, s.sta + staGain);
         consumeOne(s, pkt.item);
+        consoleMsg(s, "", "global", SND_BEBER);
       } else if (def.type === "weapon" || def.type === "armor" || def.type === "helmet" || def.type === "shield") {
         // Doble click sobre el item ya equipado lo desequipa (AO original).
         const isEquipped =
@@ -1864,6 +1871,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         else if (def.type === "armor") s.equippedArmor = isEquipped ? null : pkt.item;
         else if (def.type === "helmet") s.equippedHelmet = isEquipped ? null : pkt.item;
         else s.equippedShield = isEquipped ? null : pkt.item;
+        // SND_SACARARMA del AO al equipar un arma.
+        if (def.type === "weapon" && !isEquipped) consoleMsg(s, "", "global", 25);
         sendInventoryUpdate(s);
       }
     }
@@ -1969,8 +1978,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (s.deadUntil !== 0) {
           revivePlayer(s);
           sendInventoryUpdate(s); // re-broadcastea los overlays de equipo
+          consoleMsg(s, "¡Has sido resucitado!", "global", 213); // SND_RESUCITAR
         } else if (s.hp < s.maxHp) {
           s.hp = s.maxHp;
+          consoleMsg(s, "El sacerdote te ha curado.", "global", 214); // SND_CURAR
         }
         sendStatsUpdate(s);
         return;
@@ -2527,14 +2538,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           // Daño mágico (roll + 3%/nivel + báculo). El NPC no tiene defM en
           // nuestro catálogo — usamos la defensa física como proxy.
           const amount = spellDamage(s, spell, null);
-          damageNpc(s, npc, Math.max(1, amount - npc.type.defense), now);
+          damageNpc(s, npc, Math.max(1, amount - npc.type.defense), now, false, undefined, true);
         } else if (spell.paraliza || spell.inmoviliza) {
           // Paralizar/Inmovilizar criaturas: el control clásico del mago.
           npc.paralyzedUntil = now + (spell.paraliza ? PARALYSIS_MS : IMMOBILIZE_MS);
           broadcastEffect(s.mapId, npc.id, "paralyzed", true, spell.paraliza ? PARALYSIS_MS : IMMOBILIZE_MS);
         } else {
           // Envenenar: sin sistema de veneno para NPCs todavía — daño directo.
-          damageNpc(s, npc, 5, now);
+          damageNpc(s, npc, 5, now, false, undefined, true);
         }
 
         const fx: SkillEffect = {
@@ -2804,7 +2815,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         s.inventory = addItem(removed, pkt.item, 1);
         trainSkill(s, "mineria", true);
-        consoleMsg(s, "¡Has fundido un lingote!", "global", WORK_WAV.minar);
+        consoleMsg(s, "¡Has fundido un lingote!", "global", WORK_WAV.herreria);
         sendInventoryUpdate(s);
         return;
       }
@@ -2841,7 +2852,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         s.inventory = addItem(inv, pkt.item, 1);
         trainSkill(s, "herreria", true);
-        consoleMsg(s, `¡Has construido ${def.name}!`, "global", WORK_WAV.minar);
+        consoleMsg(s, `¡Has construido ${def.name}!`, "global", WORK_WAV.herreria);
         sendInventoryUpdate(s);
         return;
       }
@@ -2864,7 +2875,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         s.inventory = addItem(removed, pkt.item, 1);
         trainSkill(s, "carpinteria", true);
-        consoleMsg(s, `¡Has construido ${def.name}!`, "global", WORK_WAV.talar);
+        consoleMsg(s, `¡Has construido ${def.name}!`, "global", WORK_WAV.carpinteria);
         sendInventoryUpdate(s);
       }
     }
@@ -3304,9 +3315,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       if (def.objType === 6) {
         // #6: las puertas están SIEMPRE abiertas (se abren al cargar el mapa,
-        // incluso las de llave). No se cierran nunca → la interacción es un
-        // no-op (solo suena la puerta). Ver el loop de apertura en maps.ts.
-        void SND_PUERTA;
+        // incluso las de llave). No se cierran nunca — pero clickearlas SUENA
+        // (el AO reproduce SND_PUERTA aunque la puerta ya esté abierta).
+        consoleMsg(s, "", "global", SND_PUERTA);
       }
     }
 

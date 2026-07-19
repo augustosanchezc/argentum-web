@@ -9,17 +9,21 @@ import { trainSkill } from "./skill-training.js";
 // Corremos el tick fino (200ms) y cada contador dispara al superar su intervalo.
 export const REGEN_INTERVAL_MS = 200;
 
-// Intervalos reales (Server.ini [INTERVALOS]).
-const SANA_SIN_DESCANSAR = 1600;
-const SANA_DESCANSAR = 100;
-const STAMINA_SIN_DESCANSAR = 10;
-const STAMINA_DESCANSAR = 5;
-const INTERVALO_SED = 6000;
-const INTERVALO_HAMBRE = 6500;
 // Meditar: recupera un 6% del maná (balance.json porcentajerecuperomana=6) con
 // frecuencia según la skill (tabla de "Suerte" de Trabajo.bas, ~40ms/tick del AO).
 const PORCENTAJE_RECUPERO_MANA = 6;
 const AO_TICK_MS = 40;
+
+// Intervalos reales (Server.ini [INTERVALOS]) — expresados en TICKS del
+// GameTimer del AO (~40ms), NO en milisegundos. Interpretarlos como ms hacía
+// correr el metabolismo 40-150x más rápido (hambre 100→0 en ~65 segundos en
+// vez de ~40 minutos; curación pasiva casi instantánea).
+const SANA_SIN_DESCANSAR = 1600 * AO_TICK_MS;   // ~64s por tick de sanación
+const SANA_DESCANSAR = 100 * AO_TICK_MS;        // ~4s descansando
+const STAMINA_SIN_DESCANSAR = 10 * AO_TICK_MS;  // 400ms
+const STAMINA_DESCANSAR = 5 * AO_TICK_MS;       // 200ms
+const INTERVALO_SED = 6000 * AO_TICK_MS;        // −10 sed cada ~4 min
+const INTERVALO_HAMBRE = 6500 * AO_TICK_MS;     // −10 hambre cada ~4.3 min
 
 function randInt(lo: number, hi: number): number {
   const h = Math.max(lo, hi);

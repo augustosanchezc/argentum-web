@@ -138,6 +138,14 @@ export function randomNpcSound(type: NpcType): number {
   return type.sounds[Math.floor(Math.random() * type.sounds.length)] ?? 0;
 }
 
+// Canon del AO (MODULO_NPCs.bas): Snd1 = al atacar · Snd3 = al morir.
+export function npcAttackSound(type: NpcType): number {
+  return type.sounds[0] ?? 0;
+}
+export function npcDeathSound(type: NpcType): number {
+  return type.sounds[2] ?? type.sounds[0] ?? 0;
+}
+
 // Cache de NpcType por número de NPCs.dat.
 const typeCache = new Map<number, NpcType>();
 

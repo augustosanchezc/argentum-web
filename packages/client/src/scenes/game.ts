@@ -1129,6 +1129,12 @@ export async function startGameScene(
     v.tweenFromY = v.renderY;
     v.tweenStart = performance.now();
     v.tweenDuration = TWEEN_DURATION_MS;
+    // Pasos de OTROS jugadores (el AO los reproduce para todos los cercanos;
+    // antes solo sonaban los propios). Volumen bajo; NPCs sin pasos.
+    if (v.kind === "player" && id !== character.id && !v.dead) {
+      stepToggle = !stepToggle;
+      audio.play(stepToggle ? SND.paso1 : SND.paso2, 0.3);
+    }
     // El target real lo aplica el ticker frame a frame con la interpolacion.
   }
 
@@ -1637,8 +1643,10 @@ export async function startGameScene(
     if (!own || own.dead) return;
 
     lastLocalAttackAt = now;
-    // Feedback inmediato: el swing siempre se anima, haya o no objetivo.
+    // Feedback inmediato: el swing siempre se anima Y SUENA, haya o no
+    // objetivo (el AO reproduce SND_SWING también al golpe al aire).
     playSwing(own, selfFacing);
+    audio.play(SND.swing, 0.8);
 
     // Buscamos un objetivo vivo en el tile que tenemos en frente.
     const delta = DELTAS[selfFacing];
@@ -2493,8 +2501,9 @@ export async function startGameScene(
     // Swing + GIRO del atacante hacia el objetivo — SIEMPRE, acierte o falle.
     // (Antes esto vivía después del `return` del fallo, así que al fallar la
     // criatura/jugador no giraba hacia donde pegaba.) El propio ya se animó
-    // localmente al enviar el ataque.
-    if (!attackerIsSelf && target) {
+    // localmente al enviar el ataque. Daño MÁGICO (hechizo/veneno): sin swing
+    // — un mago casteando a 10 tiles no "pega un golpe".
+    if (!attackerIsSelf && !p.magic && target) {
       const attacker = entityVisuals.get(attackerId);
       if (attacker) {
         const dx = Math.sign(target.position.x - attacker.position.x);
@@ -2529,8 +2538,9 @@ export async function startGameScene(
       }
 
       showEntityHpBar(target);
-      // Golpe que conecta: sonido de impacto del AO.
-      audio.play(SND.impacto, 0.85);
+      // Golpe que conecta: sonido de impacto del AO. El daño mágico no lo
+      // reproduce (el hechizo ya sonó con su propio wav vía SkillEffect).
+      if (!p.magic) audio.play(SND.impacto, 0.85);
       // Numero de daño sobre el objetivo: rojo si lo recibo yo, verde si
       // lo inflijo yo, neutro si es entre terceros.
       const color = targetIsSelf ? "#ff5555" : attackerIsSelf ? "#7cfc8a" : "#e8dfc8";
@@ -2696,9 +2706,13 @@ export async function startGameScene(
     if (targetId !== undefined) {
       const target = entityVisuals.get(targetId);
       if (target && p.amount !== undefined && p.amount > 0) {
+        // Cura vs daño: si el HP cambió, la dirección manda. Si quedó igual
+        // (cura con vida llena), decide la definición del hechizo (subeHp 1).
+        // Antes ese caso mostraba "-N" naranja como si fuera daño.
         const isHeal =
-          p.newTargetHp !== undefined &&
-          p.newTargetHp > target.hp;
+          p.newTargetHp !== undefined && p.newTargetHp !== target.hp
+            ? p.newTargetHp > target.hp
+            : getAoSpell(p.skillId)?.subeHp === 1;
         const color = isHeal ? "#7cfc8a" : "#da9c3f";
         const label = isHeal ? `+${p.amount.toString()}` : `-${p.amount.toString()}`;
         spawnFloater(target.renderX, target.renderY, label, color);
@@ -2746,7 +2760,9 @@ export async function startGameScene(
     v.meditateFx?.stop();
     v.meditateFx = null;
     if (p.meditating) {
-      const level = id === character.id ? panelStats.level : 1;
+      // El aura escala con el nivel REAL de quien medita (v.level llega en el
+      // spawn) — antes los demás siempre mostraban la chica (nivel 1).
+      const level = id === character.id ? panelStats.level : (v.level || 1);
       v.meditateFx = fxPlayer.play(v.container, meditateFxFor(level), -1);
       spawnFloater(v.renderX, v.renderY - 8, "✦ meditando", "#8ab8f0");
     }
@@ -3188,18 +3204,18 @@ export async function startGameScene(
     // Lista de jugadores online: overlay arriba-derecha del segmento del mundo.
     playerList = mountPlayerList(viewportBox);
 
-    keyConfig = mountKeyConfig(root, (map) => {
+    keyConfig = mountKeyConfig(frame, (map) => {
       keymap = map;
     });
 
-    craftUi = mountCraft(root, {
+    craftUi = mountCraft(frame, {
       onCraft: (item) => {
         const pkt: CraftRequest = { op: ClientToServerOp.Craft, item };
         client?.send(pkt);
       },
     });
 
-    questsUi = mountQuests(root, {
+    questsUi = mountQuests(frame, {
       onAccept: (questId) => {
         client?.send({ op: ClientToServerOp.QuestAccept, questId });
       },
@@ -3317,7 +3333,7 @@ export async function startGameScene(
 
     // Minimapa DENTRO del box de vitales del panel (diseño Arte 3).
     minimap = mountMinimap(inventory.getMinimapSlot());
-    worldMap = mountWorldMap(root);
+    worldMap = mountWorldMap(frame);
 
     macroBar = mountMacroBar(macroSlot, character.name, {
       resolveIcon: (grh) => tileset.entry(grh),
@@ -3355,7 +3371,7 @@ export async function startGameScene(
       },
     }, character.macros as ReadonlyArray<MacroSlot | null> | undefined);
 
-    shop = mountShop(root, {
+    shop = mountShop(frame, {
       onBuy: (item, qty) => {
         const pkt: ShopBuyRequest = { op: ClientToServerOp.ShopBuy, item, qty };
         client?.send(pkt);
@@ -3367,7 +3383,7 @@ export async function startGameScene(
       resolveIcon: (grh) => tileset.entry(grh),
     });
 
-    bank = mountBank(root, {
+    bank = mountBank(frame, {
       onDepositItem: (item, qty) => {
         const pkt: BankDepositItemRequest = {
           op: ClientToServerOp.BankDepositItem,
@@ -3419,7 +3435,7 @@ export async function startGameScene(
     const partyPanelEl = stageEl.querySelector<HTMLElement>(".ao-party");
     if (partyPanelEl && inventory) inventory.getPartySlot().appendChild(partyPanelEl);
 
-    tradeUi = mountTrade(root, {
+    tradeUi = mountTrade(frame, {
       onAccept: () => {
         const pkt: TradeAcceptMsg = { op: ClientToServerOp.TradeAccept };
         client?.send(pkt);
@@ -3443,7 +3459,7 @@ export async function startGameScene(
       resolveIcon: (grh) => tileset.entry(grh),
     });
 
-    statsPanel = mountStatsPanel(root, (stat) => {
+    statsPanel = mountStatsPanel(frame, (stat) => {
       const pkt: AllocStatRequest = { op: ClientToServerOp.AllocStat, stat };
       client?.send(pkt);
     });

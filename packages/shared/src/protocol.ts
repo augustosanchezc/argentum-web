@@ -348,6 +348,9 @@ export interface Damage {
   readonly stab?: boolean;
   // Sonido del atacante si es criatura (Snd de NPCs.dat): rugido al golpear.
   readonly wav?: number;
+  // Daño mágico (hechizo/veneno): el cliente NO anima el golpe melee del
+  // atacante ni reproduce el impacto físico (el hechizo tiene su propio wav).
+  readonly magic?: boolean;
 }
 
 // S→C: el objetivo murió (HP llegó a 0). Broadcast al mapa.
