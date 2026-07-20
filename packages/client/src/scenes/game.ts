@@ -251,6 +251,9 @@ interface EntityVisual {
   hpBarUntil: number;
   // true mientras se bajan los PNGs del body/head (evita ensure duplicados).
   spriteLoadPending: boolean;
+  // Reintentos de carga de sprites (cuerpo/cabeza): tope para no loopear si un
+  // PNG está roto; después se dibuja con lo que haya.
+  spriteLoadTries: number;
   // Frame actual del walk cycle y timestamp del último avance.
   walkFrame: number;
   lastFrameAt: number;
@@ -897,6 +900,7 @@ export async function startGameScene(
       headId,
       hpBarUntil: 0,
       spriteLoadPending: false,
+      spriteLoadTries: 0,
       walkFrame: 0,
       lastFrameAt: 0,
     };
@@ -930,20 +934,29 @@ export async function startGameScene(
 
     const dir = toCharDir(v.facing);
     const bodyTex = personajes.bodyFrame(v.bodyId, dir, 0);
-    if (!bodyTex) {
-      // El PNG de este body todavía no se bajó: carga on-demand y reintento.
-      if (!v.spriteLoadPending) {
+    // La cabeza también debe estar cargada: si el body ya estaba (atlas de otro
+    // jugador) pero el PNG de esta cabeza no, ANTES se dibujaba el cuerpo SIN
+    // cabeza y sin reintento → jugador sin cabeza para ese observador. Ahora se
+    // espera a que ambos estén listos (con tope de reintentos por si un PNG falla).
+    const needHead = v.headId > 0 && personajes.hasHead(v.headId);
+    const headReady = !needHead || personajes.head(v.headId, dir) !== null;
+    if (!bodyTex || !headReady) {
+      if (!v.spriteLoadPending && v.spriteLoadTries < 5) {
         v.spriteLoadPending = true;
+        v.spriteLoadTries += 1;
         const wantedBody = v.bodyId;
+        const wantedHead = v.headId;
         void personajes.ensure(v.bodyId, v.headId).then(() => {
           v.spriteLoadPending = false;
-          // Reintentar solo si la entidad sigue viva y con el mismo body.
-          if (!v.container.destroyed && v.bodyId === wantedBody) {
+          if (!v.container.destroyed && v.bodyId === wantedBody && v.headId === wantedHead) {
             tryAttachCharSprites(v);
           }
         });
       }
-      return;
+      // Sin body no dibujamos nada; si tras varios intentos falta solo la cabeza,
+      // seguimos y dibujamos el cuerpo (mejor cuerpo sin cabeza que nada).
+      if (!bodyTex) return;
+      if (!headReady && v.spriteLoadTries < 5) return;
     }
 
     // Colocación EXACTA del motor original (Draw_Grh con center=1,
@@ -1093,6 +1106,7 @@ export async function startGameScene(
     ) return;
     v.bodyId = bodyId;
     v.headId = headId;
+    v.spriteLoadTries = 0; // apariencia nueva → reintentos de carga desde cero
     v.weaponAnim = weaponAnim;
     v.shieldAnim = shieldAnim;
     v.helmetAnim = helmetAnim;
@@ -2280,7 +2294,7 @@ export async function startGameScene(
     if (raining && !rainEl) {
       rainEl = document.createElement("div");
       rainEl.className = "ao-rain";
-      root.appendChild(rainEl);
+      stageEl.appendChild(rainEl); // solo sobre el mundo, no sobre la UI
       rainAudio = new Audio("/ao-assets/wav/lluviaout.wav");
       rainAudio.loop = true;
       rainAudio.volume = audio.volume;

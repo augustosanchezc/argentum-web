@@ -1780,21 +1780,24 @@ h3 {
 
 /* Lluvia global (/LLUVIA de GM) - lineas diagonales animadas sobre el mundo */
 .ao-rain {
-  position: fixed;
+  position: absolute; /* dentro del stage (mundo), no sobre la UI */
   inset: 0;
   pointer-events: none;
+  overflow: hidden;
   z-index: 40;
   background: repeating-linear-gradient(
-    105deg,
-    transparent 0 7px,
-    rgba(190, 210, 255, 0.22) 7px 8px,
-    transparent 8px 15px
+    100deg,
+    transparent 0 6px,
+    rgba(200, 218, 255, 0.16) 6px 7px,
+    transparent 7px 14px
   );
-  animation: ao-rain-fall 0.38s linear infinite;
+  /* Cae RECTO hacia abajo (antes scrolleaba en diagonal desalineado con las
+     gotas → se veía raro/stutter). El scroll vertical queda continuo. */
+  animation: ao-rain-fall 0.6s linear infinite;
 }
 @keyframes ao-rain-fall {
   from { background-position: 0 0; }
-  to { background-position: -42px 84px; }
+  to { background-position: 0 280px; }
 }
 
 /* ==========================================================================
