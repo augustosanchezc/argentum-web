@@ -1974,6 +1974,22 @@ export async function startGameScene(
     return best ?? selfHit;
   }
 
+  // Como entityAtWorldPoint pero SOLO criaturas (kind "npc"). Se usa al disparar
+  // con el arco: si hay una criatura bajo el click, se le tira a ELLA aunque otro
+  // jugador esté encima peleándola (así el cazador nunca queda "sin poder pegarle").
+  function npcAtWorldPoint(wx: number, wy: number): number | null {
+    let best: number | null = null;
+    let bestFeetY = -Infinity;
+    for (const [id, v] of entityVisuals) {
+      if (v.dead || v.kind !== "npc") continue;
+      const fx = v.position.x * TILE_SIZE + TILE_SIZE / 2;
+      const fy = v.position.y * TILE_SIZE + TILE_SIZE / 2;
+      if (wx < fx - 18 || wx > fx + 18 || wy < fy - 56 || wy > fy + 10) continue;
+      if (fy > bestFeetY) { best = id; bestFeetY = fy; }
+    }
+    return best;
+  }
+
   // Estado para detectar doble-click (accionar puertas/carteles como el AO).
   let lastTapAt = 0;
   let lastTapX = -1;
@@ -1996,7 +2012,9 @@ export async function startGameScene(
     // gasta flecha; sobre el piso vacío → la flecha cae al suelo y se gasta.
     // En ambos casos la cruz DESAPARECE (hay que recargar).
     if (armedArrow) {
-      const entId = entityAtWorldPoint(wx, wy) ?? entityAtTile(tx, ty);
+      // Prioridad a la criatura bajo el click (aunque haya un jugador encima),
+      // luego cualquier entidad, luego la entidad del tile exacto.
+      const entId = npcAtWorldPoint(wx, wy) ?? entityAtWorldPoint(wx, wy) ?? entityAtTile(tx, ty);
       const v = entId !== null ? entityVisuals.get(entId) : undefined;
       if (v && (v.kind === "merchant" || v.kind === "banker")) {
         clickAttack(entId!); // interactuar (comerciante/banquero): no dispara
