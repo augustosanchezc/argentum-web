@@ -20,8 +20,7 @@ const SANA_SIN_DESCANSAR = 1600 * AO_TICK_MS;   // ~64s por tick de sanación
 const SANA_DESCANSAR = 100 * AO_TICK_MS;        // ~4s descansando
 const STAMINA_SIN_DESCANSAR = 10 * AO_TICK_MS;  // 400ms
 const STAMINA_DESCANSAR = 5 * AO_TICK_MS;       // 200ms
-const INTERVALO_SED = 6000 * AO_TICK_MS;        // −10 sed cada ~4 min
-const INTERVALO_HAMBRE = 6500 * AO_TICK_MS;     // −10 hambre cada ~4.3 min
+// (Hambre y sed ya no decaen — quedan fijas en 100.)
 
 function randInt(lo: number, hi: number): number {
   const h = Math.max(lo, hi);
@@ -59,18 +58,11 @@ export function tickRegen(sendFn: (s: Session) => void, dt: number = REGEN_INTER
     const c = s.regenCounters;
     let changed = false;
 
-    // ── Sed: −10 cada IntervaloSed (6000ms) ──
-    c.agua += dt;
-    if (c.agua >= INTERVALO_SED) {
-      c.agua = 0;
-      if (s.thirst > 0) { s.thirst = Math.max(0, s.thirst - 10); changed = true; }
-    }
-    // ── Hambre: −10 cada IntervaloHambre (6500ms) ──
-    c.com += dt;
-    if (c.com >= INTERVALO_HAMBRE) {
-      c.com = 0;
-      if (s.hunger > 0) { s.hunger = Math.max(0, s.hunger - 10); changed = true; }
-    }
+    // Hambre y sed: FIJAS en 100 (decisión de diseño: no bajan, no molestan).
+    // Si algún personaje quedó con valor parcial de antes, se rellena a 100 una
+    // sola vez (después ya no cambian).
+    if (s.thirst < 100) { s.thirst = 100; changed = true; }
+    if (s.hunger < 100) { s.hunger = 100; changed = true; }
 
     // Expiración de drogas/hechizos (Fuerza/Celeridad, Poción Verde/Amarilla).
     if (s.buffUntil > 0 && now >= s.buffUntil) {
