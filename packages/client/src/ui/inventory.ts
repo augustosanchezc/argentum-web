@@ -18,6 +18,7 @@ export interface InventoryData {
   equippedArmor: number | null;
   equippedHelmet?: number | null;
   equippedShield?: number | null;
+  equippedArrow?: number | null;
 }
 
 export interface PanelStats {
@@ -342,7 +343,7 @@ export function mountInventory(
   const bars = { hp: bar("hp"), mp: bar("mp") };
 
   let open = true;
-  let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null, equippedHelmet: null, equippedShield: null };
+  let last: InventoryData = { gold: 0, slots: [], equippedWeapon: null, equippedArmor: null, equippedHelmet: null, equippedShield: null, equippedArrow: null };
   let stats: PanelStats | null = null;
   let spellIds: ReadonlyArray<number> = [];
   let selectedSpell: number | null = null;
@@ -488,7 +489,8 @@ export function mountInventory(
       last.equippedWeapon === item ||
       last.equippedArmor === item ||
       last.equippedHelmet === item ||
-      last.equippedShield === item
+      last.equippedShield === item ||
+      last.equippedArrow === item
     );
   }
 

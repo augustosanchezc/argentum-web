@@ -543,6 +543,8 @@ export interface InventoryUpdate {
   // Nuevos slots de equipo (Fase 5)
   readonly equippedHelmet: number | null;
   readonly equippedShield: number | null;
+  // Tipo de flecha "equipado" (munición seleccionada del arquero).
+  readonly equippedArrow?: number | null;
 }
 
 // S→C: abrir la ventana de tienda con la oferta del comerciante.

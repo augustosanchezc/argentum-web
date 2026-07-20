@@ -84,6 +84,8 @@ export interface Session {
   equippedArmor: number | null;
   equippedHelmet: number | null;
   equippedShield: number | null;
+  // Tipo de flecha "equipado" (munición elegida). null = usar la primera.
+  equippedArrow: number | null;
   // Derivados del equipo (se recalculan al equipar/loguear)
   weaponBonus: number;
   armorDefense: number;
@@ -238,6 +240,7 @@ export class SessionRegistry {
       equippedArmor: null,
       equippedHelmet: null,
       equippedShield: null,
+      equippedArrow: null,
       weaponBonus: 0,
       armorDefense: 0,
       helmetDefense: 0,

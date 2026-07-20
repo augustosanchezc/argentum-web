@@ -1859,11 +1859,6 @@ export async function startGameScene(
       setArmedTool(item);
       return;
     }
-    // Flechas: usarlas CARGA una flecha (aparece la cruz).
-    if (getItem(item)?.type === "arrow") {
-      nockArrow();
-      return;
-    }
     if (item === 389 || item === 565) {
       craftUi?.open("herreria");
       return;
@@ -1875,8 +1870,9 @@ export async function startGameScene(
     client?.send({ op: ClientToServerOp.UseItem, item } satisfies UseItemRequest);
   }
 
-  // Tipos que corresponden a EQUIPAR (EquipInvItem del AO), no a Usar.
-  const EQUIP_TYPES = new Set(["weapon", "armor", "helmet", "shield"]);
+  // Tipos que corresponden a EQUIPAR (EquipInvItem del AO), no a Usar. Las
+  // flechas se "equipan" (elegir munición → tilde verde ✓).
+  const EQUIP_TYPES = new Set(["weapon", "armor", "helmet", "shield", "arrow"]);
 
   function setArmedTool(item: number | null): void {
     armedTool = item;
@@ -2732,6 +2728,7 @@ export async function startGameScene(
       equippedArmor: p.equippedArmor,
       equippedHelmet: p.equippedHelmet ?? null,
       equippedShield: p.equippedShield ?? null,
+      equippedArrow: p.equippedArrow ?? null,
     });
     bank?.setPlayerInventory(p.slots, p.gold);
     shop?.setPlayerInventory(p.slots, p.gold);

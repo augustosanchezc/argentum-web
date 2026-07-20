@@ -120,6 +120,8 @@ export const characters = pgTable(
     bailsPaid: integer("bails_paid").notNull().default(0),
     // Recompensas de facción ya cobradas (índice en la tabla de premios).
     factionRewards: integer("faction_rewards").notNull().default(0),
+    // Tipo de flecha equipado (munición elegida del arquero).
+    equippedArrow: integer("equipped_arrow"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

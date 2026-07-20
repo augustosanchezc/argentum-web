@@ -405,6 +405,7 @@ async function persistPosition(s: Session): Promise<void> {
       pardonedKills: s.pardonedKills,
       bailsPaid: s.bailsPaid,
       factionRewards: s.factionRewards,
+      equippedArrow: s.equippedArrow,
       updatedAt: new Date(),
     })
     .where(eq(characters.id, s.characterId));
@@ -636,6 +637,10 @@ function recomputeEquipment(s: Session): void {
   if (s.equippedShield !== null && countItem(s.inventory, s.equippedShield) === 0) {
     s.equippedShield = null;
   }
+  // La flecha equipada se descarta si te quedaste sin ese tipo.
+  if (s.equippedArrow !== null && countItem(s.inventory, s.equippedArrow) === 0) {
+    s.equippedArrow = null;
+  }
   s.weaponBonus = weaponBonusFor(s.equippedWeapon);
   s.armorDefense = armorDefenseFor(s.equippedArmor);
   s.helmetDefense = helmetDefenseFor(s.equippedHelmet);
@@ -669,6 +674,7 @@ function sendInventoryUpdate(s: Session): void {
     equippedArmor: s.equippedArmor,
     equippedHelmet: s.equippedHelmet,
     equippedShield: s.equippedShield,
+    equippedArrow: s.equippedArrow,
   };
   send(s.socket, pkt);
 
@@ -1290,7 +1296,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const now = Date.now();
       if (now - s.lastAttackAt < INTERVALS.arrow) return;
       if (s.sta < 10) { consoleMsg(s, "Estás muy cansado para luchar.", "combate"); return; }
-      const arrowSlot = s.inventory.find((sl) => getItem(sl.item)?.type === "arrow" && sl.qty > 0);
+      const arrowSlot = pickArrowSlot(s);
       if (!arrowSlot) { consoleMsg(s, "¡No tienes municiones!", "combate"); return; }
       const map = getMap(s.mapId);
       if (!map) return;
@@ -1323,6 +1329,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       skillKey: "armas" | "proyectiles" | "wrestling";
     }
 
+    // Slot de munición a usar: la flecha EQUIPADA si hay stock, si no la
+    // primera flecha del inventario.
+    function pickArrowSlot(s: Session): { item: number; qty: number } | undefined {
+      if (s.equippedArrow !== null) {
+        const eq = s.inventory.find((sl) => sl.item === s.equippedArrow && sl.qty > 0);
+        if (eq) return eq;
+      }
+      return s.inventory.find((sl) => getItem(sl.item)?.type === "arrow" && sl.qty > 0);
+    }
+
     function prepareAttack(s: Session, now: number): AttackPrep | null {
       if (s.deadUntil !== 0) return null;
       // Paralizado no pega (sí puede castear — para Remover Parálisis).
@@ -1352,8 +1368,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       };
 
       if (ranged && weapon?.needsAmmo) {
-        // Buscar flechas en el inventario (LanzarProyectil del AO).
-        const arrowSlot = s.inventory.find((sl) => getItem(sl.item)?.type === "arrow" && sl.qty > 0);
+        // Munición: usar el tipo EQUIPADO si está disponible; si no, la primera.
+        const arrowSlot = pickArrowSlot(s);
         if (!arrowSlot) {
           consoleMsg(s, "¡No tienes municiones!", "combate");
           return null;
@@ -1900,6 +1916,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consumeOne(s, pkt.item);
           consoleMsg(s, "", "global", SND_BEBER);
         }
+      } else if (def.type === "arrow") {
+        // Equipar munición: elegir qué tipo de flecha usar (toggle). Se marca
+        // con el tilde verde; el arco dispara ese tipo.
+        s.equippedArrow = s.equippedArrow === pkt.item ? null : pkt.item;
+        sendInventoryUpdate(s);
       } else if (def.objType === 31) {
         // Barco (DoNavega): junto al agua para zarpar, junto a tierra para
         // desembarcar. Requiere skill de Navegación del barco.
@@ -4032,6 +4053,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           pardonedKills: characters.pardonedKills,
           bailsPaid: characters.bailsPaid,
           factionRewards: characters.factionRewards,
+          equippedArrow: characters.equippedArrow,
         })
         .from(characters)
         .where(
@@ -4144,6 +4166,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.equippedArmor = character.equippedArmor;
       session.equippedHelmet = character.equippedHelmet;
       session.equippedShield = character.equippedShield;
+      session.equippedArrow = character.equippedArrow;
       session.bodyId = character.bodyId;
       session.headId = character.headId;
       session.bankInventory = character.bankInventory.map((sl) => ({ ...sl }));
