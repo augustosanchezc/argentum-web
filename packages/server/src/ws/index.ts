@@ -1923,7 +1923,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
             const eff = Math.min(s.str + s.strBonus + roll, MAX_ATRIB, 2 * s.str);
             s.strBonus = Math.max(0, eff - s.str);
           }
-          s.buffUntil = Date.now() + (def.boostSeconds ?? 40) * 1000;
+          // Duración de la droga: house rule de 100s para verde/amarilla (en AO
+          // eran ~40s). Fija, independiente del DuracionEfecto del obj.dat.
+          s.buffUntil = Date.now() + 100 * 1000;
           consumeOne(s, pkt.item);
           consoleMsg(s, "", "global", SND_BEBER);
         } else if (def.curesPoison) {
