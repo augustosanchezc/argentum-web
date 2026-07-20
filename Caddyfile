@@ -18,8 +18,8 @@
 
     # ── API + WebSocket del servidor de juego ─────────────────────────────────
     # Rutas REALES del server (no /api/*): auth, characters, admin, ws, health,
-    # maps, item-overrides. El resto (cliente/assets) lo sirve Caddy estático.
-    @backend path /auth/* /characters /characters/* /admin /admin/* /ws /health /maps /item-overrides
+    # maps, item-overrides, world-peek. El resto (cliente/assets) lo sirve Caddy estático.
+    @backend path /auth/* /characters /characters/* /admin /admin/* /ws /health /maps /item-overrides /world-peek
     handle @backend {
         reverse_proxy ao-server:3000 {
             header_up Host {host}
