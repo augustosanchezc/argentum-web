@@ -3099,7 +3099,8 @@ export async function startGameScene(
       // en este port son fijos (AO Libre) → no se dan puntos, no se listan.
       audio.play(SND.nivel, 0.9);
       const classId = entityVisuals.get(character.id)?.classId ?? p.classId ?? 1;
-      const dHit = golpeUsuario(classId, p.level).max - golpeUsuario(classId, prevLevel).max;
+      const newHit = golpeUsuario(classId, p.level);
+      const dHit = newHit.max - golpeUsuario(classId, prevLevel).max;
       const gains: string[] = [];
       if (dHp > 0) gains.push(`+${dHp.toString()} vida`);
       if (dMana > 0) gains.push(`+${dMana.toString()} maná`);
@@ -3109,6 +3110,21 @@ export async function startGameScene(
       chat?.appendMessage({
         fromName: "",
         text: `¡Has subido a nivel ${p.level.toString()}!${extra}`,
+        timestamp: Date.now(),
+        isSelf: false,
+        kind: "global",
+        color: "#ffe23a",
+      });
+      // Debajo, el detalle de los valores ACTUALES tras subir.
+      const cur: string[] = [
+        `Golpe actual: ${newHit.min.toString()}-${newHit.max.toString()}`,
+        `Vida actual: ${p.maxHp.toString()}`,
+      ];
+      if ((p.maxMana ?? 0) > 0) cur.push(`Maná actual: ${(p.maxMana ?? 0).toString()}`);
+      cur.push(`Energía actual: ${(p.maxSta ?? 0).toString()}`);
+      chat?.appendMessage({
+        fromName: "",
+        text: cur.join(", "),
         timestamp: Date.now(),
         isSelf: false,
         kind: "global",
