@@ -2,12 +2,13 @@ import type { Direction, Vector2 } from "@ao/shared";
 import { isWalkable, type MapState } from "./maps.js";
 
 // Cooldown mínimo entre movimientos exitosos en el SERVER. El cliente predice y
-// manda pasos cada ~200ms (5 tiles/s); el server usa un umbral MÁS BAJO (180ms)
+// manda pasos cada ~200ms (5 tiles/s); el server usa un umbral MÁS BAJO (150ms)
 // como MARGEN para el jitter de red: así un paso legítimo del cliente nunca se
 // rechaza por cooldown (lo que provocaba una corrección y un tirón/snap-back
-// cada pocos pasos). 180 (antes 150) achica la ventaja de un cliente modificado
-// de +33% a +11% manteniendo tolerancia a jitter razonable.
-export const MOVE_COOLDOWN_MS = 180;
+// cada pocos pasos). 150 da 50ms de margen — clave contra el rubber-banding en
+// conexiones con jitter (Argentina→São Paulo). El anti-speedhack se hace por
+// otras vías, no achicando este margen (subirlo a 180 causaba lag de movimiento).
+export const MOVE_COOLDOWN_MS = 150;
 
 const DELTAS: Record<Direction, Vector2> = {
   north: { x: 0, y: -1 },
