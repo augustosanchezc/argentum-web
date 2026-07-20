@@ -437,10 +437,17 @@ async function persistPosition(s: Session): Promise<void> {
     .where(eq(characters.id, s.characterId));
 }
 
+// Guarda TODAS las sesiones conectadas de una. Lo llama el apagado graceful
+// (SIGTERM en cada deploy) ANTES de cerrar la DB, para que nadie pierda progreso
+// al reiniciar el server (antes se perdía hasta lo del último autosave de 60s).
+export async function flushAllSessions(): Promise<void> {
+  await Promise.all([...sessions.all()].map((s) => persistPosition(s).catch(() => undefined)));
+}
+
 // Autosave periódico de TODAS las sesiones. Sin esto el único guardado era al
 // cerrar el socket: un crash del server revertía todo el progreso (oro,
 // compras, trades) de los jugadores conectados desde su login.
-const AUTOSAVE_INTERVAL_MS = 60_000;
+const AUTOSAVE_INTERVAL_MS = 30_000;
 setInterval(() => {
   for (const s of sessions.all()) {
     void persistPosition(s).catch(() => undefined);

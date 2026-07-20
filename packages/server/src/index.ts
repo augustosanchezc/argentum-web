@@ -7,6 +7,7 @@ import { accounts } from "./db/schema/accounts.js";
 import { loadedMapIds } from "./world/maps.js";
 import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
+import { flushAllSessions } from "./ws/index.js";
 
 async function main(): Promise<void> {
   // Sentry debe inicializarse antes de construir la app para capturar errores
@@ -39,6 +40,14 @@ async function main(): Promise<void> {
   const close = async (signal: string): Promise<void> => {
     app.log.info({ signal }, "[ao-server] cierre solicitado");
     loop.stop();
+    // Guardar el progreso de TODOS los conectados ANTES de cerrar la DB: sin
+    // esto, cada deploy (SIGTERM) perdía lo hecho desde el último autosave.
+    try {
+      await flushAllSessions();
+      app.log.info("[ao-server] progreso de sesiones guardado");
+    } catch (err) {
+      app.log.error({ err }, "[ao-server] error guardando sesiones en el cierre");
+    }
     await app.close();
     await pool.end();
     process.exit(0);
