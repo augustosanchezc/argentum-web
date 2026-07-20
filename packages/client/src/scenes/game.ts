@@ -1757,6 +1757,21 @@ export async function startGameScene(
     client.send(packet);
   }
 
+  // Al hacer click izquierdo en una criatura, escupe su nombre y vida
+  // actual/total al chat global. La vida sale del visual, que el server mantiene
+  // al día vía los paquetes de daño/respawn → siempre el valor real.
+  function announceNpcVida(v: EntityVisual): void {
+    const hp = Math.max(0, Math.round(v.hp));
+    const maxHp = Math.max(hp, Math.round(v.maxHp));
+    chat?.appendMessage({
+      fromName: "",
+      text: `${v.name} (Vida: ${hp.toString()}/${maxHp.toString()})`,
+      timestamp: Date.now(),
+      isSelf: false,
+      kind: "global",
+    });
+  }
+
   function spawnFloater(x: number, y: number, label: string, color: string): void {
     const text = new Text({
       text: label,
@@ -1970,6 +1985,7 @@ export async function startGameScene(
         return;
       }
       if (entId !== null && v && entId !== character.id && !v.dead) {
+        if (v.kind === "npc") announceNpcVida(v); // nombre + vida al chat
         clickAttack(entId); // dispara al objetivo (server gasta la flecha)
       } else {
         // Piso vacío: la flecha se lanza y cae al suelo (se gasta).
@@ -2013,6 +2029,7 @@ export async function startGameScene(
           const pkt: PlayerInfoRequest = { op: ClientToServerOp.PlayerInfo, targetId: entId as unknown as EntityId };
           client.send(pkt);
         } else if (isOther) {
+          if (v.kind === "npc") announceNpcVida(v); // nombre + vida al chat
           clickAttack(entId);
         }
         return;
