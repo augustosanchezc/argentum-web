@@ -256,9 +256,12 @@ function buildMapDataPacket(map: MapState): MapData {
 // Tile libre cerca de `origin` para tirar un item: caminable y sin otro item
 // en el piso. Espiral hacia afuera, como TirarItemAlPiso del AO original —
 // así un NPC que dropea varios items los desparrama en vez de apilarlos.
-function findDropTile(mapId: number, origin: Vector2): Vector2 {
+// Tile LIBRE (caminable y SIN item) más cercano al origen, buscando en espiral
+// hasta radio 4. Devuelve null si no hay ninguno (no se puede tirar → nunca se
+// apilan 2 items en el mismo tile).
+function findDropTile(mapId: number, origin: Vector2): Vector2 | null {
   const map = getMap(mapId);
-  if (!map) return origin;
+  if (!map) return null;
   for (let r = 0; r <= 4; r += 1) {
     for (let dy = -r; dy <= r; dy += 1) {
       for (let dx = -r; dx <= r; dx += 1) {
@@ -271,7 +274,27 @@ function findDropTile(mapId: number, origin: Vector2): Vector2 {
       }
     }
   }
-  return origin;
+  return null;
+}
+
+// Tira un item al piso en el tile LIBRE más cercano a `origin` (jamás apila 2
+// items en el mismo tile). Devuelve false si no hay lugar (no se tira nada).
+// Broadcastea el spawn y, si el mapa estaba lleno, el despawn del item evicted.
+function dropOnGround(mapId: number, origin: Vector2, item: number, qty: number): boolean {
+  const pos = findDropTile(mapId, origin);
+  if (!pos) return false;
+  const g = groundItems.spawn(mapId, pos, item, qty);
+  if (g.evictedId !== undefined) {
+    broadcastToMap(mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+  }
+  broadcastToMap(mapId, {
+    op: ServerToClientOp.GroundItemSpawn,
+    id: g.id as EntityId,
+    position: { x: g.position.x, y: g.position.y },
+    item: g.item,
+    qty: g.qty,
+  } satisfies GroundItemSpawn);
+  return true;
 }
 
 function chebyshev(a: Vector2, b: Vector2): number {
@@ -544,19 +567,12 @@ function dropAllItemsOnDeath(victim: Session): void {
       kept.push(slot);
       continue;
     }
-    const pos = findDropTile(victim.mapId, victim.position);
-    const g = groundItems.spawn(victim.mapId, pos, slot.item, slot.qty);
-    if (g.evictedId !== undefined) {
-      broadcastToMap(victim.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+    if (dropOnGround(victim.mapId, victim.position, slot.item, slot.qty)) {
+      dropped += 1;
+    } else {
+      // Sin tile libre alrededor: el item se queda con el muerto (no se pierde).
+      kept.push(slot);
     }
-    broadcastToMap(victim.mapId, {
-      op: ServerToClientOp.GroundItemSpawn,
-      id: g.id as EntityId,
-      position: { x: g.position.x, y: g.position.y },
-      item: g.item,
-      qty: g.qty,
-    } satisfies GroundItemSpawn);
-    dropped += 1;
   }
   victim.inventory = kept;
   // Limpiar el equipo que se cayó.
@@ -1711,19 +1727,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
             continue;
           }
           // Cada item busca su propio tile libre — no se apilan (AO original).
-          const dropPos = findDropTile(npc.mapId, npc.position);
-          const g = groundItems.spawn(npc.mapId, dropPos, drop.item, drop.qty);
-          if (g.evictedId !== undefined) {
-            broadcastToMap(npc.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
-          }
-          const spawnPkt: GroundItemSpawn = {
-            op: ServerToClientOp.GroundItemSpawn,
-            id: g.id as EntityId,
-            position: { x: g.position.x, y: g.position.y },
-            item: g.item,
-            qty: g.qty,
-          };
-          broadcastToMap(npc.mapId, spawnPkt);
+          if (!dropOnGround(npc.mapId, npc.position, drop.item, drop.qty)) continue;
           const itemName = getItem(drop.item)?.name ?? `objeto ${drop.item.toString()}`;
           rewardLines.push(`Has obtenido ${drop.qty.toString()} ${itemName}.`);
         }
@@ -1855,6 +1859,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!Number.isInteger(pkt.slot)) return;
       const qty = sanQty(pkt.qty);
       if (qty === 0) return;
+      // Chequeo de lugar ANTES de sacar el item: si el tile propio ya tiene item
+      // y no hay tile libre cerca, no se tira (nunca 2 items en el mismo lugar).
+      const pos = findDropTile(s.mapId, s.position);
+      if (!pos) {
+        consoleMsg(s, "No hay lugar libre para tirar el objeto acá.", "global");
+        return;
+      }
       const removed = removeFromSlot(s.inventory, pkt.slot, qty);
       if (!removed) return;
       if (s.equippedWeapon === removed.item && countItem(removed.slots, removed.item) === 0) {
@@ -1870,18 +1881,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         s.equippedShield = null;
       }
       s.inventory = removed.slots;
-      const g = groundItems.spawn(s.mapId, s.position, removed.item, removed.qty);
-      if (g.evictedId !== undefined) {
-        broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
-      }
-      const spawn: GroundItemSpawn = {
-        op: ServerToClientOp.GroundItemSpawn,
-        id: g.id as EntityId,
-        position: { x: g.position.x, y: g.position.y },
-        item: g.item,
-        qty: g.qty,
-      };
-      broadcastToMap(s.mapId, spawn);
+      dropOnGround(s.mapId, s.position, removed.item, removed.qty); // tile libre garantizado
       sendInventoryUpdate(s);
     }
 
@@ -2067,18 +2067,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           return;
         }
         s.inventory = removed;
-        const g = groundItems.spawn(s.mapId, s.position, PRODUCTS.fogata, 1);
-        if (g.evictedId !== undefined) {
-          broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
-        }
-        const spawnPkt: GroundItemSpawn = {
-          op: ServerToClientOp.GroundItemSpawn,
-          id: g.id as EntityId,
-          position: { x: g.position.x, y: g.position.y },
-          item: g.item,
-          qty: 1,
-        };
-        broadcastToMap(s.mapId, spawnPkt);
+        dropOnGround(s.mapId, s.position, PRODUCTS.fogata, 1); // tile libre (no apila)
         trainSkill(s, "supervivencia", true);
         consoleMsg(s, "Has hecho una fogata. Usá Descansar (R) para recuperarte junto a ella.", "global", 14); // SND_FOGATA
         sendInventoryUpdate(s);
