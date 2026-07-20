@@ -3704,7 +3704,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telep|teleport|matarnpc)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telepto|telep|teleport|matarnpc)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3833,6 +3833,21 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(target, `${s.characterName} te ha trasladado.`, "global");
         return;
       }
+      // /TELEPTO nombre: teletransportarme JUNTO a un jugador online.
+      const telepto = /^\/telepto\s+(\S+)$/i.exec(text);
+      if (telepto) {
+        let target: Session | undefined;
+        for (const t of sessions.all()) {
+          if (t.characterName.toLowerCase() === telepto[1]!.toLowerCase()) { target = t; break; }
+        }
+        if (!target) {
+          consoleMsg(s, "Ese personaje no está online.", "global");
+          return;
+        }
+        doGmTeleport(s, target.mapId, target.position.x, target.position.y);
+        consoleMsg(s, `Te trasladaste junto a ${target.characterName}.`, "global");
+        return;
+      }
       // /NIVEL n: fijar el nivel (recalcula vida/maná y cura al máximo).
       const nivel = /^\/nivel\s+(\d+)$/i.exec(text);
       if (nivel) {
@@ -3889,7 +3904,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /telep <mapa> <x> <y> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
     }
 
     // /EST de AO Libre (SendUserStatsTxt): desglose completo en la consola.
