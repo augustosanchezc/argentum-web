@@ -493,6 +493,31 @@ export const registerAdminRoutes: FastifyPluginAsync = async (app: FastifyInstan
     return reply.send({ count });
   });
 
+  // Fijar las probabilidades de drop de TODAS las criaturas a una escala por
+  // orden: 1er drop 90%, 2do 30%, 3ro 10%, 4to+ 1%. Conserva item y cantidad;
+  // sólo reescribe la chance. Se guarda como override (persistente).
+  app.post("/api/npcs/bulk-drop-chances", async (req, reply) => {
+    const auth = await requireRole(req, reply, 3);
+    if (!auth) return;
+    const LADDER = [0.9, 0.3, 0.1, 0.01];
+    let count = 0;
+    for (const numStr of Object.keys(NPC_DEFS)) {
+      const number = Number(numStr);
+      const d = getEffectiveNpcDef(number);
+      if (!d || !isCreature(d.npcType, d.comercia)) continue;
+      if (!d.drops || d.drops.length === 0) continue;
+      const drops = d.drops.map((drop, i) => ({
+        item: drop.item,
+        qty: drop.qty,
+        chance: LADDER[i] ?? 0.01,
+      }));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setNpcOverride(number, { drops } as any);
+      count++;
+    }
+    return reply.send({ count });
+  });
+
   // ── Ajustes de jugabilidad (intervalos) — solapa "Ajustes" del panel ──
   app.get("/api/config", async (req, reply) => {
     const auth = await requireRole(req, reply, 3);

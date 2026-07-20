@@ -118,6 +118,11 @@ export const PANEL_HTML = `<!doctype html>
       <button class="fbtn" id="expReset" style="color:#ffb0b0;border-color:#5a3a3a">↺ Exp original</button>
       <button class="fbtn" id="expSaveAll" style="color:#fff;background:linear-gradient(#2f9f5f,#279055);border-color:#3fbf7f">💾 Guardar todo</button>
     </div>
+    <div class="filters" style="border-top:1px solid #2b2a38;padding-top:8px">
+      <span class="lbl">Drops</span>
+      <span style="font-size:12px;color:#8f8ba0">Fija la probabilidad por orden (1º→90%, 2º→30%, 3º→10%, 4º+→1%) en TODAS las criaturas</span>
+      <button class="fbtn" id="dropLadder" style="color:#fff;background:linear-gradient(#8f5fd0,#7a4fc0);border-color:#9f6fe0">🎲 Aplicar 90/30/10/1 a todas</button>
+    </div>
     <table><thead><tr>
       <th>Foto</th><th>#</th><th>Nombre</th><th>HP</th><th>Golpe</th><th>Def</th><th>Exp</th><th>Oro</th><th>Hostil</th><th></th>
     </tr></thead><tbody id="crRows"></tbody></table>
@@ -679,6 +684,16 @@ $("expSaveAll").onclick = async function(){
     loadCreatures();
   }catch(err){ alert("Error: "+err.message); }
   finally{ this.disabled=false; this.textContent="💾 Guardar todo"; }
+};
+$("dropLadder").onclick = async function(){
+  if(!confirm("¿Fijar la probabilidad de drop de TODAS las criaturas a 90/30/10/1 por orden?\\n\\n1er drop 90%, 2do 30%, 3ro 10%, 4to+ 1%. Conserva item y cantidad; se guarda como override (reversible editando cada criatura).")) return;
+  this.disabled=true; this.textContent="Aplicando…";
+  try{
+    var res = await api("/admin/api/npcs/bulk-drop-chances", { method:"POST", body:"{}" });
+    alert(res.count+" criatura(s) con drops actualizadas a 90/30/10/1.");
+    loadCreatures();
+  }catch(err){ alert("Error: "+err.message); }
+  finally{ this.disabled=false; this.textContent="🎲 Aplicar 90/30/10/1 a todas"; }
 };
 $("expReset").onclick = async function(){
   if(!confirm("¿Volver la experiencia de TODAS las criaturas a los valores originales de AO Libre?\\n\\nSe borra sólo el ajuste de experiencia; los demás cambios (HP, oro, drops…) se conservan.")) return;
