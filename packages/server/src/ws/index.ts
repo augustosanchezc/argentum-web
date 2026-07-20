@@ -588,14 +588,15 @@ setInterval(() => {
 // Recibir daño de un NPC cancela la salida (anti combat-log en PvE).
 setPlayerDamagedHandler(cancelExitCountdown);
 
-// Muerte AO original: se CAEN TODOS los items al piso — salvo los newbie y
-// las armaduras faccionarias (recompensa que no se pierde).
+// Muerte AO original: se CAEN TODOS los items al piso — salvo los newbie, las
+// armaduras faccionarias (recompensa que no se pierde) y los BARCOS (objType 31:
+// barca/galera/galeón — no se caen al morir).
 function dropAllItemsOnDeath(victim: Session): void {
   const kept: InventorySlot[] = [];
   let dropped = 0;
   for (const slot of victim.inventory) {
     const def = getItem(slot.item);
-    if (!def || def.newbie || FACTION_ARMOR_IDS.has(slot.item)) {
+    if (!def || def.newbie || def.objType === 31 || FACTION_ARMOR_IDS.has(slot.item)) {
       kept.push(slot);
       continue;
     }
