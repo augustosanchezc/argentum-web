@@ -3355,6 +3355,19 @@ export async function startGameScene(
         layer3ByTile.set(idx, sprite);
       }
     };
+    // grh3 = 0 → limpiar el tile (p. ej. borrar un teleport de GM).
+    if (p.grh3 === 0) {
+      const existing = layer3ByTile.get(idx);
+      if (existing) {
+        const i = mapObjectSprites.indexOf(existing);
+        if (i >= 0) mapObjectSprites.splice(i, 1);
+        entitiesLayer.removeChild(existing);
+        existing.destroy();
+        layer3ByTile.delete(idx);
+      }
+      if ((p.wav ?? 0) > 0) audio.play(p.wav!, 0.7);
+      return;
+    }
     const tex = tileset.get(p.grh3);
     if (tex) apply(tex);
     else if (tileset.ready) {

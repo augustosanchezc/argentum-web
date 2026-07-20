@@ -69,3 +69,22 @@ export function addCustomTeleport(t: CustomTeleport): number {
   persist();
   return TELEPORT_GRH;
 }
+
+// Borra el teleport de GM en (mapId, x, y): lo saca del portal del mapa, limpia
+// el gráfico de la capa 3 y lo quita del guardado. Solo toca teleports CUSTOM
+// (los portales nativos del .inf no están en el store, no se tocan). Devuelve
+// true si había uno.
+export function removeCustomTeleport(mapId: number, x: number, y: number): boolean {
+  const idx = teleports.findIndex((t) => t.mapId === mapId && t.x === x && t.y === y);
+  if (idx < 0) return false;
+  teleports.splice(idx, 1);
+  const map = getMap(mapId);
+  if (map) {
+    const portals = map.portals as PortalTile[];
+    const pIdx = portals.findIndex((p) => p.x === x && p.y === y);
+    if (pIdx >= 0) portals.splice(pIdx, 1);
+    (map.layer3 as number[])[y * map.width + x] = 0;
+  }
+  persist();
+  return true;
+}

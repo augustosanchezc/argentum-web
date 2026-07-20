@@ -155,7 +155,7 @@ import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel, MAX_LE
 import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
-import { addCustomTeleport } from "../world/teleports.js";
+import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
 import {
@@ -3771,7 +3771,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telepto|telep|teleport|matarnpc)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telepto|telep|teleport|delteleport|matarnpc)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3878,6 +3878,26 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Teleport creado adelante → mapa ${toMapId.toString()} (${toX.toString()}, ${toY.toString()}).`, "global");
         return;
       }
+      // /DELTELEPORT: borra el teleport del tile de adelante (o el propio).
+      if (/^\/delteleport\b/i.test(text)) {
+        const fx = s.position.x + (s.direction === "east" ? 1 : s.direction === "west" ? -1 : 0);
+        const fy = s.position.y + (s.direction === "south" ? 1 : s.direction === "north" ? -1 : 0);
+        // Probar el tile de enfrente (donde se crean) y, si no, el propio.
+        const target =
+          removeCustomTeleport(s.mapId, fx, fy) ? { x: fx, y: fy }
+          : removeCustomTeleport(s.mapId, s.position.x, s.position.y) ? { x: s.position.x, y: s.position.y }
+          : null;
+        if (!target) {
+          consoleMsg(s, "No hay ningún teleport de GM adelante ni bajo tus pies.", "global");
+          return;
+        }
+        const pkt: MapTileUpdate = {
+          op: ServerToClientOp.MapTileUpdate, x: target.x, y: target.y, grh3: 0, blocked: false,
+        };
+        broadcastToMap(s.mapId, pkt);
+        consoleMsg(s, "Teleport borrado.", "global");
+        return;
+      }
       // /SUM nombre: traer a un jugador a mi posición.
       const sum = /^\/sum\s+(\S+)$/i.exec(text);
       if (sum) {
@@ -3969,7 +3989,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
     }
 
     // /EST de AO Libre (SendUserStatsTxt): desglose completo en la consola.
