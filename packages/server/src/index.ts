@@ -8,6 +8,7 @@ import { loadedMapIds } from "./world/maps.js";
 import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
 import { flushAllSessions } from "./ws/index.js";
+import { applyStoredTeleports } from "./world/teleports.js";
 
 async function main(): Promise<void> {
   // Sentry debe inicializarse antes de construir la app para capturar errores
@@ -30,6 +31,11 @@ async function main(): Promise<void> {
   // Log de mapas cargados (útil para saber qué mapas están disponibles y
   // cuáles hay que descargar con scripts/fetch-maps.mjs).
   app.log.info({ maps: loadedMapIds() }, "[ao-server] mapas cargados");
+
+  // Re-aplicar los teleports creados por GM (persistidos en el volumen) sobre los
+  // mapas recién cargados, para que sobrevivan a los reinicios.
+  const tps = applyStoredTeleports();
+  if (tps > 0) app.log.info({ teleports: tps }, "[ao-server] teleports de GM re-aplicados");
 
   // Crea las instancias de NPC del mundo antes de arrancar el loop.
   npcs.init();

@@ -155,6 +155,7 @@ import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel, MAX_LE
 import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
+import { addCustomTeleport } from "../world/teleports.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
 import {
@@ -3868,14 +3869,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consoleMsg(s, "No hay lugar libre adelante para poner el teleport.", "global");
           return;
         }
-        // Portal en runtime + gráfico del teleport (grh 669) visible en el tile.
-        (map.portals as PortalTile[]).push({ x: fx, y: fy, toMapId, toX, toY });
-        // Mutar también el layer3 del MapState: sin esto, quien cargara el
-        // mapa después veía un teleport INVISIBLE (el broadcast solo llegaba
-        // a los presentes).
-        (map.layer3 as number[])[fy * map.width + fx] = 669;
+        // Portal + gráfico del teleport, PERSISTIDO (sobrevive al reinicio).
+        const grh = addCustomTeleport({ mapId: s.mapId, x: fx, y: fy, toMapId, toX, toY });
         const pkt: MapTileUpdate = {
-          op: ServerToClientOp.MapTileUpdate, x: fx, y: fy, grh3: 669, blocked: false, wav: 3,
+          op: ServerToClientOp.MapTileUpdate, x: fx, y: fy, grh3: grh, blocked: false, wav: 3,
         };
         broadcastToMap(s.mapId, pkt);
         consoleMsg(s, `Teleport creado adelante → mapa ${toMapId.toString()} (${toX.toString()}, ${toY.toString()}).`, "global");
