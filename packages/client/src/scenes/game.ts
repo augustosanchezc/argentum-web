@@ -1,7 +1,6 @@
 import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture } from "pixi.js";
 import {
   ClientToServerOp,
-  CLASSES,
   golpeUsuario,
   getAoSpell,
   CLASS_SPELLBOOK,
@@ -763,11 +762,12 @@ export async function startGameScene(
         stroke: { color: "#0a0805", width: kind === "player" ? 2 : 3 },
       }),
     });
-    // Label SOBRE la cabeza: "Lv. N" y la clase (2 líneas).
-    // Las criaturas/NPCs solo muestran el nombre al pasar el mouse.
+    // Label SOBRE la cabeza. Los NPCs muestran su nombre al pasar el mouse; los
+    // JUGADORES ya NO muestran "Lv. N / Clase" arriba (molestaba) — solo el nombre
+    // debajo. Por eso el label arranca oculto para todos.
     label.anchor.set(0.5, 1);
     label.y = -40;
-    if (kind !== "player") label.visible = false;
+    label.visible = false;
     c.addChild(label);
 
     // Nombre DEBAJO del personaje (mismo estilo; se colorea por rol/criminal).
@@ -1512,8 +1512,17 @@ export async function startGameScene(
     }
 
     // Fin de la carga: re-aplicar los paquetes bufferados sobre el mapa nuevo.
+    // Cada uno en su try/catch: si uno falla (p. ej. un Respawn en el combo
+    // muerto→viaje a la ciudad), NO debe cortar el replay y dejar sin aplicar el
+    // InventoryUpdate/StatsUpdate que vienen después (paneles vacíos al revivir).
     mapLoading = false;
-    for (const p of packetsWhileLoading.splice(0)) handlePacket(p);
+    for (const p of packetsWhileLoading.splice(0)) {
+      try {
+        handlePacket(p);
+      } catch (err) {
+        console.error("[ao-client] error re-aplicando paquete bufferado", p.op, err);
+      }
+    }
   }
   let currentMapName = "";
 
@@ -2196,6 +2205,11 @@ export async function startGameScene(
           client?.send({ op: ClientToServerOp.UseItem, item: lastSelectedItem } satisfies UseItemRequest);
         }
       }
+      return;
+    }
+    if (e.code === keymap.drop) {
+      e.preventDefault();
+      inventory?.dropSelected(); // tira el objeto seleccionado del inventario
       return;
     }
     const dir = codeToDirection(e.code);
@@ -3262,8 +3276,7 @@ export async function startGameScene(
   // visible para jugadores). Ej: "Lv. 32" / "Jasmine - Guerrero".
   function applyNameTag(v: EntityVisual): void {
     if (v.kind !== "player") return;
-    const className = CLASSES[v.classId]?.name ?? "";
-    v.label.text = className ? `Lv. ${v.level.toString()}\n${className}` : `Lv. ${v.level.toString()}`;
+    // Ya no se muestra "Lv. N / Clase" arriba (molestaba): solo el nombre debajo.
     v.nameLabel.text = v.name;
   }
 

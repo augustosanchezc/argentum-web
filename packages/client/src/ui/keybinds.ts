@@ -13,6 +13,7 @@ export type KeyAction =
   | "hide"
   | "use"
   | "equip"
+  | "drop"
   | "inventory"
   | "stats";
 
@@ -28,6 +29,7 @@ export const ACTION_LABELS: Record<KeyAction, string> = {
   hide: "Ocultarse",
   use: "Usar objeto",
   equip: "Equipar objeto",
+  drop: "Tirar objeto",
   inventory: "Mostrar/ocultar panel",
   stats: "Estadísticas",
 };
@@ -46,6 +48,7 @@ const DEFAULTS: Record<KeyAction, string> = {
   hide: "KeyH",
   use: "KeyU",
   equip: "KeyE",
+  drop: "KeyT",
   inventory: "KeyI",
   stats: "KeyC",
 };

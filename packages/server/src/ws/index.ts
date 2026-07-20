@@ -2746,10 +2746,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "No tienes suficiente maná.", "combate");
         return;
       }
-      if (s.sta < spell.staCost) {
-        consoleMsg(s, `Estás muy cansado para lanzar este hechizo (energía ${s.sta.toString()}/${spell.staCost.toString()} necesaria).`, "combate");
-        return;
-      }
+      // La energía NO limita ni se consume al lanzar hechizos (decisión de diseño:
+      // que no moleste). Solo el maná y los intervalos gatean el casteo.
 
       const targetId = pkt.targetId as unknown as number;
       stopMeditating(s);
@@ -2773,7 +2771,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
         s.lastCastAt = now;
         s.mana -= spell.manaCost;
-        s.sta = Math.max(0, s.sta - spell.staCost);
         trainSkill(s, "magia", true);
         breakInvisibility(s);
 
@@ -2912,7 +2909,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       s.lastCastAt = now;
       s.mana -= spell.manaCost;
-      s.sta = Math.max(0, s.sta - spell.staCost);
       trainSkill(s, "magia", true);
       // Castear rompe la invisibilidad propia — salvo que el hechizo sea
       // la propia invisibilidad sobre uno mismo.

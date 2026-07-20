@@ -92,6 +92,8 @@ export interface InventoryHandle {
   getMinimapSlot(): HTMLElement;
   toggle(): void;
   isOpen(): boolean;
+  // Tira al suelo el objeto seleccionado (para la tecla configurable de tirar).
+  dropSelected(): void;
   destroy(): void;
 }
 
@@ -295,12 +297,14 @@ export function mountInventory(
   const gridResizeObserver = new ResizeObserver(() => { fitIcons(); });
   gridResizeObserver.observe(gridEl);
 
-  // Botón Tirar: tira al suelo el stack completo del objeto seleccionado.
-  wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", () => {
+  // Tira al suelo el stack completo del objeto seleccionado (botón Tirar o la
+  // tecla configurable de "Tirar objeto").
+  function dropSelected(): void {
     const slot = selectedSlot >= 0 && selectedSlot < last.slots.length ? last.slots[selectedSlot] : null;
     if (!slot) return;
     cb.onDrop(selectedSlot, slot.qty);
-  });
+  }
+  wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", dropSelected);
 
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
   const spellsEl = wrap.querySelector<HTMLDivElement>(".ao-spells__list")!;
@@ -660,6 +664,7 @@ export function mountInventory(
       setOpen(!open);
     },
     isOpen: () => open,
+    dropSelected,
     destroy: () => {
       if (buffTimer) clearInterval(buffTimer);
       gridResizeObserver.disconnect();
