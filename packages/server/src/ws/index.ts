@@ -506,6 +506,12 @@ onIntervalsChanged(() => {
 // en 2e9 para que ninguna suma (venta, quest, trade, /oro) desborde y corrompa
 // el guardado del personaje.
 const MAX_GOLD = 2_000_000_000;
+
+// Newbie: AO Libre (GameLogic.bas EsNewbie = ELV <= LimiteNewbie). Nivel <= 12 es
+// newbie; al 13 deja de serlo (se le quitan los items newbie y sale del dungeon).
+const NEWBIE_MAX_LEVEL = 12;
+const NEWBIE_DUNGEON_MAP = 167; // Dungeon Newbie (destino del teleport de Ulla)
+
 function addGold(s: Session, amount: number): void {
   s.gold = Math.max(0, Math.min(MAX_GOLD, s.gold + amount));
 }
@@ -1578,6 +1584,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     // Otorga XP con level-up (recalcula skills/HP/MP/hechizos como siempre).
     function grantXp(recv: Session, amount: number): void {
       if (amount <= 0) return;
+      const prevLevel = recv.level;
       const gain = applyXpGain(recv.level, recv.xp, amount);
       recv.xp = gain.totalXp;
       if (gain.leveledUp) {
@@ -1595,8 +1602,32 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         recv.mana = recv.maxMana;
         partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
         sendSpellsKnown(recv);
+        // Dejó de ser newbie (AO Libre: EsNewbie = nivel <= 12): quitar items
+        // newbie y sacarlo del Dungeon Newbie a Ullathorpe.
+        if (prevLevel <= NEWBIE_MAX_LEVEL && recv.level > NEWBIE_MAX_LEVEL) graduateNewbie(recv);
       }
       sendStatsUpdate(recv);
+    }
+
+    // Graduación de newbie (AO Libre GameLogic.bas EsNewbie: ELV <= LimiteNewbie=12).
+    // Al pasar el nivel 12: se quitan los objetos newbie (intransferibles) y, si
+    // está en el Dungeon Newbie (mapa 167), se lo teletransporta a Ullathorpe (1).
+    function graduateNewbie(s: Session): void {
+      const hadNewbie = s.inventory.some((sl) => getItem(sl.item)?.newbie === true);
+      if (hadNewbie) s.inventory = s.inventory.filter((sl) => getItem(sl.item)?.newbie !== true);
+      const inDungeon = s.mapId === NEWBIE_DUNGEON_MAP;
+      if (inDungeon) {
+        const ulla = getMap(1);
+        if (ulla) doGmTeleport(s, 1, ulla.spawn.x, ulla.spawn.y);
+      }
+      if (hadNewbie || inDungeon) {
+        sendInventoryUpdate(s); // recomputa equipo (desequipa lo newbie que ya no está)
+        consoleMsg(
+          s,
+          "¡Ya no eres newbie! Se te quitaron los objetos de newbie" + (inDungeon ? " y volviste a Ullathorpe." : "."),
+          "global",
+        );
+      }
     }
 
     // XP de combate como el AO 0.13: POR DAÑO hecho (no al último golpe). En
@@ -3180,6 +3211,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       s.questsDone.push(questNumber);
 
       if (def.rewardExp > 0) {
+        const prevLevel = s.level;
         const gain = applyXpGain(s.level, s.xp, def.rewardExp);
         s.xp = gain.totalXp;
         if (gain.leveledUp) {
@@ -3196,6 +3228,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           s.hp = s.maxHp;
           s.mana = s.maxMana;
           sendSpellsKnown(s);
+          if (prevLevel <= NEWBIE_MAX_LEVEL && s.level > NEWBIE_MAX_LEVEL) graduateNewbie(s);
         }
       }
       consoleMsg(s, `¡Misión completada: ${def.nombre}! Recompensa: ${def.rewardGld.toString()} de oro y ${def.rewardExp.toString()} de experiencia.`, "global", 6);
@@ -3851,6 +3884,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // /NIVEL n: fijar el nivel (recalcula vida/maná y cura al máximo).
       const nivel = /^\/nivel\s+(\d+)$/i.exec(text);
       if (nivel) {
+        const prevLevel = s.level;
         s.level = Math.max(1, Math.min(parseInt(nivel[1]!, 10), MAX_LEVEL));
         s.skills = skillsForLevel(s.level);
         const classDef = getClass(s.classId);
@@ -3863,6 +3897,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         s.mana = s.maxMana;
         s.sta = s.maxSta;
         sendStatsUpdate(s);
+        if (prevLevel <= NEWBIE_MAX_LEVEL && s.level > NEWBIE_MAX_LEVEL) graduateNewbie(s);
         return;
       }
       // /ITEM id [cantidad]: darse un item por su código.
