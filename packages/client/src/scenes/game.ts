@@ -3603,11 +3603,10 @@ export async function startGameScene(
         const cmd = text.trim().toLowerCase();
         // /salir → volver a la selección de personaje.
         if (cmd === "/salir") { onChangeCharacter(); return; }
-        // /est → estadísticas del personaje en la consola (como el /EST del AO).
-        if (cmd === "/est") {
-          const clsName = CLASSES[character.classId ?? 1]?.name ?? "";
-          const st = panelStats;
-          chat?.appendMessage({ fromName: "", text: `${character.name}${clsName ? ` — ${clsName}` : ""} · Nivel ${st.level.toString()} · Vida ${st.hp.toString()}/${st.maxHp.toString()} · Maná ${st.mana.toString()}/${st.maxMana.toString()} · Energía ${st.sta.toString()}/${st.maxSta.toString()} · FUE ${st.str.toString()} · AGI ${st.agi.toString()}`, timestamp: Date.now(), isSelf: false, kind: "combate" });
+        // /est y /stats → estadísticas completas (como el /EST de AO Libre).
+        // Lo resuelve el server (tiene toda la data: defensas de equipo, etc.).
+        if (cmd === "/est" || cmd === "/stats") {
+          client.send({ op: ClientToServerOp.ChatSend, text: cmd } satisfies ChatSend);
           return;
         }
         // /ayuda → lista de comandos disponibles.

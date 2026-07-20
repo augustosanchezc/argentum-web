@@ -3861,6 +3861,41 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /telep <mapa> <x> <y> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
     }
 
+    // /EST de AO Libre (SendUserStatsTxt): desglose completo en la consola.
+    async function sendUserStats(s: Session): Promise<void> {
+      const clsName = getClass(s.classId)?.name ?? "";
+      const prog = levelProgress(s.level, s.xp);
+      const golpe = golpeUsuario(s.classId, s.level);
+      const weapon = s.equippedWeapon !== null ? getItem(s.equippedWeapon) : undefined;
+      const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
+      const shield = s.equippedShield !== null ? getItem(s.equippedShield) : undefined;
+      const casco = s.equippedHelmet !== null ? getItem(s.equippedHelmet) : undefined;
+      const cuerpoMin = (armor?.defenseMin ?? 0) + (shield?.defenseMin ?? 0);
+      const cuerpoMax = (armor?.defenseMax ?? 0) + (shield?.defenseMax ?? 0);
+
+      consoleMsg(s, `Estadísticas de: ${s.characterName}${clsName ? ` (${clsName})` : ""}`, "global");
+      consoleMsg(s, `Nivel: ${s.level.toString()}  EXP: ${prog.xpIntoLevel.toString()}/${prog.xpForNextLevel.toString()}`, "global");
+      consoleMsg(s, `Salud: ${s.hp.toString()}/${s.maxHp.toString()}  Maná: ${s.mana.toString()}/${s.maxMana.toString()}  Energía: ${s.sta.toString()}/${s.maxSta.toString()}`, "global");
+      consoleMsg(
+        s,
+        `Menor Golpe/Mayor Golpe: ${golpe.min.toString()}/${golpe.max.toString()}` +
+          (weapon ? ` (${(weapon.minHit ?? 0).toString()}/${(weapon.maxHit ?? 0).toString()})` : ""),
+        "global",
+      );
+      consoleMsg(s, `(CUERPO) Min Def/Max Def: ${cuerpoMin.toString()}/${cuerpoMax.toString()}`, "global");
+      consoleMsg(s, `(CABEZA) Min Def/Max Def: ${(casco?.defenseMin ?? 0).toString()}/${(casco?.defenseMax ?? 0).toString()}`, "global");
+      if (s.guildName) {
+        consoleMsg(s, `Clan: ${s.guildName}`, "global");
+        if (await isGuildLeader(s)) consoleMsg(s, "Status: Líder", "global");
+      }
+      if (s.faction !== 0) {
+        consoleMsg(s, `Facción: ${FACTION_NAMES[s.faction] ?? ""} (${factionRank(s.faction, factionKills(s))})`, "global");
+      }
+      if (isCriminal(s)) consoleMsg(s, "Estado: Criminal", "combate");
+      consoleMsg(s, `Oro: ${s.gold.toLocaleString("es")}  Posición: ${s.position.x.toString()},${s.position.y.toString()} en mapa ${s.mapId.toString()}`, "global");
+      consoleMsg(s, `Dados: FUE ${s.str.toString()}, AGI ${s.agi.toString()}, INT ${s.int_.toString()}, CAR ${s.car.toString()}, CON ${s.con.toString()}`, "global");
+    }
+
     function handleChat(s: Session, chat: ChatSend): void {
       if (typeof chat.text !== "string" || chat.text.length > 500) return;
       // /desc <texto>: setear la descripción del personaje (todos los jugadores).
@@ -3880,6 +3915,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (cmd === "/meditar" || cmd === "/med") { handleMeditate(s); return; }
       if (cmd === "/descansar" || cmd === "/rest") { handleRest(s); return; }
       if (cmd === "/seguro" || cmd === "/seg") { handleSafeToggle(s); return; }
+      // /est · /stats: estadísticas completas del personaje (SendUserStatsTxt de AO Libre).
+      if (cmd === "/est" || cmd === "/stats") { void sendUserStats(s); return; }
       // Comandos informativos del AO clásico.
       if (cmd === "/online") {
         consoleMsg(s, `Hay ${sessions.size().toString()} jugador(es) conectado(s).`, "global");
