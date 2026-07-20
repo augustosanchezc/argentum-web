@@ -2576,6 +2576,38 @@ export async function startGameScene(
     v.overheadUntil = performance.now() + 2_500 + text.length * 60;
   }
 
+  // Palabras mágicas al estilo AO Libre: texto plano flotante sobre la cabeza
+  // (SIN globo de diálogo), como el ChatOverHead original del AO. Reusa el slot
+  // y el lifetime de overheadText para que se limpie solo y no se solape.
+  function showMagicWords(v: EntityVisual, text: string): void {
+    if (v.overheadText) {
+      v.container.removeChild(v.overheadText);
+      v.overheadText.destroy({ children: true });
+      v.overheadText = null;
+    }
+    const label = new Text({
+      text,
+      resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
+      style: new TextStyle({
+        fill: "#ffffff",
+        stroke: { color: 0x000000, width: 3 },
+        fontFamily: "Arial, sans-serif",
+        fontSize: 9,
+        fontWeight: "bold",
+        align: "center",
+        wordWrap: true,
+        wordWrapWidth: 130,
+      }),
+    });
+    label.anchor.set(0.5, 1);
+    const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
+    label.x = 0;
+    label.y = headTop - 6;
+    v.container.addChild(label);
+    v.overheadText = label;
+    v.overheadUntil = performance.now() + 2_500 + text.length * 60;
+  }
+
   function handleChatBroadcast(p: ChatBroadcast): void {
     const fromId = p.fromId as unknown as number;
     chat?.appendMessage({
@@ -2813,10 +2845,11 @@ export async function startGameScene(
     const targetId = p.targetId as unknown as number | undefined;
     const isSelfCaster = casterId === character.id;
 
-    // Palabras mágicas del AO: el caster las "dice" sobre su cabeza.
+    // Palabras mágicas del AO: el caster las "dice" sobre su cabeza, como texto
+    // plano flotante (estilo AO Libre), NO en globo de diálogo.
     const casterVisual = entityVisuals.get(casterId);
     const spellWords = getAoSpell(p.skillId)?.magicWords;
-    if (casterVisual && spellWords) showOverheadText(casterVisual, spellWords);
+    if (casterVisual && spellWords) showMagicWords(casterVisual, spellWords);
 
     // Mostramos floater cuando somos el lanzador, y suena el WAV real
     // del hechizo (campo WAV de Hechizos.dat).
