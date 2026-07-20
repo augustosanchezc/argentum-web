@@ -1725,6 +1725,11 @@ export async function startGameScene(
       return;
     }
 
+    // Con arco equipado SOLO se dispara con la flecha cargada (doble-click en el
+    // arco, tecla Usar, o macro). Un click "pelado" sobre un objetivo NO ataca:
+    // la única vía de disparo es la cruz (armedArrow), que el caller pone antes.
+    if (selfWeaponRanged && !armedArrow) return;
+
     const now = performance.now();
     if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
     const own = entityVisuals.get(character.id);

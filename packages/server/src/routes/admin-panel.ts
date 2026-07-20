@@ -112,6 +112,12 @@ export const PANEL_HTML = `<!doctype html>
       <label style="font-size:12px;color:#b8b4cc;display:flex;align-items:center;gap:4px"><input type="checkbox" id="bulkGold" checked> Oro</label>
       <button class="fbtn" id="bulkApply" style="color:#fff;background:linear-gradient(#3f7fe0,#2f6fd6);border-color:#4f8ff0">Aplicar a todas</button>
     </div>
+    <div class="filters" style="border-top:1px solid #2b2a38;padding-top:8px">
+      <span class="lbl">Experiencia</span>
+      <span style="font-size:12px;color:#8f8ba0">Editá la Exp en la tabla y guardá de una vez</span>
+      <button class="fbtn" id="expReset" style="color:#ffb0b0;border-color:#5a3a3a">↺ Exp original</button>
+      <button class="fbtn" id="expSaveAll" style="color:#fff;background:linear-gradient(#2f9f5f,#279055);border-color:#3fbf7f">💾 Guardar todo</button>
+    </div>
     <table><thead><tr>
       <th>Foto</th><th>#</th><th>Nombre</th><th>HP</th><th>Golpe</th><th>Def</th><th>Exp</th><th>Oro</th><th>Hostil</th><th></th>
     </tr></thead><tbody id="crRows"></tbody></table>
@@ -329,7 +335,8 @@ async function loadCreatures(){
     npcCache[r.number]=r;
     var tr=document.createElement("tr");
     tr.innerHTML = "<td>"+npcImg(r.body,r.head,40)+"</td><td>"+r.number+"</td><td><b>"+esc(r.name)+"</b></td>"+
-      "<td>"+r.maxHp.toLocaleString()+"</td><td>"+r.minHit+"-"+r.maxHit+"</td><td>"+r.def+"</td><td>"+r.giveExp.toLocaleString()+"</td>"+
+      "<td>"+r.maxHp.toLocaleString()+"</td><td>"+r.minHit+"-"+r.maxHit+"</td><td>"+r.def+"</td>"+
+      "<td><input class='xpEdit' data-xpid='"+r.number+"' type='number' min='0' value='"+r.giveExp+"' style='width:92px;background:#1a1926;border:1px solid #33323f;color:#e8c96a;padding:3px 6px;border-radius:4px'></td>"+
       "<td class='gold'>"+r.giveGld.toLocaleString()+"</td><td>"+(r.hostile?"sí":"no")+"</td>"+
       "<td><button class='btn-sm btn-primary' data-npc='"+r.number+"'>Editar</button></td>";
     b.appendChild(tr);
@@ -655,6 +662,33 @@ $("bulkApply").onclick = async function(){
     loadCreatures();
   }catch(err){ alert("Error: "+err.message); }
   finally{ this.disabled=false; this.textContent="Aplicar a todas"; }
+};
+$("expSaveAll").onclick = async function(){
+  var values={}, n=0;
+  document.querySelectorAll("#crRows .xpEdit").forEach(function(inp){
+    var id=inp.dataset.xpid, v=Math.max(0, Math.round(Number(inp.value)||0));
+    var base=npcCache[id];
+    if(base && v!==base.giveExp){ values[id]=v; n++; }
+  });
+  if(n===0){ alert("No hay cambios de experiencia para guardar."); return; }
+  if(!confirm("Guardar la experiencia de "+n+" criatura(s) editada(s)?")) return;
+  this.disabled=true; this.textContent="Guardando…";
+  try{
+    var res = await api("/admin/api/npcs/bulk-set-exp", { method:"POST", body: JSON.stringify({ values:values }) });
+    alert(res.count+" criatura(s) actualizada(s).");
+    loadCreatures();
+  }catch(err){ alert("Error: "+err.message); }
+  finally{ this.disabled=false; this.textContent="💾 Guardar todo"; }
+};
+$("expReset").onclick = async function(){
+  if(!confirm("¿Volver la experiencia de TODAS las criaturas a los valores originales de AO Libre?\\n\\nSe borra sólo el ajuste de experiencia; los demás cambios (HP, oro, drops…) se conservan.")) return;
+  this.disabled=true; this.textContent="Restaurando…";
+  try{
+    var res = await api("/admin/api/npcs/reset-exp", { method:"POST", body:"{}" });
+    alert(res.count+" criatura(s) restauradas a la exp original.");
+    loadCreatures();
+  }catch(err){ alert("Error: "+err.message); }
+  finally{ this.disabled=false; this.textContent="↺ Exp original"; }
 };
 $("nRefresh").onclick = loadNpcs; $("nSearch").addEventListener("keydown", function(e){ if(e.key==="Enter") loadNpcs(); });
 $("iRefresh").onclick = loadItems; $("iSearch").addEventListener("keydown", function(e){ if(e.key==="Enter") loadItems(); });

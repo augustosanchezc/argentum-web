@@ -195,6 +195,25 @@ export function setNpcOverride(number: number, patch: Partial<NpcDefData>): NpcD
   return getEffectiveNpcDef(number) ?? null;
 }
 
+// Elimina el override de experiencia (giveExp) de TODAS las criaturas, dejando
+// el valor original de NPCs.dat. Los demás overrides (nombre, hp, drops, oro…)
+// se conservan. Si un NPC sólo tenía override de exp, se borra por completo.
+// Devuelve la cantidad de NPCs afectados.
+export function resetAllNpcExp(): number {
+  let count = 0;
+  for (const [number, ov] of npcOverrides) {
+    if (ov.giveExp === undefined) continue;
+    const rest = { ...ov };
+    delete rest.giveExp;
+    if (Object.keys(rest).length === 0) npcOverrides.delete(number);
+    else npcOverrides.set(number, rest);
+    typeCache.delete(number);
+    count++;
+  }
+  persistNpcOverrides();
+  return count;
+}
+
 export function getNpcType(number: number): NpcType | undefined {
   const cached = typeCache.get(number);
   if (cached) return cached;

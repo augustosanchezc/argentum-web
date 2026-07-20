@@ -7,6 +7,8 @@ interface HomeCallbacks {
   onLogout: () => void; // "MI CUENTA" / cerrar sesión
 }
 
+import { startLiveMap } from "./live-map";
+
 // Secciones todavía no implementadas → placeholder "próximamente".
 const COMING_SOON = "Esta sección está en construcción. Pronto vas a poder usarla.";
 
@@ -48,7 +50,7 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
           <div><div class="lp-stat-num">Diaria</div><div class="lp-stat-lbl">FRECUENCIA DE UPDATES</div></div>
         </div>
       </div>
-      <div class="lp-shot"><span>[ screenshot del juego en vivo ]</span></div>
+      <div class="lp-shot"><canvas id="lp-live" class="lp-live-canvas"></canvas><span class="lp-shot-tag">EN VIVO · Ullathorpe</span></div>
     </div>
 
     <div class="lp-features">
@@ -103,6 +105,13 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
       label.textContent = "SERVIDOR OFFLINE";
     });
 
+  // Foto en vivo del mundo (map 1, 50,50) refrescada cada minuto.
+  let stopLive: (() => void) | undefined;
+  const liveCanvas = wrap.querySelector<HTMLCanvasElement>("#lp-live");
+  if (liveCanvas) {
+    stopLive = startLiveMap(liveCanvas, { map: 1, x: 50, y: 50, refreshMs: 60_000 });
+  }
+
   root.appendChild(wrap);
-  return () => { cancelled = true; wrap.remove(); };
+  return () => { cancelled = true; stopLive?.(); wrap.remove(); };
 }

@@ -7,7 +7,7 @@ import { characters } from "../db/schema/characters.js";
 import { guilds } from "../db/schema/guilds.js";
 import { sessions } from "../ws/sessions.js";
 import { NPC_DEFS } from "../world/npcs.generated.js";
-import { getEffectiveNpcDef, setNpcOverride, getNpcType } from "../world/npcs.js";
+import { getEffectiveNpcDef, setNpcOverride, getNpcType, resetAllNpcExp } from "../world/npcs.js";
 import { setItemOverridePersisted } from "../world/item-overrides.js";
 import { getGameConfig, setIntervals, resetIntervals } from "../world/game-config.js";
 import { getMapSpawnConfig, setMapSpawnConfig } from "../world/map-spawns.js";
@@ -455,6 +455,43 @@ export const registerAdminRoutes: FastifyPluginAsync = async (app: FastifyInstan
       return reply.send({ count, mult });
     },
   );
+
+  // Guardar en lote la experiencia editada de varias criaturas de una sola vez
+  // (botón "Guardar todo" de la solapa Criaturas). { values: { "<num>": exp } }.
+  app.post<{ Body: { values: Record<string, number> } }>(
+    "/api/npcs/bulk-set-exp",
+    {
+      schema: {
+        body: {
+          type: "object", required: ["values"], additionalProperties: false,
+          properties: { values: { type: "object", additionalProperties: { type: "number" } } },
+        },
+      },
+    },
+    async (req, reply) => {
+      const auth = await requireRole(req, reply, 3);
+      if (!auth) return;
+      let count = 0;
+      for (const [numStr, raw] of Object.entries(req.body.values)) {
+        const number = Number(numStr);
+        if (!Number.isFinite(number) || !NPC_DEFS[number]) continue;
+        const exp = Math.round(Number(raw));
+        if (!Number.isFinite(exp)) continue;
+        setNpcOverride(number, { giveExp: Math.max(0, Math.min(exp, 2_000_000_000)) });
+        count++;
+      }
+      return reply.send({ count });
+    },
+  );
+
+  // Volver la experiencia de TODAS las criaturas a los valores originales de
+  // AO Libre (borra sólo el override de giveExp). Botón "Exp original".
+  app.post("/api/npcs/reset-exp", async (req, reply) => {
+    const auth = await requireRole(req, reply, 3);
+    if (!auth) return;
+    const count = resetAllNpcExp();
+    return reply.send({ count });
+  });
 
   // ── Ajustes de jugabilidad (intervalos) — solapa "Ajustes" del panel ──
   app.get("/api/config", async (req, reply) => {

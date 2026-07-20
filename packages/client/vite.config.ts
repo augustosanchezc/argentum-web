@@ -14,6 +14,7 @@ export default defineConfig({
       "/health": "http://localhost:3000",
       "/maps": "http://localhost:3000",
       "/item-overrides": "http://localhost:3000",
+      "/world-peek": "http://localhost:3000",
       "/ws": {
         target: "ws://localhost:3000",
         ws: true,

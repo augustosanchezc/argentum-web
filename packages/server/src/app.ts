@@ -12,6 +12,8 @@ import { getItemOverrides } from "@ao/shared";
 import { env } from "./config/env.js";
 import { metricsRegistry } from "./metrics.js";
 import { getMap, loadedMapIds } from "./world/maps.js";
+import { npcs } from "./world/npcs.js";
+import { sessions } from "./ws/sessions.js";
 // Importar el módulo dispara la carga de data/item-overrides.json al arrancar.
 import "./world/item-overrides.js";
 // Y la config de jugabilidad editable (intervalos) desde data/game-config.json.
@@ -85,6 +87,65 @@ export async function buildApp(): Promise<FastifyInstance> {
   // arrancar para mostrar los mismos valores que usa el server.
   app.get("/item-overrides", () => getItemOverrides());
 
+  // "Foto en vivo" del mundo para el landing: una ventana de tiles alrededor de
+  // un punto (default map 1, 50,50) con las 4 capas + las entidades vivas y
+  // visibles que hay ahí AHORA. Público y liviano (JSON de una ventana chica);
+  // el cliente lo dibuja en un <canvas> con los mismos gráficos del juego y lo
+  // refresca cada minuto. `x0/y0` es la esquina de la ventana en coords de mapa.
+  app.get<{ Querystring: { map?: string; x?: string; y?: string; rx?: string; ry?: string } }>(
+    "/world-peek",
+    async (req, reply) => {
+      const clampInt = (v: number, lo: number, hi: number, def: number): number =>
+        Number.isFinite(v) ? Math.max(lo, Math.min(Math.round(v), hi)) : def;
+      const mapId = clampInt(Number(req.query.map ?? 1), 1, 1000, 1);
+      const map = getMap(mapId);
+      if (!map) return reply.code(404).send({ error: "NO_MAP" });
+      const cx = clampInt(Number(req.query.x ?? 50), 0, map.width - 1, 50);
+      const cy = clampInt(Number(req.query.y ?? 50), 0, map.height - 1, 50);
+      const rx = clampInt(Number(req.query.rx ?? 10), 1, 20, 10);
+      const ry = clampInt(Number(req.query.ry ?? 7), 1, 20, 7);
+      const w = Math.min(rx * 2 + 1, map.width);
+      const h = Math.min(ry * 2 + 1, map.height);
+      const x0 = Math.max(0, Math.min(cx - rx, map.width - w));
+      const y0 = Math.max(0, Math.min(cy - ry, map.height - h));
+      const l1: number[] = [], l2: number[] = [], l3: number[] = [], l4: number[] = [];
+      for (let yy = 0; yy < h; yy += 1) {
+        for (let xx = 0; xx < w; xx += 1) {
+          const idx = (y0 + yy) * map.width + (x0 + xx);
+          l1.push(map.graphic[idx] ?? 0);
+          l2.push(map.layer2[idx] ?? 0);
+          l3.push(map.layer3[idx] ?? 0);
+          l4.push(map.layer4[idx] ?? 0);
+        }
+      }
+      const now = Date.now();
+      const inWin = (px: number, py: number): boolean =>
+        px >= x0 && px < x0 + w && py >= y0 && py < y0 + h;
+      const entities: Array<{
+        x: number; y: number; body: number; head: number; dir: string; name: string; kind: string;
+      }> = [];
+      for (const s of sessions.inMap(mapId)) {
+        if (s.invisibleUntil > now || s.deadUntil !== 0) continue; // invisibles/muertos no se ven
+        if (!inWin(s.position.x, s.position.y)) continue;
+        entities.push({
+          x: s.position.x, y: s.position.y, body: s.visibleBodyId, head: s.headId,
+          dir: s.direction, name: s.characterName, kind: "player",
+        });
+      }
+      for (const n of npcs.inMap(mapId)) {
+        if (n.deadUntil !== 0 && now < n.deadUntil) continue; // criatura muerta esperando respawn
+        if (!inWin(n.position.x, n.position.y)) continue;
+        entities.push({
+          x: n.position.x, y: n.position.y, body: n.type.bodyId, head: n.type.headId,
+          dir: n.direction, name: n.type.name, kind: "npc",
+        });
+      }
+      return reply
+        .header("Cache-Control", "public, max-age=30")
+        .send({ map: mapId, name: map.name, cx, cy, x0, y0, w, h, tile: 32, l1, l2, l3, l4, entities });
+    },
+  );
+
   // Assets de gráficos (para las fotos del panel admin, que corre en este
   // origen). Sirve packages/client/public/ao-assets/ de forma controlada.
   const ASSETS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), "../../client/public/ao-assets");
@@ -131,7 +192,7 @@ export async function buildApp(): Promise<FastifyInstance> {
     // Fallback SPA: cualquier GET que no matchee API/WS/assets → index.html.
     const API_PREFIXES = [
       "/auth", "/characters", "/admin", "/ws", "/maps",
-      "/health", "/metrics", "/item-overrides", "/ao-assets",
+      "/health", "/metrics", "/item-overrides", "/ao-assets", "/world-peek",
     ];
     app.setNotFoundHandler((req, reply) => {
       if (req.method === "GET" && !API_PREFIXES.some((prefix) => req.url.startsWith(prefix))) {
