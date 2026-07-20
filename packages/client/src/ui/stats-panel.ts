@@ -58,14 +58,16 @@ export function mountStatsPanel(
       const base = (p as unknown as Record<string, number>)[s] ?? 0;
       const bonus = s === "str" ? (p.strBonus ?? 0) : s === "agi" ? (p.agiBonus ?? 0) : 0;
       const buffed = bonus > 0;
-      const shown = base + bonus;
+      const shown = base + bonus; // TOTAL: atributo de origen + droga (poción)
+      // La agilidad drogada se muestra como "Celeridad" (nombre AO del buff).
+      const label = s === "agi" && buffed ? "Celeridad" : STAT_LABELS[s];
       const btn = hasPoints
         ? `<button class="ao-sp__alloc" data-stat="${s}" title="Asignar punto">+</button>`
         : "";
       return `
         <div class="ao-sp__row">
-          <span class="ao-sp__k">${STAT_LABELS[s]}</span>
-          <span class="ao-sp__v${buffed ? " ao-sp__v--buff" : ""}">${shown.toString()}${buffed ? ` <small>(${base.toString()}+${bonus.toString()})</small>` : ""}</span>
+          <span class="ao-sp__k">${label}</span>
+          <span class="ao-sp__v${buffed ? " ao-sp__v--buff" : ""}">${shown.toString()}</span>
           ${btn}
         </div>`;
     }).join("");

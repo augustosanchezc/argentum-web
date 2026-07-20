@@ -47,6 +47,7 @@ import {
   type EntityUpdate,
   type FactionUpdate,
   type GameConfigMsg,
+  type QuitRequest,
   type GuildTagUpdate,
   type MapTileUpdate,
   type GoHomeRequest,
@@ -2560,6 +2561,9 @@ export async function startGameScene(
       case ServerToClientOp.GameConfig:
         handleGameConfig(packet);
         break;
+      case ServerToClientOp.ExitOk:
+        onChangeCharacter(); // el server autorizó la salida → selección de personaje
+        break;
       case ServerToClientOp.CriminalUpdate:
         handleCriminalUpdate(packet);
         break;
@@ -3572,7 +3576,8 @@ export async function startGameScene(
         questsUi?.toggleLog();
       },
       onChangeCharacter: () => {
-        onChangeCharacter();
+        // Pasa por el timer de salida del server (instantáneo en zona segura).
+        client?.send({ op: ClientToServerOp.Quit } satisfies QuitRequest);
       },
       onOpenParty: () => {
         chat?.appendMessage({ fromName: "", text: "Party: Alt+click en un jugador para invitarlo. /salirparty para salir.", timestamp: Date.now(), isSelf: false, kind: "global" });
@@ -3742,8 +3747,9 @@ export async function startGameScene(
         if (!client) return;
         // Comandos del AO clásico.
         const cmd = text.trim().toLowerCase();
-        // /salir → volver a la selección de personaje.
-        if (cmd === "/salir") { onChangeCharacter(); return; }
+        // /salir → pedir salir al server (instantáneo en zona segura, cuenta
+        // regresiva en zona insegura). El server responde ExitOk cuando corresponde.
+        if (cmd === "/salir") { client?.send({ op: ClientToServerOp.Quit } satisfies QuitRequest); return; }
         // /est y /stats → estadísticas completas (como el /EST de AO Libre).
         // Lo resuelve el server (tiene toda la data: defensas de equipo, etc.).
         if (cmd === "/est" || cmd === "/stats") {

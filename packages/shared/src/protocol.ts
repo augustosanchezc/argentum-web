@@ -87,6 +87,7 @@ export enum ClientToServerOp {
   NpcInfo = 0x76,
   // Info de un personaje (nombre, descripción, nivel, clan) — click izquierdo.
   PlayerInfo = 0x77,
+  Quit = 0x78,
   Disconnect = 0xff,
 }
 
@@ -146,6 +147,7 @@ export enum ServerToClientOp {
   // Lluvia global (toggle de GM, como el /LLUVIA del AO).
   RainToggle = 0xfa,
   GameConfig = 0xfb,
+  ExitOk = 0xfc,
   // Whisper / chat privado
   WhisperReceived = 0xa2,
   // Criminal
@@ -893,6 +895,18 @@ export interface GameConfigMsg {
   readonly intervals: Readonly<Record<string, number>>;
 }
 
+// C→S: pedido de salir del juego (/salir). El server responde ExitOk enseguida
+// en zona segura, o tras la cuenta regresiva en zona insegura.
+export interface QuitRequest {
+  readonly op: ClientToServerOp.Quit;
+}
+
+// S→C: el server autoriza la salida → el cliente vuelve a la selección de
+// personaje / cierra.
+export interface ExitOkMsg {
+  readonly op: ServerToClientOp.ExitOk;
+}
+
 // S→C: un tile cambió (puertas del AO: nuevo GRH de capa 3 + bloqueo).
 // wav opcional (SND_PUERTA = 5).
 export interface MapTileUpdate {
@@ -1056,6 +1070,8 @@ export type ServerPacket =
   | MapTileUpdate
   | RainToggle
   | GameConfigMsg
+  | QuitRequest
+  | ExitOkMsg
   | WhisperReceived
   | CriminalUpdate;
 export type AnyPacket = ClientPacket | ServerPacket;

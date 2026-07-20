@@ -77,6 +77,10 @@ export interface Session {
   hiding: boolean;
   // Viaje al hogar (goHome): epoch ms de llegada (0 = sin viaje).
   homeTravelUntil: number;
+  // Salir del juego (/salir): epoch ms en que se completa la salida (0 = no está
+  // saliendo). En zona insegura hay una cuenta regresiva; se cancela si se mueve,
+  // ataca o recibe daño (anti combat-log del AO).
+  quitAt: number;
   // Economía e inventario
   gold: number;
   inventory: InventorySlot[];
@@ -234,6 +238,7 @@ export class SessionRegistry {
       factionRewards: 0,
       hiding: false,
       homeTravelUntil: 0,
+      quitAt: 0,
       gold: 0,
       inventory: [],
       equippedWeapon: null,

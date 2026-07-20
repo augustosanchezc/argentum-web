@@ -34,6 +34,7 @@ import {
   type MapTileUpdate,
   type RainToggle,
   type GameConfigMsg,
+  type ExitOkMsg,
   type EntityId,
   type EntitySpawn,
   type EntityUpdate,
@@ -145,7 +146,7 @@ import { findLandingTile, getMap, isWalkable, isWaterAt, type MapState } from ".
 import type { PortalTile } from "../world/maps.js";
 import { attemptMove } from "../world/movement.js";
 import { GOLD_ITEM, MAX_MASCOTAS, getNpcType, isNpcId, npcDeathSound, npcs, petsOf, rollNpcDamage, rollNpcGold, type NpcInstance } from "../world/npcs.js";
-import { setPetAttackHandler, setPlayerDeathHandler } from "./loop.js";
+import { setPetAttackHandler, setPlayerDeathHandler, setPlayerDamagedHandler } from "./loop.js";
 import { weather } from "../world/weather.js";
 import { accounts } from "../db/schema/accounts.js";
 import { partyRegistry } from "../world/party.js";
@@ -555,6 +556,37 @@ function notify(s: Session, text: string, wav?: number): void {
   };
   send(s.socket, pkt);
 }
+
+// ── Salir del juego (/salir): instantáneo en zona segura, 10s en insegura ──────
+const QUIT_DELAY_MS = 10_000;
+function sendExitOk(s: Session): void {
+  s.quitAt = 0;
+  const pkt: ExitOkMsg = { op: ServerToClientOp.ExitOk };
+  send(s.socket, pkt);
+}
+function handleQuit(s: Session): void {
+  const map = getMap(s.mapId);
+  // Zona segura (ciudad), muerto (fantasma) o mapa desconocido → sale ya.
+  if (!map || map.safeZone || s.deadUntil !== 0) { sendExitOk(s); return; }
+  if (s.quitAt !== 0) return; // ya está en cuenta regresiva
+  s.quitAt = Date.now() + QUIT_DELAY_MS;
+  notify(s, `Saldrás del juego en ${(QUIT_DELAY_MS / 1000).toString()} segundos. No te muevas ni entres en combate o se cancelará.`);
+}
+// Cancela la cuenta regresiva de salida (al moverse, atacar o recibir daño).
+function cancelExitCountdown(s: Session): void {
+  if (s.quitAt === 0) return;
+  s.quitAt = 0;
+  notify(s, "Salida cancelada.");
+}
+// Completa las salidas cuya cuenta regresiva ya venció.
+setInterval(() => {
+  const now = Date.now();
+  for (const s of sessions.all()) {
+    if (s.quitAt !== 0 && now >= s.quitAt) sendExitOk(s);
+  }
+}, 500);
+// Recibir daño de un NPC cancela la salida (anti combat-log en PvE).
+setPlayerDamagedHandler(cancelExitCountdown);
 
 // Muerte AO original: se CAEN TODOS los items al piso — salvo los newbie y
 // las armaduras faccionarias (recompensa que no se pierde).
@@ -1009,6 +1041,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.PlayerInfo:
           handlePlayerInfo(session, packet);
           break;
+        case ClientToServerOp.Quit:
+          handleQuit(session);
+          break;
         case ClientToServerOp.SaveMacros: {
           // Persistencia opaca de la barra de macros (por personaje en la DB).
           // Rate-limit (2s) + tope de tamaño: sin esto, spamear SaveMacros
@@ -1231,6 +1266,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // incluso si el paso termina bloqueado o en cooldown.
       // Los muertos SÍ caminan (fantasma/casper del AO).
       stopMeditating(s);
+      cancelExitCountdown(s); // moverse cancela la salida (anti combat-log)
 
       // Paralizado o inmovilizado: no se mueve — corrección al cliente.
       const nowMs = Date.now();
@@ -1332,7 +1368,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!weapon?.ranged || !weapon.needsAmmo) return;
       const now = Date.now();
       if (now - s.lastAttackAt < INTERVALS.arrow) return;
-      if (s.sta < 10) { consoleMsg(s, "Estás muy cansado para luchar.", "combate"); return; }
+      // La energía NO limita ni se consume al combatir (decisión de diseño).
       const arrowSlot = pickArrowSlot(s);
       if (!arrowSlot) { consoleMsg(s, "¡No tienes municiones!", "combate"); return; }
       const map = getMap(s.mapId);
@@ -1342,8 +1378,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (chebyshev(s.position, { x, y }) > RANGED_RANGE) return;
 
       s.lastAttackAt = now;
-      s.sta = Math.max(0, s.sta - (1 + Math.floor(Math.random() * 10)));
       breakInvisibility(s);
+      cancelExitCountdown(s); // disparar cancela la salida
       // Se gasta 1 flecha (se pierde — NO queda en el piso para recoger).
       const removed = removeItem(s.inventory, arrowSlot.item, 1);
       if (removed) s.inventory = removed;
@@ -1388,11 +1424,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const interval = ranged ? INTERVALS.arrow : INTERVALS.melee;
       if (now - s.lastAttackAt < interval) return null;
 
-      // Stamina del AO: cada golpe requiere >=10 y consume 1-10.
-      if (s.sta < 10) {
-        consoleMsg(s, "Estás muy cansado para luchar.", "combate");
-        return null;
-      }
+      // La energía NO limita ni se consume al golpear (decisión de diseño: que no
+      // moleste). Solo gatean los intervalos y (para el arco) la munición.
 
       const mods = getClassMods(s.classId);
       const prep: AttackPrep = {
@@ -1421,8 +1454,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     function commitAttackCosts(s: Session, prep: AttackPrep, now: number): void {
       breakInvisibility(s);
+      cancelExitCountdown(s); // atacar cancela la salida
       s.lastAttackAt = now;
-      s.sta = Math.max(0, s.sta - (1 + Math.floor(Math.random() * 10)));
+      // Energía: ya no se consume al golpear (no limita el combate).
       if (prep.ammoItem !== undefined) {
         // Consume 1 flecha (solo si el ataque se lanzó, como el AO).
         const removed = removeItem(s.inventory, prep.ammoItem, 1);
@@ -1529,6 +1563,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
 
       target.hp = Math.max(0, target.hp - amount);
+      cancelExitCountdown(target); // recibir daño PvP cancela la salida
 
       const damage: Damage = {
         op: ServerToClientOp.Damage,
@@ -2853,6 +2888,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         // Daño PvP con báculo y defensa mágica del casco del objetivo.
         amount = spellDamage(s, spell, target);
         target.hp = Math.max(0, target.hp - amount);
+      cancelExitCountdown(target); // recibir daño PvP cancela la salida
         stopMeditating(target);
       } else if ((spell.agiBoostMax ?? spell.agiBoost ?? 0) > 0 || (spell.strBoostMax ?? spell.strBoost ?? 0) > 0) {
         // Celeridad / Fuerza sobre un aliado (o uno mismo): +RandomNumber(Min,Max).

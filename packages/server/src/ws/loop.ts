@@ -157,6 +157,7 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   // RandomNumber(MinDef,MaxDef) de la armadura en cada golpe.
   const amount = Math.max(1, rollNpcDamage(npc.type) - rollArmorDefenseFor(target.equippedArmor));
   target.hp = Math.max(0, target.hp - amount);
+  if (playerDamagedFn) playerDamagedFn(target); // recibir daño cancela la salida
 
   const damage: Damage = {
     op: ServerToClientOp.Damage,
@@ -213,6 +214,13 @@ type PlayerDeathFn = (victim: Session, killer: Session | null) => void;
 let playerDeathFn: PlayerDeathFn | null = null;
 export function setPlayerDeathHandler(fn: PlayerDeathFn): void {
   playerDeathFn = fn;
+}
+
+// Un jugador recibió daño de un NPC → cancela su cuenta regresiva de salida.
+type PlayerDamagedFn = (victim: Session) => void;
+let playerDamagedFn: PlayerDamagedFn | null = null;
+export function setPlayerDamagedHandler(fn: PlayerDamagedFn): void {
+  playerDamagedFn = fn;
 }
 
 // IA de mascota (FollowAmo del AO): asiste al objetivo del amo o lo sigue.
