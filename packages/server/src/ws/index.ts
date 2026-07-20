@@ -88,7 +88,7 @@ import {
   getItem,
   skillsForLevel,
 } from "@ao/shared";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { isOnChatCooldown, validateChatText } from "../chat/index.js";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
@@ -168,6 +168,7 @@ import {
   factionKills,
   factionRank,
   FACTION_ARMADA,
+  FACTION_CAOS,
 } from "../world/factions.js";
 import {
   canFoundGuild,
@@ -563,6 +564,16 @@ function notify(s: Session, text: string, wav?: number): void {
     ...(wav !== undefined ? { wav } : {}),
   };
   send(s.socket, pkt);
+}
+
+// Busca una sesión ONLINE por nombre de personaje (case-insensitive). Lo usan
+// muchos comandos GM (/echar, /donde, /curar, etc.).
+function findOnlineByName(name: string): Session | undefined {
+  const lower = name.trim().toLowerCase();
+  for (const t of sessions.all()) {
+    if (t.characterName.toLowerCase() === lower) return t;
+  }
+  return undefined;
 }
 
 // ── Salir del juego (/salir): instantáneo en zona segura, 10s en insegura ──────
@@ -3771,7 +3782,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sum|telepto|telep|teleport|delteleport|matarnpc)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|echar|carcel|silenciar|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3898,6 +3909,205 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "Teleport borrado.", "global");
         return;
       }
+
+      // ── Comandos GM extra (moderación / eventos / info / ajustes) ────────────
+      const gnow = Date.now();
+      // /ECHAR nombre — desconectar a un jugador.
+      const echar = /^\/echar\s+(.+)$/i.exec(text);
+      if (echar) {
+        const t = findOnlineByName(echar[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        consoleMsg(t, "Un GM te desconectó.", "global");
+        t.socket.close(CLOSE_NORMAL, "KICKED");
+        consoleMsg(s, `Echaste a ${t.characterName}.`, "global");
+        return;
+      }
+      // /CARCEL nombre [min] — inmoviliza (cárcel) por X minutos (def 5).
+      const carcel = /^\/carcel\s+(\S+)(?:\s+(\d+))?$/i.exec(text);
+      if (carcel) {
+        const t = findOnlineByName(carcel[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        const min = Math.max(1, Math.min(parseInt(carcel[2] ?? "5", 10) || 5, 1440));
+        t.immobilizedUntil = gnow + min * 60_000;
+        consoleMsg(t, `Fuiste encarcelado por ${min.toString()} minutos.`, "global");
+        consoleMsg(s, `Encarcelaste a ${t.characterName} por ${min.toString()} min.`, "global");
+        return;
+      }
+      // /SILENCIAR nombre [min] — mutea del chat (def 10).
+      const sil = /^\/silenciar\s+(\S+)(?:\s+(\d+))?$/i.exec(text);
+      if (sil) {
+        const t = findOnlineByName(sil[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        const min = Math.max(1, Math.min(parseInt(sil[2] ?? "10", 10) || 10, 1440));
+        t.silencedUntil = gnow + min * 60_000;
+        consoleMsg(t, `Fuiste silenciado por ${min.toString()} minutos.`, "global");
+        consoleMsg(s, `Silenciaste a ${t.characterName} por ${min.toString()} min.`, "global");
+        return;
+      }
+      // /BAN nombre · /UNBAN nombre — banea/desbanea la cuenta (por personaje).
+      const ban = /^\/(ban|unban)\s+(.+)$/i.exec(text);
+      if (ban) {
+        const banning = ban[1]!.toLowerCase() === "ban";
+        const name = ban[2]!.trim();
+        void (async () => {
+          const [ch] = await db
+            .select({ accountId: characters.accountId })
+            .from(characters)
+            .where(eq(sql`lower(${characters.name})`, name.toLowerCase()))
+            .limit(1);
+          if (!ch) { consoleMsg(s, "No existe ese personaje.", "global"); return; }
+          await db.update(accounts).set({ banned: banning }).where(eq(accounts.id, ch.accountId));
+          if (banning) {
+            const t = findOnlineByName(name);
+            if (t) { consoleMsg(t, "Fuiste baneado.", "global"); t.socket.close(CLOSE_NORMAL, "BANNED"); }
+          }
+          consoleMsg(s, `${banning ? "Baneaste" : "Desbaneaste"} la cuenta de ${name}.`, "global");
+        })();
+        return;
+      }
+      // /DONDE nombre — ubicación de un jugador.
+      const donde = /^\/donde\s+(.+)$/i.exec(text);
+      if (donde) {
+        const t = findOnlineByName(donde[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        consoleMsg(s, `${t.characterName} está en mapa ${t.mapId.toString()} (${t.position.x.toString()}, ${t.position.y.toString()}).`, "global");
+        return;
+      }
+      // /SUMTODOS — traer a TODOS los online a tu posición.
+      if (/^\/sumtodos\b/i.test(text)) {
+        let n = 0;
+        for (const t of sessions.all()) {
+          if (t.characterId === s.characterId) continue;
+          doGmTeleport(t, s.mapId, s.position.x, s.position.y);
+          n += 1;
+        }
+        consoleMsg(s, `Trajiste a ${n.toString()} jugador(es).`, "global");
+        return;
+      }
+      // /TELEALLTODOS mapa x y — teletransportar a TODOS a un lugar.
+      const teleall = /^\/telealltodos\s+(\d+)\s+(\d+)\s+(\d+)$/i.exec(text);
+      if (teleall) {
+        const m = parseInt(teleall[1]!, 10), tx = parseInt(teleall[2]!, 10), ty = parseInt(teleall[3]!, 10);
+        if (!getMap(m)) { consoleMsg(s, "Mapa inexistente.", "global"); return; }
+        let n = 0;
+        for (const t of sessions.all()) { doGmTeleport(t, m, tx, ty); n += 1; }
+        consoleMsg(s, `Teletransportaste a ${n.toString()} jugador(es) a mapa ${m.toString()}.`, "global");
+        return;
+      }
+      // /CURAR [nombre] — HP/maná/energía al máximo (a vos o a un jugador).
+      const curar = /^\/curar(?:\s+(\S+))?$/i.exec(text);
+      if (curar) {
+        const t = curar[1] ? findOnlineByName(curar[1]) : s;
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        t.hp = t.maxHp; t.mana = t.maxMana; t.sta = t.maxSta;
+        sendStatsUpdate(t);
+        consoleMsg(s, `Curaste a ${t.characterName}.`, "global");
+        if (t !== s) consoleMsg(t, "Un GM te curó.", "global");
+        return;
+      }
+      // /REVIVIR nombre — revivir a un muerto.
+      const revivir = /^\/revivir\s+(.+)$/i.exec(text);
+      if (revivir) {
+        const t = findOnlineByName(revivir[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        if (t.deadUntil === 0) { consoleMsg(s, "Ese jugador no está muerto.", "global"); return; }
+        revivePlayer(t);
+        consoleMsg(t, "Un GM te revivió.", "global");
+        consoleMsg(s, `Reviviste a ${t.characterName}.`, "global");
+        return;
+      }
+      // /MASSKILL — matar todas las criaturas del mapa actual.
+      if (/^\/masskill\b/i.test(text)) {
+        let n = 0;
+        for (const npc of npcs.inMap(s.mapId)) {
+          if (npc.deadUntil !== 0) continue;
+          if (!npc.type.attackable || npc.type.merchant || npc.type.banker) continue;
+          npc.hp = 0;
+          npc.deadUntil = gnow + npc.type.respawnMs;
+          npc.targetCharacterId = null;
+          broadcastToMap(npc.mapId, { op: ServerToClientOp.Death, id: npc.id as EntityId, wav: npcDeathSound(npc.type) });
+          n += 1;
+        }
+        consoleMsg(s, `Mataste ${n.toString()} criatura(s) del mapa.`, "global");
+        return;
+      }
+      // /LIMPIAR — borrar todos los items tirados del mapa.
+      if (/^\/limpiar\b/i.test(text)) {
+        let n = 0;
+        for (const g of groundItems.inMap(s.mapId)) {
+          groundItems.remove(g.id);
+          broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.id as EntityId });
+          n += 1;
+        }
+        consoleMsg(s, `Limpiaste ${n.toString()} item(s) del piso.`, "global");
+        return;
+      }
+      // /QUIENES — lista de online con nivel, clase y mapa.
+      if (/^\/quienes\b/i.test(text)) {
+        const all = [...sessions.all()];
+        consoleMsg(s, `Online (${all.length.toString()}):`, "global");
+        for (const t of all) {
+          const cls = getClass(t.classId)?.name ?? "";
+          consoleMsg(s, `• ${t.characterName} — Lv.${t.level.toString()} ${cls} — mapa ${t.mapId.toString()} (${t.position.x.toString()},${t.position.y.toString()})`, "global");
+        }
+        return;
+      }
+      // /INFO nombre — ficha de un jugador.
+      const info = /^\/info\s+(.+)$/i.exec(text);
+      if (info) {
+        const t = findOnlineByName(info[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        const cls = getClass(t.classId)?.name ?? "";
+        consoleMsg(s, `${t.characterName}: Lv.${t.level.toString()} ${cls} · Oro ${t.gold.toString()} · Facción ${t.faction.toString()} · ${isCriminal(t) ? "Criminal" : "Ciudadano"} · mapa ${t.mapId.toString()} (${t.position.x.toString()},${t.position.y.toString()}) · HP ${t.hp.toString()}/${t.maxHp.toString()}`, "global");
+        return;
+      }
+      // /SETFACCION nombre ciudadano|armada|caos — cambiar facción.
+      const setf = /^\/setfaccion\s+(\S+)\s+(ciudadano|armada|caos)$/i.exec(text);
+      if (setf) {
+        const t = findOnlineByName(setf[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        const f = setf[2]!.toLowerCase();
+        t.faction = f === "armada" ? FACTION_ARMADA : f === "caos" ? FACTION_CAOS : 0;
+        sendStatsUpdate(t);
+        // Actualiza el color del nombre (criminal/ciudadano) para los que lo ven.
+        broadcastToMap(t.mapId, { op: ServerToClientOp.CriminalUpdate, id: t.characterId as EntityId, criminal: isCriminal(t), expiresAt: 0 });
+        consoleMsg(s, `${t.characterName} ahora es ${f}.`, "global");
+        consoleMsg(t, `Un GM cambió tu facción a ${f}.`, "global");
+        return;
+      }
+      // /DAREXP nombre n — dar experiencia.
+      const darexp = /^\/darexp\s+(\S+)\s+(\d+)$/i.exec(text);
+      if (darexp) {
+        const t = findOnlineByName(darexp[1]!);
+        if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
+        const amt = Math.min(parseInt(darexp[2]!, 10) || 0, 2_000_000_000);
+        grantXp(t, amt);
+        consoleMsg(s, `Diste ${amt.toString()} exp a ${t.characterName}.`, "global");
+        consoleMsg(t, `Un GM te dio ${amt.toString()} de experiencia.`, "global");
+        return;
+      }
+      // /RENOMBRAR viejo nuevo — renombrar un personaje (se ve al reloguear).
+      const ren = /^\/renombrar\s+(\S+)\s+(\S+)$/i.exec(text);
+      if (ren) {
+        const oldName = ren[1]!, newName = ren[2]!.trim().slice(0, 32);
+        void (async () => {
+          const [taken] = await db
+            .select({ id: characters.id })
+            .from(characters)
+            .where(eq(sql`lower(${characters.name})`, newName.toLowerCase()))
+            .limit(1);
+          if (taken) { consoleMsg(s, "Ese nombre ya está en uso.", "global"); return; }
+          const res = await db
+            .update(characters)
+            .set({ name: newName })
+            .where(eq(sql`lower(${characters.name})`, oldName.toLowerCase()))
+            .returning({ id: characters.id });
+          if (res.length === 0) { consoleMsg(s, "No existe ese personaje.", "global"); return; }
+          consoleMsg(s, `Renombraste ${oldName} → ${newName}. (El jugador lo verá al reloguear.)`, "global");
+        })();
+        return;
+      }
+
       // /SUM nombre: traer a un jugador a mi posición.
       const sum = /^\/sum\s+(\S+)$/i.exec(text);
       if (sum) {
@@ -3989,7 +4199,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir", "global");
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir\n" +
+        "Extra: /echar <nombre> · /carcel <nombre> [min] · /silenciar <nombre> [min] · /ban <nombre> · /unban <nombre> · /donde <nombre> · /sumtodos · /telealltodos <mapa> <x> <y> · /curar [nombre] · /revivir <nombre> · /masskill · /limpiar · /quienes · /info <nombre> · /setfaccion <nombre> <ciudadano|armada|caos> · /darexp <nombre> <n> · /renombrar <viejo> <nuevo>", "global");
     }
 
     // /EST de AO Libre (SendUserStatsTxt): desglose completo en la consola.
@@ -4116,6 +4327,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
+      // Silenciado por un GM (/silenciar): no puede hablar en público.
+      if (s.silencedUntil > now) {
+        const secs = Math.ceil((s.silencedUntil - now) / 1000);
+        consoleMsg(s, `Estás silenciado por ${secs.toString()}s y no podés hablar.`, "combate");
+        return;
+      }
+
       const validation = validateChatText(chat.text);
       if (!validation.ok) {
         const err: ChatError = { op: ServerToClientOp.ChatError, reason: validation.reason };
@@ -4235,6 +4453,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!character) {
         sendLoginResponse(socket, false, "CHARACTER_NOT_FOUND");
         socket.close(CLOSE_AUTH_FAILED, "CHARACTER_NOT_FOUND");
+        return;
+      }
+
+      // Cuenta baneada por un GM (/ban): no puede entrar.
+      const [acct] = await db
+        .select({ banned: accounts.banned })
+        .from(accounts)
+        .where(eq(accounts.id, payload.accountId))
+        .limit(1);
+      if (acct?.banned) {
+        sendLoginResponse(socket, false, "BANNED");
+        socket.close(CLOSE_AUTH_FAILED, "BANNED");
         return;
       }
 

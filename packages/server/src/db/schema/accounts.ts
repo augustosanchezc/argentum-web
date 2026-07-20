@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, timestamp, index, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, timestamp, index, integer, boolean } from "drizzle-orm/pg-core";
 
 export const accounts = pgTable(
   "accounts",
@@ -10,6 +10,8 @@ export const accounts = pgTable(
     // 3 Dios/Admin. Los GMs (role > 0) tienen comandos in-game; el panel de
     // administración exige role 3 para mutaciones.
     role: integer("role").notNull().default(0),
+    // Cuenta baneada por un GM (/ban): no puede loguear.
+    banned: boolean("banned").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
