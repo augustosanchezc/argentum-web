@@ -3224,7 +3224,15 @@ export async function startGameScene(
 
   function handleEntitySpawn(p: EntitySpawn): void {
     const id = p.id as unknown as number;
-    if (entityVisuals.has(id)) return; // ya lo teniamos (MAP_DATA inicial)
+    const existing = entityVisuals.get(id);
+    if (existing) {
+      // Si ya lo teníamos con datos reales (MAP_DATA inicial), no tocamos nada.
+      // Pero si es un PLACEHOLDER ("?<id>", creado por un EntityUpdate que llegó
+      // antes que el spawn — race de reconexión), lo eliminamos y lo recreamos
+      // con los datos reales; si no, quedaba pegado como "?1000051 / Lv.1 Guerrero".
+      if (!existing.name.startsWith("?")) return;
+      removeEntity(id);
+    }
     addEntity(id, p.position, p.name, id === character.id, p.hp, p.maxHp, p.kind, p.direction, p.bodyId, p.headId, p.criminal ?? false, p.faction ?? 0, p.guild ?? null, p.weaponAnim ?? 0, p.shieldAnim ?? 0, p.helmetAnim ?? 0, p.role ?? 0, p.level ?? 1, p.classId ?? 1);
     if (p.dead) applyDeadVisual(id);
     if (p.invisible) applyInvisibleVisual(id);
