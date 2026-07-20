@@ -2,6 +2,7 @@ import { Application, Container, Graphics, Sprite, Text, TextStyle, type Texture
 import {
   ClientToServerOp,
   CLASSES,
+  golpeUsuario,
   getAoSpell,
   CLASS_SPELLBOOK,
   getClassSkill,
@@ -1566,8 +1567,6 @@ export async function startGameScene(
   // Nivel actual del personaje (para detectar subidas reales, no el StatsUpdate
   // inicial del login).
   let prevLevel = character.level;
-  // Puntos de atributo sin asignar del último StatsUpdate (para el delta al subir de nivel).
-  let prevStatPoints = 0;
   let lastLocalMoveAt = 0;
   let moveSequence = 0;
   // Alternador de sonido de pasos (23/24 como el cliente original).
@@ -3063,7 +3062,6 @@ export async function startGameScene(
     const dHp = p.maxHp - panelStats.maxHp;
     const dMana = (p.maxMana ?? 0) - panelStats.maxMana;
     const dSta = (p.maxSta ?? 0) - panelStats.maxSta;
-    const dPts = (p.statPoints ?? 0) - prevStatPoints;
     // Sincroniza HP propio (p. ej. curación al subir de nivel) y las barras.
     const own = entityVisuals.get(character.id);
     if (own) {
@@ -3095,18 +3093,29 @@ export async function startGameScene(
     pushPanelStats();
     statsPanel?.update(p);
     if (p.level > prevLevel) {
-      // Subir de nivel: aviso en el chat global con el desglose de lo ganado.
+      // Subir de nivel: aviso con el desglose de lo ganado, en AMARILLO y NEGRITA
+      // (definir `color` en el chat ⇒ fontWeight 700). Mostramos lo que sube con
+      // el nivel: vida, maná, energía y golpe (MinHIT/MaxHIT del AO). Los atributos
+      // en este port son fijos (AO Libre) → no se dan puntos, no se listan.
       audio.play(SND.nivel, 0.9);
+      const classId = entityVisuals.get(character.id)?.classId ?? p.classId ?? 1;
+      const dHit = golpeUsuario(classId, p.level).max - golpeUsuario(classId, prevLevel).max;
       const gains: string[] = [];
       if (dHp > 0) gains.push(`+${dHp.toString()} vida`);
       if (dMana > 0) gains.push(`+${dMana.toString()} maná`);
       if (dSta > 0) gains.push(`+${dSta.toString()} energía`);
-      if (dPts > 0) gains.push(`+${dPts.toString()} pts de atributo`);
+      if (dHit > 0) gains.push(`+${dHit.toString()} golpe`);
       const extra = gains.length > 0 ? ` — ${gains.join(" · ")}` : "";
-      chat?.appendMessage({ fromName: "", text: `¡Has subido a nivel ${p.level.toString()}!${extra}`, timestamp: Date.now(), isSelf: false, kind: "global" });
+      chat?.appendMessage({
+        fromName: "",
+        text: `¡Has subido a nivel ${p.level.toString()}!${extra}`,
+        timestamp: Date.now(),
+        isSelf: false,
+        kind: "global",
+        color: "#ffe23a",
+      });
       prevLevel = p.level;
     }
-    prevStatPoints = p.statPoints ?? 0;
     // Si la skill de clase no estaba seteada todavía, cargarla ahora.
     if (p.classId && p.classId !== 0 && classSkillId === 0) {
       const skill = getClassSkill(p.classId);
