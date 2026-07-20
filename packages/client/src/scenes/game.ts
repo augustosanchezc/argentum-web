@@ -1807,7 +1807,7 @@ export async function startGameScene(
     app.renderer.events.cursorStyles.pointer = on ? "crosshair" : "pointer";
     viewportBox.classList.toggle("ao-casting", on || selectedSpellId !== null || armedTool !== null);
     if (on) {
-      castBanner.textContent = "🏹 Flecha cargada — click en el objetivo · Esc cancela";
+      castBanner.textContent = "🏹 Arco listo — click en el objetivo para disparar";
       castBanner.classList.add("ao-castbanner--on");
     } else if (selectedSpellId === null && armedTool === null) {
       castBanner.classList.remove("ao-castbanner--on");
@@ -1890,9 +1890,10 @@ export async function startGameScene(
   }
 
   function clearSpellSelection(): void {
-    setArmedArrow(false);
     setArmedSpell(null);
     setArmedTool(null);
+    // El arco vuelve a "modo apuntar" si sigue equipado (no lo apaga Esc).
+    setArmedArrow(selfWeaponRanged);
     inventory?.clearSpellSelection();
   }
 
@@ -1974,19 +1975,17 @@ export async function startGameScene(
       const v = entityVisuals.get(entId);
       if (v) {
         const isOther = entId !== character.id;
-        // Flecha cargada: el click DISPARA al objetivo (jugador o criatura)
-        // y descarga (one-shot, como el casteo).
-        if (armedArrow && isOther && !v.dead) {
-          clickAttack(entId);
-          setArmedArrow(false);
-          return;
-        }
         if (isOther && e.altKey && v.kind === "player") {
           const pkt: PartyInviteRequest = { op: ClientToServerOp.PartyInvite, targetId: entId as unknown as EntityId };
           client.send(pkt);
         } else if (isOther && e.shiftKey && v.kind === "player") {
           const pkt: TradeRequestMsg = { op: ClientToServerOp.TradeRequest, targetId: entId as unknown as EntityId };
           client.send(pkt);
+        } else if (armedArrow && isOther && !v.dead) {
+          // Modo apuntar del arco: el click DISPARA (clickAttack maneja también
+          // comerciante/banquero → interactuar). Queda armado para seguir
+          // disparando mientras tengas el arco equipado.
+          clickAttack(entId);
         } else if (v.kind === "player") {
           // Click sobre un personaje (propio u otro): ver su info en el chat.
           const pkt: PlayerInfoRequest = { op: ClientToServerOp.PlayerInfo, targetId: entId as unknown as EntityId };
@@ -2677,7 +2676,12 @@ export async function startGameScene(
 
   function handleInventoryUpdate(p: InventoryUpdate): void {
     const wDef = p.equippedWeapon !== null ? getItem(p.equippedWeapon) : undefined;
+    const wasRanged = selfWeaponRanged;
     selfWeaponRanged = wDef?.ranged === true;
+    // Equipar un arco = "modo apuntar" automático: la cruz aparece en el
+    // cursor (igual que con un hechizo) para indicar que podés disparar.
+    // Desequiparlo lo apaga. Solo en la transición (no pisa otro casteo).
+    if (selfWeaponRanged !== wasRanged) setArmedArrow(selfWeaponRanged);
     inventory?.setData({
       gold: p.gold,
       slots: p.slots,
