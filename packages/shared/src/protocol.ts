@@ -145,6 +145,7 @@ export enum ServerToClientOp {
   MapTileUpdate = 0xf9,
   // Lluvia global (toggle de GM, como el /LLUVIA del AO).
   RainToggle = 0xfa,
+  GameConfig = 0xfb,
   // Whisper / chat privado
   WhisperReceived = 0xa2,
   // Criminal
@@ -884,6 +885,14 @@ export interface RainToggle {
   readonly raining: boolean;
 }
 
+// S→C: intervalos de jugabilidad editables desde el panel admin (ms). Se manda
+// al entrar al mundo y cada vez que el admin los cambia, para que el cliente
+// sincronice sus cooldowns locales (golpe melee, flechas) con el server EN VIVO.
+export interface GameConfigMsg {
+  readonly op: ServerToClientOp.GameConfig;
+  readonly intervals: Readonly<Record<string, number>>;
+}
+
 // S→C: un tile cambió (puertas del AO: nuevo GRH de capa 3 + bloqueo).
 // wav opcional (SND_PUERTA = 5).
 export interface MapTileUpdate {
@@ -1046,6 +1055,7 @@ export type ServerPacket =
   | GuildTagUpdate
   | MapTileUpdate
   | RainToggle
+  | GameConfigMsg
   | WhisperReceived
   | CriminalUpdate;
 export type AnyPacket = ClientPacket | ServerPacket;

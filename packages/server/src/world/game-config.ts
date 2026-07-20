@@ -32,6 +32,19 @@ export const INTERVAL_META: ReadonlyArray<{
 
 const KEY_SET = new Set<IntervalKey>(INTERVAL_META.map((m) => m.key));
 
+// Listener para avisar cuando cambian los intervalos (lo usa el ws para
+// re-broadcastear la config a los clientes conectados, y así sincronizar sus
+// cooldowns en vivo sin reloguear).
+let changeHandler: (() => void) | null = null;
+export function onIntervalsChanged(cb: () => void): void {
+  changeHandler = cb;
+}
+
+// Intervalos efectivos actuales (clave→ms) para mandar al cliente.
+export function currentIntervals(): Record<IntervalKey, number> {
+  return { ...INTERVALS };
+}
+
 // Carga inicial (al importar en el arranque).
 loadGameConfig();
 
@@ -87,10 +100,12 @@ export function setIntervals(patch: Record<string, unknown>): void {
     INTERVALS[m.key] = Math.max(m.min, Math.min(v, m.max));
   }
   persist();
+  changeHandler?.();
 }
 
 // Restaurar todo a los valores de AO Libre.
 export function resetIntervals(): void {
   for (const m of INTERVAL_META) INTERVALS[m.key] = DEFAULT_INTERVALS[m.key];
   persist();
+  changeHandler?.();
 }

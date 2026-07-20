@@ -33,6 +33,7 @@ import {
   type GuildTagUpdate,
   type MapTileUpdate,
   type RainToggle,
+  type GameConfigMsg,
   type EntityId,
   type EntitySpawn,
   type EntityUpdate,
@@ -152,6 +153,7 @@ import { tradeRegistry } from "../world/trade.js";
 import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel, MAX_LEVEL } from "../world/xp.js";
 import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
+import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
 import {
@@ -486,6 +488,19 @@ function sendStatsUpdate(s: Session): void {
   };
   send(s.socket, pkt);
 }
+
+// Intervalos de jugabilidad (editables en el panel) → cliente, para que sincronice
+// sus cooldowns locales (golpe/flechas) con el server. Se manda al entrar y en cada
+// cambio del admin.
+function sendGameConfig(s: Session): void {
+  const pkt: GameConfigMsg = { op: ServerToClientOp.GameConfig, intervals: currentIntervals() };
+  send(s.socket, pkt);
+}
+// Al cambiar los intervalos desde el panel, re-broadcastear a todos los conectados.
+onIntervalsChanged(() => {
+  const pkt: GameConfigMsg = { op: ServerToClientOp.GameConfig, intervals: currentIntervals() };
+  for (const s of sessions.all()) send(s.socket, pkt);
+});
 
 // Tope de oro: la columna `gold` es integer de Postgres (máx 2.147e9); topamos
 // en 2e9 para que ninguna suma (venta, quest, trade, /oro) desborde y corrompa
@@ -4283,6 +4298,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(map.id, spawn, session.id);
 
       sendStatsUpdate(session);
+      sendGameConfig(session); // sincroniza cooldowns del cliente con el panel
       sendInventoryUpdate(session);
       sendSpellsKnown(session);
       sendQuestState(session);

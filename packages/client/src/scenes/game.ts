@@ -47,6 +47,7 @@ import {
   type EntitySpawn,
   type EntityUpdate,
   type FactionUpdate,
+  type GameConfigMsg,
   type GuildTagUpdate,
   type MapTileUpdate,
   type GoHomeRequest,
@@ -1576,6 +1577,11 @@ export async function startGameScene(
   // Direccion a la que mira el personaje (define a quien golpea el ataque).
   let selfFacing: Direction = "south";
   let lastLocalAttackAt = 0;
+  // Cooldowns de ataque SINCRONIZADOS con el server (panel admin). Arrancan en el
+  // fallback local y se actualizan al recibir GameConfig (login + cada cambio del
+  // admin). Así el tempo del golpe/flecha refleja el intervalo del panel en vivo.
+  let serverMeleeMs = ATTACK_COOLDOWN_MS;
+  let serverArrowMs = 1400;
   const floaters: Floater[] = [];
 
   function tryStep(direction: Direction): void {
@@ -1644,7 +1650,7 @@ export async function startGameScene(
     const now = performance.now();
     // Paralizado no pega (sí puede castear Remover Parálisis).
     if (selfParalyzedUntil > now) return;
-    if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
+    if (now - lastLocalAttackAt < (selfWeaponRanged ? serverArrowMs : serverMeleeMs)) return;
     const own = entityVisuals.get(character.id);
     if (!own || own.dead) return;
 
@@ -1734,7 +1740,7 @@ export async function startGameScene(
     if (selfWeaponRanged && !armedArrow) return;
 
     const now = performance.now();
-    if (now - lastLocalAttackAt < ATTACK_COOLDOWN_MS) return;
+    if (now - lastLocalAttackAt < (selfWeaponRanged ? serverArrowMs : serverMeleeMs)) return;
     const own = entityVisuals.get(character.id);
     if (!own || own.dead || target.dead) return;
     const dx = target.position.x - own.position.x;
@@ -2519,6 +2525,9 @@ export async function startGameScene(
       case ServerToClientOp.RainToggle:
         setRaining(packet.raining);
         break;
+      case ServerToClientOp.GameConfig:
+        handleGameConfig(packet);
+        break;
       case ServerToClientOp.CriminalUpdate:
         handleCriminalUpdate(packet);
         break;
@@ -3000,6 +3009,15 @@ export async function startGameScene(
 
   // Criminal badge encima del propio personaje.
   let criminalBadge: HTMLElement | null = null;
+
+  // Intervalos del panel admin → cooldowns locales. Sincroniza el tempo de golpe
+  // melee (INTERVALS.melee) y de flechas (INTERVALS.arrow) con el server, en vivo.
+  function handleGameConfig(p: GameConfigMsg): void {
+    const melee = p.intervals.melee;
+    const arrow = p.intervals.arrow;
+    if (typeof melee === "number" && melee > 0) serverMeleeMs = melee;
+    if (typeof arrow === "number" && arrow > 0) serverArrowMs = arrow;
+  }
 
   function handleCriminalUpdate(p: CriminalUpdate): void {
     const id = p.id as unknown as number;
