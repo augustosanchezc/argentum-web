@@ -33,6 +33,12 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
+      # Overrides EDITABLES del panel admin (Ajustes/intervalos, criaturas, items)
+      # en un volumen persistente → sobreviven a los redeploy (antes se pisaban
+      # al reconstruir la imagen).
+      AO_OVERRIDES_DIR: /app/state
+    volumes:
+      - ao_overrides:/app/state
     depends_on:
       postgres:
         condition: service_healthy
@@ -117,3 +123,4 @@ volumes:
   redis_data:
   prometheus_data:
   grafana_data:
+  ao_overrides:

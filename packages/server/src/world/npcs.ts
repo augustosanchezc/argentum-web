@@ -1,9 +1,9 @@
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import type { Direction, Vector2 } from "@ao/shared";
 import { getMap, isWalkable, loadedMapIds } from "./maps.js";
 import { NPC_DEFS, type NpcDefData } from "./npcs.generated.js";
+import { overridePath, readOverrideOrSeed } from "./overrides-dir.js";
 
 export const NPC_ID_BASE = 1_000_000;
 
@@ -154,11 +154,14 @@ const typeCache = new Map<number, NpcType>();
 // sobreescribir campos por número; se guardan en un JSON y se mergean sobre la
 // base. Al editar se limpia el cache para que los NPCs que aparezcan después
 // usen los nuevos valores (los ya spawneados toman los cambios al respawnear).
-const OVERRIDES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../data/npc-overrides.json");
+const OVERRIDES_PATH = overridePath("npc-overrides.json");
 const npcOverrides = new Map<number, Partial<NpcDefData>>();
 try {
-  const obj = JSON.parse(readFileSync(OVERRIDES_PATH, "utf8")) as Record<string, Partial<NpcDefData>>;
-  for (const [k, v] of Object.entries(obj)) npcOverrides.set(Number(k), v);
+  const text = readOverrideOrSeed("npc-overrides.json");
+  if (text) {
+    const obj = JSON.parse(text) as Record<string, Partial<NpcDefData>>;
+    for (const [k, v] of Object.entries(obj)) npcOverrides.set(Number(k), v);
+  }
 } catch {
   // sin overrides todavía
 }

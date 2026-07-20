@@ -4,12 +4,12 @@
 // data/game-config.json y se cargan al arrancar. Borrando el JSON se vuelve al
 // balance original de AO.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { INTERVALS, DEFAULT_INTERVALS, type IntervalKey } from "./combat.js";
+import { overridePath, readOverrideOrSeed } from "./overrides-dir.js";
 
-const CONFIG_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../data/game-config.json");
+const CONFIG_PATH = overridePath("game-config.json");
 
 // Metadatos para el panel: etiqueta, descripción y rango válido (ms) por clave.
 export const INTERVAL_META: ReadonlyArray<{
@@ -37,7 +37,9 @@ loadGameConfig();
 
 function loadGameConfig(): void {
   try {
-    const obj = JSON.parse(readFileSync(CONFIG_PATH, "utf8")) as { intervals?: Partial<Record<IntervalKey, number>> };
+    const text = readOverrideOrSeed("game-config.json");
+    if (!text) return;
+    const obj = JSON.parse(text) as { intervals?: Partial<Record<IntervalKey, number>> };
     for (const [k, v] of Object.entries(obj.intervals ?? {})) {
       if (KEY_SET.has(k as IntervalKey) && typeof v === "number" && Number.isFinite(v)) {
         INTERVALS[k as IntervalKey] = v;

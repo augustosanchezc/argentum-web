@@ -5,17 +5,17 @@
 // modo que el combate/economía del server usa los valores efectivos y el
 // balance original queda intacto (borrando el JSON se vuelve al original).
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { loadItemOverrides, setItemOverride, getItemOverrides, type ItemDef } from "@ao/shared";
+import { overridePath, readOverrideOrSeed } from "./overrides-dir.js";
 
-const OVERRIDES_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "../../data/item-overrides.json");
+const OVERRIDES_PATH = overridePath("item-overrides.json");
 
 // Carga inicial (al importar este módulo en el arranque del server).
 try {
-  const obj = JSON.parse(readFileSync(OVERRIDES_PATH, "utf8")) as Record<string, Partial<ItemDef>>;
-  loadItemOverrides(obj);
+  const text = readOverrideOrSeed("item-overrides.json");
+  if (text) loadItemOverrides(JSON.parse(text) as Record<string, Partial<ItemDef>>);
 } catch {
   // sin overrides todavía
 }
