@@ -63,6 +63,7 @@ import {
   type TradeSetGoldMsg,
   type TradeUpdate,
   type UseItemRequest,
+  type ShootGroundRequest,
   type UseSkillRequest,
   type CastSpellRequest,
   type ConsoleMsg,
@@ -1034,6 +1035,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.CancelGoHome:
           handleCancelGoHome(session);
           break;
+        case ClientToServerOp.ShootGround:
+          handleShootGround(session, packet);
+          break;
         case ClientToServerOp.Work:
           handleWork(session, packet);
           break;
@@ -1274,6 +1278,45 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         (p) => p.x === s.position.x && p.y === s.position.y,
       );
       if (portal) doMapTransition(s, portal);
+    }
+
+    // Disparar una flecha al PISO (click en tile vacío): gasta 1 flecha y la
+    // deja en el suelo. Requiere arco equipado + munición + respetar el
+    // intervalo de flechas.
+    function handleShootGround(s: Session, pkt: ShootGroundRequest): void {
+      if (s.deadUntil !== 0) return;
+      const weapon = s.equippedWeapon !== null ? getItem(s.equippedWeapon) : undefined;
+      if (!weapon?.ranged || !weapon.needsAmmo) return;
+      const now = Date.now();
+      if (now - s.lastAttackAt < INTERVALS.arrow) return;
+      if (s.sta < 10) { consoleMsg(s, "Estás muy cansado para luchar.", "combate"); return; }
+      const arrowSlot = s.inventory.find((sl) => getItem(sl.item)?.type === "arrow" && sl.qty > 0);
+      if (!arrowSlot) { consoleMsg(s, "¡No tienes municiones!", "combate"); return; }
+      const map = getMap(s.mapId);
+      if (!map) return;
+      const x = Math.max(0, Math.min(Math.floor(pkt.x) || 0, map.width - 1));
+      const y = Math.max(0, Math.min(Math.floor(pkt.y) || 0, map.height - 1));
+      if (chebyshev(s.position, { x, y }) > RANGED_RANGE) return;
+
+      s.lastAttackAt = now;
+      s.sta = Math.max(0, s.sta - (1 + Math.floor(Math.random() * 10)));
+      breakInvisibility(s);
+      const removed = removeItem(s.inventory, arrowSlot.item, 1);
+      if (removed) s.inventory = removed;
+      sendInventoryUpdate(s);
+      // La flecha cae en el tile disparado (o el más cercano libre).
+      const pos = findDropTile(s.mapId, { x, y });
+      const g = groundItems.spawn(s.mapId, pos, arrowSlot.item, 1);
+      if (g.evictedId !== undefined) {
+        broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
+      }
+      broadcastToMap(s.mapId, {
+        op: ServerToClientOp.GroundItemSpawn,
+        id: g.id as EntityId,
+        position: { x: g.position.x, y: g.position.y },
+        item: g.item,
+        qty: 1,
+      } satisfies GroundItemSpawn);
     }
 
     // Preparación común del ataque físico (SistemaCombate.bas):

@@ -50,6 +50,7 @@ import {
   type MapTileUpdate,
   type GoHomeRequest,
   type CancelGoHomeRequest,
+  type ShootGroundRequest,
   type InteractRequest,
   type InventoryReorderRequest,
   type InventoryUpdate,
@@ -1644,11 +1645,26 @@ export async function startGameScene(
     const own = entityVisuals.get(character.id);
     if (!own || own.dead) return;
 
-    // Arco sin flecha cargada: la PRIMERA pulsación carga (cursor de cruz);
-    // con la flecha cargada, la tecla dispara en línea recta y el click
-    // dispara al objetivo.
-    if (selfWeaponRanged && !armedArrow) {
-      setArmedArrow(true);
+    // Arco: sin flecha cargada, la tecla CARGA (aparece la cruz). Con la
+    // flecha cargada, dispara al primer objetivo en línea recta y descarga.
+    if (selfWeaponRanged) {
+      if (!armedArrow) { nockArrow(); return; }
+      const delta = DELTAS[selfFacing];
+      let targetId: number | null = null;
+      for (let step = 1; step <= 10 && targetId === null; step += 1) {
+        const tx = own.position.x + delta.x * step;
+        const ty = own.position.y + delta.y * step;
+        for (const [id, v] of entityVisuals) {
+          if (id === character.id || v.dead) continue;
+          if (v.kind === "merchant" || v.kind === "banker") continue;
+          if (v.position.x === tx && v.position.y === ty) { targetId = id; break; }
+        }
+      }
+      if (targetId === null) return; // sin objetivo en línea: la cruz sigue
+      lastLocalAttackAt = now;
+      playSwing(own, selfFacing);
+      client.send({ op: ClientToServerOp.Attack, targetId: targetId as unknown as EntityId } satisfies AttackRequest);
+      setArmedArrow(false); // se gastó la flecha → descargar
       return;
     }
 
@@ -1658,23 +1674,15 @@ export async function startGameScene(
     playSwing(own, selfFacing);
     audio.play(SND.swing, 0.8);
 
-    // Objetivo vivo hacia el frente. Melee: el tile adyacente. Con ARCO: el
-    // primer objetivo en LÍNEA RECTA hasta 10 tiles (mismo alcance que un
-    // hechizo; la tecla de atacar solo detectaba adyacentes).
+    // Melee: objetivo vivo en el tile adyacente del frente.
     const delta = DELTAS[selfFacing];
-    const range = selfWeaponRanged ? 10 : 1;
+    const tx = own.position.x + delta.x;
+    const ty = own.position.y + delta.y;
     let targetId: number | null = null;
-    for (let step = 1; step <= range && targetId === null; step += 1) {
-      const tx = own.position.x + delta.x * step;
-      const ty = own.position.y + delta.y * step;
-      for (const [id, v] of entityVisuals) {
-        if (id === character.id || v.dead) continue;
-        if (v.kind === "merchant" || v.kind === "banker") continue;
-        if (v.position.x === tx && v.position.y === ty) {
-          targetId = id;
-          break;
-        }
-      }
+    for (const [id, v] of entityVisuals) {
+      if (id === character.id || v.dead) continue;
+      if (v.kind === "merchant" || v.kind === "banker") continue;
+      if (v.position.x === tx && v.position.y === ty) { targetId = id; break; }
     }
     if (targetId === null) return;
 
@@ -1807,7 +1815,7 @@ export async function startGameScene(
     app.renderer.events.cursorStyles.pointer = on ? "crosshair" : "pointer";
     viewportBox.classList.toggle("ao-casting", on || selectedSpellId !== null || armedTool !== null);
     if (on) {
-      castBanner.textContent = "🏹 Arco listo — click en el objetivo para disparar";
+      castBanner.textContent = "🏹 Flecha cargada — click para disparar · Esc cancela";
       castBanner.classList.add("ao-castbanner--on");
     } else if (selectedSpellId === null && armedTool === null) {
       castBanner.classList.remove("ao-castbanner--on");
@@ -1851,10 +1859,9 @@ export async function startGameScene(
       setArmedTool(item);
       return;
     }
-    // Flechas: usarlas CARGA la flecha (modo apuntar, cursor de cruz).
+    // Flechas: usarlas CARGA una flecha (aparece la cruz).
     if (getItem(item)?.type === "arrow") {
-      if (selfWeaponRanged) setArmedArrow(true);
-      else chat?.appendMessage({ fromName: "", text: "Necesitás un arco equipado para cargar flechas.", timestamp: Date.now(), isSelf: false, kind: "combate" });
+      nockArrow();
       return;
     }
     if (item === 389 || item === 565) {
@@ -1892,8 +1899,7 @@ export async function startGameScene(
   function clearSpellSelection(): void {
     setArmedSpell(null);
     setArmedTool(null);
-    // El arco vuelve a "modo apuntar" si sigue equipado (no lo apaga Esc).
-    setArmedArrow(selfWeaponRanged);
+    setArmedArrow(false); // Esc descarga la flecha
     inventory?.clearSpellSelection();
   }
 
@@ -1952,6 +1958,26 @@ export async function startGameScene(
     const ty = Math.floor(wy / TILE_SIZE);
     if (tx < 0 || ty < 0 || tx >= mapWidth || ty >= mapHeight) return;
 
+    // Flecha cargada (cruz): el click la dispara. Sobre un objetivo → daño +
+    // gasta flecha; sobre el piso vacío → la flecha cae al suelo y se gasta.
+    // En ambos casos la cruz DESAPARECE (hay que recargar).
+    if (armedArrow) {
+      const entId = entityAtWorldPoint(wx, wy) ?? entityAtTile(tx, ty);
+      const v = entId !== null ? entityVisuals.get(entId) : undefined;
+      if (v && (v.kind === "merchant" || v.kind === "banker")) {
+        clickAttack(entId!); // interactuar (comerciante/banquero): no dispara
+        return;
+      }
+      if (entId !== null && v && entId !== character.id && !v.dead) {
+        clickAttack(entId); // dispara al objetivo (server gasta la flecha)
+      } else {
+        // Piso vacío: la flecha se lanza y cae al suelo (se gasta).
+        client.send({ op: ClientToServerOp.ShootGround, x: tx, y: ty } satisfies ShootGroundRequest);
+      }
+      setArmedArrow(false);
+      return;
+    }
+
     // Hechizo armado: castea sobre la entidad clickeada (por sprite; si no,
     // por tile). One-shot como el AO.
     if (selectedSpellId !== null) {
@@ -1981,11 +2007,6 @@ export async function startGameScene(
         } else if (isOther && e.shiftKey && v.kind === "player") {
           const pkt: TradeRequestMsg = { op: ClientToServerOp.TradeRequest, targetId: entId as unknown as EntityId };
           client.send(pkt);
-        } else if (armedArrow && isOther && !v.dead) {
-          // Modo apuntar del arco: el click DISPARA (clickAttack maneja también
-          // comerciante/banquero → interactuar). Queda armado para seguir
-          // disparando mientras tengas el arco equipado.
-          clickAttack(entId);
         } else if (v.kind === "player") {
           // Click sobre un personaje (propio u otro): ver su info en el chat.
           const pkt: PlayerInfoRequest = { op: ClientToServerOp.PlayerInfo, targetId: entId as unknown as EntityId };
@@ -2673,15 +2694,30 @@ export async function startGameScene(
 
   // ¿El arma equipada es a distancia (arco)? — habilita el click-ataque lejano.
   let selfWeaponRanged = false;
+  let selfEquippedWeapon: number | null = null;
+  let selfHasArrows = false;
+
+  // Cargar UNA flecha (aparece la cruz). Requiere arco equipado + flechas.
+  // El próximo click en el mapa la dispara y descarga la cruz.
+  function nockArrow(): void {
+    if (!selfWeaponRanged) {
+      chat?.appendMessage({ fromName: "", text: "Necesitás un arco equipado.", timestamp: Date.now(), isSelf: false, kind: "combate" });
+      return;
+    }
+    if (!selfHasArrows) {
+      chat?.appendMessage({ fromName: "", text: "¡No tenés flechas!", timestamp: Date.now(), isSelf: false, kind: "combate" });
+      return;
+    }
+    setArmedArrow(true);
+  }
 
   function handleInventoryUpdate(p: InventoryUpdate): void {
     const wDef = p.equippedWeapon !== null ? getItem(p.equippedWeapon) : undefined;
-    const wasRanged = selfWeaponRanged;
     selfWeaponRanged = wDef?.ranged === true;
-    // Equipar un arco = "modo apuntar" automático: la cruz aparece en el
-    // cursor (igual que con un hechizo) para indicar que podés disparar.
-    // Desequiparlo lo apaga. Solo en la transición (no pisa otro casteo).
-    if (selfWeaponRanged !== wasRanged) setArmedArrow(selfWeaponRanged);
+    selfEquippedWeapon = p.equippedWeapon;
+    selfHasArrows = p.slots.some((s) => s.qty > 0 && getItem(s.item)?.type === "arrow");
+    // Si te quedaste sin flechas (o desequipaste el arco), se descarga la cruz.
+    if (armedArrow && (!selfWeaponRanged || !selfHasArrows)) setArmedArrow(false);
     inventory?.setData({
       gold: p.gold,
       slots: p.slots,
@@ -3293,9 +3329,15 @@ export async function startGameScene(
 
     inventory = mountInventory(sideCol, {
       onUse: (item) => {
-        // Doble-click del AO: usa los usables Y equipa el equipo (el server
-        // resuelve). Las herramientas/crafteo van por useItemAction.
         const def = getItem(item);
+        // Arco: si ya está equipado, "click en el arco" CARGA una flecha
+        // (cruz); si no, lo equipa. Para desequiparlo usá la tecla Equipar (E).
+        if (def?.type === "weapon" && def.ranged) {
+          if (selfEquippedWeapon === item) nockArrow();
+          else client?.send({ op: ClientToServerOp.UseItem, item } satisfies UseItemRequest);
+          return;
+        }
+        // Resto del equipo: equipar/desequipar (el server resuelve).
         if (def && EQUIP_TYPES.has(def.type)) {
           client?.send({ op: ClientToServerOp.UseItem, item } satisfies UseItemRequest);
           return;

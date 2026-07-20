@@ -67,6 +67,9 @@ export enum ClientToServerOp {
   SaveMacros = 0x65,
   // Cancelar el viaje al hogar en curso (para esperar a que otro te reviva).
   CancelGoHome = 0x66,
+  // Disparar una flecha al piso (click en tile vacío): gasta 1 flecha y la
+  // deja en el suelo.
+  ShootGround = 0x67,
   // Whisper
   WhisperSend = 0x21,
   // Party (E-4.3)
@@ -729,6 +732,14 @@ export interface CancelGoHomeRequest {
   readonly op: ClientToServerOp.CancelGoHome;
 }
 
+// C→S: disparar una flecha al piso (tile vacío) — gasta 1 flecha, la deja en
+// el suelo. Requiere arco equipado y munición.
+export interface ShootGroundRequest {
+  readonly op: ClientToServerOp.ShootGround;
+  readonly x: number;
+  readonly y: number;
+}
+
 // -- Trabajos (Trabajo.bas del AO) --
 
 // C→S: aplicar una herramienta sobre un tile (hacha→árbol, piquete→
@@ -973,6 +984,7 @@ export type ClientPacket =
   | CastSpellRequest
   | GoHomeRequest
   | CancelGoHomeRequest
+  | ShootGroundRequest
   | WorkRequest
   | CraftRequest
   | RestToggle
