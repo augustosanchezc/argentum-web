@@ -126,7 +126,9 @@ export const CLASSES: Record<number, ClassDef> = {
     str: 22, agi: 19, int: 20, con: 23, car: 20,
     baseHp: 26, hpPerLevel: 5,
     baseMp: 10, mpPerLevel: 4,
-    modVida: 9.5, hitPerLevel: 2, hitPerLevelOver35: 2, manaK: 1.5, aumentoSta: 15,
+    // AO Libre (CheckUserLevel, Modulo_UsUaRiOs.bas): AumentoHIT = 3 (≤35) / 1 (>35);
+    // AumentoMANA = 1×INT (manaK 1). Antes estaba 2/2 y manaK 1.5 (mal).
+    modVida: 9.5, hitPerLevel: 3, hitPerLevelOver35: 1, manaK: 1, aumentoSta: 15,
     allowedWeapons: ["sword", "mace"],
     allowedArmorTypes: ["heavy", "medium", "light"],
     startBodyId: 1, startHeadId: 1,
