@@ -1301,22 +1301,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       s.lastAttackAt = now;
       s.sta = Math.max(0, s.sta - (1 + Math.floor(Math.random() * 10)));
       breakInvisibility(s);
+      // Se gasta 1 flecha (se pierde — NO queda en el piso para recoger).
       const removed = removeItem(s.inventory, arrowSlot.item, 1);
       if (removed) s.inventory = removed;
       sendInventoryUpdate(s);
-      // La flecha cae en el tile disparado (o el más cercano libre).
-      const pos = findDropTile(s.mapId, { x, y });
-      const g = groundItems.spawn(s.mapId, pos, arrowSlot.item, 1);
-      if (g.evictedId !== undefined) {
-        broadcastToMap(s.mapId, { op: ServerToClientOp.GroundItemDespawn, id: g.evictedId as EntityId } satisfies GroundItemDespawn);
-      }
-      broadcastToMap(s.mapId, {
-        op: ServerToClientOp.GroundItemSpawn,
-        id: g.id as EntityId,
-        position: { x: g.position.x, y: g.position.y },
-        item: g.item,
-        qty: 1,
-      } satisfies GroundItemSpawn);
     }
 
     // Preparación común del ataque físico (SistemaCombate.bas):
