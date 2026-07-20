@@ -993,9 +993,13 @@ export async function startGameScene(
       const tex = equip.helmet(v.helmetAnim, dir);
       if (tex) {
         const sp = new Sprite(tex);
-        sp.anchor.set(0.5, 1);
+        // El casco (grh ~17x16) va alineado al TOPE de la cabeza (grh 17x50),
+        // no anclado abajo como la cabeza: si no, el casco corto queda al ras
+        // del cuello (parecía "en los pies"). Top-center sobre el tope de la
+        // cabeza = como el Draw_Grh del AO (mismo top-left que la cabeza).
+        sp.anchor.set(0.5, 0);
         sp.x = v.headSprite.x;
-        sp.y = v.headSprite.y;
+        sp.y = v.headSprite.y - v.headSprite.height;
         v.helmetSprite = sp;
         v.container.addChildAt(sp, v.container.getChildIndex(v.headSprite) + 1);
       } else missing = true;
