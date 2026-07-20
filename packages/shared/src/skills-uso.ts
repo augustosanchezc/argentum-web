@@ -104,9 +104,15 @@ export function initialSkillsFor(classId: number): SkillSet {
 export const SKILL_MAX_LEVEL = 34;
 
 // Skills escaladas por NIVEL: en este server las 21 skills suben junto con el
-// nivel (no por uso), de forma lineal, llegando a 100 en el nivel 34.
+// nivel (no por uso). Curva CÓNCAVA (raíz cuadrada): llega a 100 en el nivel 34
+// (SKILL_MAX_LEVEL) pero sube RÁPIDO al principio, para que entrenar los
+// primeros ~25 niveles no sea tan duro (antes era lineal y dejaba el golpe muy
+// bajo hasta media partida). Aplica igual a TODAS las clases; cada una conserva
+// sus propios números (modAtaque, golpe por nivel, agilidad) en las fórmulas de
+// combate. Ej: nivel 5 pasa de skill 15 a 38; nivel 17 de 50 a 71.
 export function skillsForLevel(level: number): SkillSet {
-  const v = Math.max(0, Math.min(100, Math.round((level / SKILL_MAX_LEVEL) * 100)));
+  const t = Math.max(0, Math.min(1, level / SKILL_MAX_LEVEL));
+  const v = Math.round(100 * Math.sqrt(t));
   const out = {} as SkillSet;
   for (const k of Object.keys(SKILL_NAMES) as SkillKey[]) out[k] = v;
   return out;
