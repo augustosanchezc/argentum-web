@@ -1652,11 +1652,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         // Oro: en AO el oro se dropea como item 12 de la tabla Drop (cada entrada
         // con su probabilidad). Lo enviamos directo a la bolsa del que mató. El
         // GiveGLD directo se mantiene para los pocos NPCs que lo usan.
+        // Además juntamos una línea por CADA probabilidad que se ejecutó (oro o
+        // item) para avisarle al que mató qué recompensa dio la criatura.
+        const rewardLines: string[] = [];
         let gold = rollNpcGold(npc.type);
+        if (gold > 0) rewardLines.push(`Has obtenido ${gold.toString()} de oro.`);
         for (const drop of npc.type.drops) {
           if (Math.random() >= drop.chance) continue;
           if (drop.item === GOLD_ITEM) {
             gold += drop.qty;
+            rewardLines.push(`Has obtenido ${drop.qty.toString()} de oro.`);
             continue;
           }
           // Cada item busca su propio tile libre — no se apilan (AO original).
@@ -1673,8 +1678,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
             qty: g.qty,
           };
           broadcastToMap(npc.mapId, spawnPkt);
+          const itemName = getItem(drop.item)?.name ?? `objeto ${drop.item.toString()}`;
+          rewardLines.push(`Has obtenido ${drop.qty.toString()} ${itemName}.`);
         }
         if (gold > 0) addGold(s, gold);
+        for (const line of rewardLines) consoleMsg(s, line, "combate");
 
         // (La XP ya se otorgó POR DAÑO en cada golpe — awardCombatXp.)
         sendInventoryUpdate(s);
