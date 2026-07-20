@@ -152,8 +152,9 @@ export function mountMacroBar(
   // Construye el contenido del selector para el slot i y lo muestra.
   function openPicker(i: number): void {
     const items = cb.getItems();
-    const usar = items.map((s) => getItem(s.item)).filter((d): d is ItemDef => !!d && !isEquip(d));
-    const equipar = items.map((s) => getItem(s.item)).filter((d): d is ItemDef => !!d && isEquip(d));
+    // El ARCO va a "Usar" (usarlo = cargar/disparar una flecha), no a Equipar.
+    const usar = items.map((s) => getItem(s.item)).filter((d): d is ItemDef => !!d && (!isEquip(d) || d.ranged === true));
+    const equipar = items.map((s) => getItem(s.item)).filter((d): d is ItemDef => !!d && isEquip(d) && d.ranged !== true);
     const spells = cb.getSpells().map((id) => getAoSpell(id)).filter((s): s is NonNullable<typeof s> => !!s);
 
     picker.replaceChildren();

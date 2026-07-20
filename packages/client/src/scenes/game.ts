@@ -2142,13 +2142,20 @@ export async function startGameScene(
       client?.send({ op: ClientToServerOp.Hide });
       return;
     }
-    // USAR objeto (U, UseInvItem del AO): solo items usables — pociones,
-    // comida, bebida, barcos, herramientas… El equipo NO se "usa".
+    // USAR objeto (U, UseInvItem del AO): pociones, comida, bebida, barcos,
+    // herramientas… y el ARCO (usarlo = cargar una flecha). El resto del
+    // equipo NO se "usa" (se equipa con E).
     if (e.code === keymap.use) {
       e.preventDefault();
       if (lastSelectedItem !== null) {
         const def = getItem(lastSelectedItem);
-        if (def && !EQUIP_TYPES.has(def.type)) useItemAction(lastSelectedItem);
+        if (def?.type === "weapon" && def.ranged) {
+          // Arco: "usar" = cargar flecha (si está equipado).
+          if (selfEquippedWeapon === lastSelectedItem) nockArrow();
+          else chat?.appendMessage({ fromName: "", text: "Equipá el arco (E) antes de cargar una flecha.", timestamp: Date.now(), isSelf: false, kind: "combate" });
+        } else if (def && !EQUIP_TYPES.has(def.type)) {
+          useItemAction(lastSelectedItem);
+        }
       }
       return;
     }
@@ -3453,7 +3460,11 @@ export async function startGameScene(
           // Equipo → equipar directo; usables → flujo Usar completo (las
           // herramientas arman el modo de trabajo, martillo abre herrería).
           const def = getItem(slot.id);
-          if (def && EQUIP_TYPES.has(def.type)) {
+          if (def?.type === "weapon" && def.ranged) {
+            // Arco: si está equipado, el macro CARGA una flecha; si no, equipa.
+            if (selfEquippedWeapon === slot.id) nockArrow();
+            else client?.send({ op: ClientToServerOp.UseItem, item: slot.id } satisfies UseItemRequest);
+          } else if (def && EQUIP_TYPES.has(def.type)) {
             client?.send({ op: ClientToServerOp.UseItem, item: slot.id } satisfies UseItemRequest);
           } else {
             useItemAction(slot.id);
