@@ -1907,12 +1907,22 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consumeOne(s, pkt.item);
           consoleMsg(s, "", "global", SND_BEBER);
         } else if (agiMax > 0 || strMax > 0) {
-          // Drogas del AO: Amarilla (+AGI, InvUsuario L1820) / Verde (+STR, L1843),
-          // bonus RandomNumber(Min, Max), temporales. Cap del AO (InvUsuario
-          // L1824/L1847): el atributo efectivo nunca supera el DOBLE del base,
-          // o sea el bonus no puede exceder el atributo base.
-          if (agiMax > 0) s.agiBonus = Math.min(randInt(def.agiBoostMin ?? def.agiBoost ?? agiMax, agiMax), s.agi);
-          if (strMax > 0) s.strBonus = Math.min(randInt(def.strBoostMin ?? def.strBoost ?? strMax, strMax), s.str);
+          // Drogas del AO: Amarilla (+AGI, InvUsuario.bas L1816) / Verde (+STR,
+          // L1839). Cada toma SUMA RandomNumber(Min,Max) al atributo ya (posible-
+          // mente) drogado y topea por MAXATRIBUTOS (40) y por el DOBLE del base
+          // (L1822/L1824). O sea: se ACUMULA entre pociones hasta el tope, no se
+          // re-tira de cero. El bonus se guarda aparte del base (agiBonus/strBonus).
+          const MAX_ATRIB = 40;
+          if (agiMax > 0) {
+            const roll = randInt(def.agiBoostMin ?? def.agiBoost ?? agiMax, agiMax);
+            const eff = Math.min(s.agi + s.agiBonus + roll, MAX_ATRIB, 2 * s.agi);
+            s.agiBonus = Math.max(0, eff - s.agi);
+          }
+          if (strMax > 0) {
+            const roll = randInt(def.strBoostMin ?? def.strBoost ?? strMax, strMax);
+            const eff = Math.min(s.str + s.strBonus + roll, MAX_ATRIB, 2 * s.str);
+            s.strBonus = Math.max(0, eff - s.str);
+          }
           s.buffUntil = Date.now() + (def.boostSeconds ?? 40) * 1000;
           consumeOne(s, pkt.item);
           consoleMsg(s, "", "global", SND_BEBER);
