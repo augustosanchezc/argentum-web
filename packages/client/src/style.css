@@ -3087,3 +3087,221 @@ html, body { background: #050506; height: 100%; }
   border-color: #d9b24a;
   box-shadow: inset 0 0 0 1px rgba(217, 178, 74, 0.5);
 }
+
+
+/* ==========================================================================
+   REDISEÑO web (landing / login / crear personaje) — handoff "MMO moderno".
+   Prefijo .lp- para NO colisionar con el HUD in-game. Tokens del handoff.
+   ========================================================================== */
+.lp-root {
+  --lp-bg: #070b13;
+  --lp-surface: #0b101c;
+  --lp-surface2: #0e1424;
+  --lp-blue: #4e8cff;
+  --lp-cyan: #2de0c8;
+  --lp-text: #fff;
+  --lp-body: #c3cde0;
+  --lp-muted: #7b87a3;
+  --lp-dim: #3d4a68;
+  --lp-error: #ff6b81;
+  --lp-line: rgba(78, 140, 255, 0.15);
+  --lp-border: rgba(78, 140, 255, 0.3);
+  --lp-border-strong: rgba(78, 140, 255, 0.4);
+  --lp-grad: linear-gradient(135deg, #4e8cff, #2de0c8);
+  --lp-stripes: repeating-linear-gradient(-45deg, #0b101c, #0b101c 14px, #0e1424 14px, #0e1424 28px);
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  overflow: auto;
+  font-family: "Chakra Petch", system-ui, sans-serif;
+  color: var(--lp-body);
+  background: var(--lp-bg);
+}
+.lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
+
+/* Header común (landing / login / crear) */
+.lp-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 44px; border-bottom: 1px solid var(--lp-line);
+}
+.lp-brand { display: flex; align-items: center; gap: 10px; }
+.lp-logo {
+  width: 30px; height: 30px; background: var(--lp-grad);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+}
+.lp-word { font-size: 18px; font-weight: 700; letter-spacing: 0.1em; color: var(--lp-text); }
+.lp-beta {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.1em; color: var(--lp-cyan);
+  border: 1px solid rgba(45, 224, 200, 0.4); padding: 2px 8px; border-radius: 2px; margin-left: 6px;
+}
+.lp-nav { display: flex; gap: 30px; font-size: 14px; font-weight: 600; letter-spacing: 0.08em; }
+.lp-nav a { color: var(--lp-muted); text-decoration: none; cursor: pointer; transition: color 0.15s ease; }
+.lp-nav a:hover { color: var(--lp-body); }
+.lp-nav a.active { color: var(--lp-blue); }
+.lp-backlink { text-decoration: none; font-size: 14px; font-weight: 600; letter-spacing: 0.06em; color: var(--lp-muted); cursor: pointer; background: none; border: 0; font-family: inherit; }
+.lp-backlink:hover { color: var(--lp-body); }
+
+/* Botones */
+.lp-cta {
+  display: inline-block; text-align: center; text-decoration: none; cursor: pointer;
+  font-family: inherit; font-size: 15px; font-weight: 700; letter-spacing: 0.08em;
+  color: #070b13; background: var(--lp-grad); border: 0; padding: 16px 36px;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  transition: filter 0.15s ease;
+}
+.lp-cta:hover:not(:disabled) { filter: brightness(1.12); }
+.lp-cta:disabled { opacity: 0.5; cursor: default; }
+.lp-cta--full { width: 100%; padding-left: 0; padding-right: 0; }
+.lp-btn-account {
+  text-decoration: none; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 700;
+  letter-spacing: 0.08em; color: #070b13; background: var(--lp-blue); border: 0; padding: 10px 22px;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: filter 0.15s ease;
+}
+.lp-btn-account:hover { filter: brightness(1.12); }
+.lp-ghost {
+  display: inline-block; text-align: center; text-decoration: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 600; letter-spacing: 0.06em;
+  color: var(--lp-body); background: transparent; border: 1px solid var(--lp-border-strong); padding: 15px 30px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.lp-ghost:hover { border-color: var(--lp-blue); color: var(--lp-text); }
+
+/* Inputs */
+.lp-field { display: flex; flex-direction: column; gap: 8px; }
+.lp-label { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--lp-muted); text-transform: uppercase; }
+.lp-input {
+  font-family: inherit; font-size: 15px; color: var(--lp-text); background: var(--lp-surface);
+  border: 1px solid var(--lp-border); padding: 14px 16px; outline: none; width: 100%;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.lp-input:focus { border-color: var(--lp-blue); box-shadow: 0 0 0 3px rgba(78, 140, 255, 0.15); }
+.lp-input::placeholder { color: var(--lp-dim); }
+.lp-error { color: var(--lp-error); font-size: 13px; }
+.lp-mono { font-family: "IBM Plex Mono", monospace; }
+
+/* Divisor "¿PRIMERA VEZ?" */
+.lp-divider { display: flex; align-items: center; gap: 12px; }
+.lp-divider span:first-child, .lp-divider span:last-child { flex: 1; height: 1px; background: var(--lp-line); }
+.lp-divider em { font-style: normal; font-size: 12px; color: var(--lp-dim); letter-spacing: 0.06em; }
+
+/* ── Landing ─────────────────────────────────────────────────────────────── */
+.lp-hero {
+  display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center;
+  padding: 72px 44px; background: radial-gradient(ellipse 60% 80% at 85% 20%, rgba(78, 140, 255, 0.12), transparent 60%);
+}
+.lp-status { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+.lp-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lp-cyan); box-shadow: 0 0 10px var(--lp-cyan); animation: lp-pulse 2s ease-in-out infinite; }
+.lp-dot--off { background: var(--lp-error); box-shadow: 0 0 10px var(--lp-error); animation: none; }
+@keyframes lp-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.lp-status-label { font-size: 13px; font-weight: 600; letter-spacing: 0.24em; color: var(--lp-cyan); }
+.lp-status-label--off { color: var(--lp-error); }
+.lp-h1 { margin: 0; font-size: 64px; font-weight: 700; line-height: 1.06; color: var(--lp-text); letter-spacing: -0.01em; }
+.lp-h1 span { color: var(--lp-blue); }
+.lp-lead { margin: 24px 0 0; font-size: 17px; line-height: 1.65; color: var(--lp-muted); max-width: 480px; }
+.lp-cta-row { display: flex; gap: 14px; margin-top: 36px; flex-wrap: wrap; }
+.lp-stats { display: flex; gap: 40px; margin-top: 44px; flex-wrap: wrap; }
+.lp-stat-num { font-size: 26px; font-weight: 700; color: var(--lp-text); }
+.lp-stat-lbl { font-size: 12px; letter-spacing: 0.1em; color: var(--lp-muted); }
+.lp-shot {
+  border: 1px solid var(--lp-border); box-shadow: 0 0 60px rgba(78, 140, 255, 0.12); height: 440px;
+  background: var(--lp-stripes); display: flex; align-items: center; justify-content: center;
+}
+.lp-shot span { font-family: "IBM Plex Mono", monospace; font-size: 13px; color: var(--lp-dim); }
+.lp-features { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--lp-line); border-top: 1px solid var(--lp-line); }
+.lp-feature { background: var(--lp-bg); padding: 30px 28px; }
+.lp-feature h3 { margin: 0 0 8px; font-size: 15px; font-weight: 700; color: var(--lp-text); }
+.lp-feature.lp-feature--accent h3 { color: var(--lp-cyan); }
+.lp-feature p { margin: 0; font-size: 14px; line-height: 1.55; color: var(--lp-muted); }
+.lp-feature a { color: var(--lp-blue); text-decoration: none; }
+
+/* ── Login ───────────────────────────────────────────────────────────────── */
+.lp-two-col { flex: 1; display: grid; grid-template-columns: 1fr 1fr; align-items: stretch; min-height: 760px; }
+.lp-visual {
+  border-right: 1px solid var(--lp-line);
+  background: radial-gradient(ellipse 80% 60% at 30% 40%, rgba(78, 140, 255, 0.1), transparent 65%), var(--lp-stripes);
+  display: flex; flex-direction: column; justify-content: flex-end; padding: 44px;
+}
+.lp-visual .lp-mono { font-size: 13px; color: var(--lp-dim); margin-bottom: auto; margin-top: 24px; }
+.lp-eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.24em; color: var(--lp-cyan); margin-bottom: 10px; }
+.lp-visual-title { font-size: 34px; font-weight: 700; line-height: 1.15; color: var(--lp-text); }
+.lp-formcol { display: flex; align-items: center; justify-content: center; padding: 60px 44px; }
+.lp-form { width: 400px; max-width: 100%; display: flex; flex-direction: column; gap: 22px; }
+.lp-form h1 { margin: 0; font-size: 32px; font-weight: 700; color: var(--lp-text); }
+.lp-form-sub { margin: 8px 0 0; font-size: 14px; color: var(--lp-muted); }
+.lp-label-row { display: flex; justify-content: space-between; align-items: baseline; }
+.lp-link { font-size: 12px; color: var(--lp-blue); text-decoration: none; cursor: pointer; background: none; border: 0; font-family: inherit; padding: 0; }
+.lp-consent { font-size: 13px; color: var(--lp-muted); line-height: 1.5; display: flex; gap: 8px; align-items: flex-start; }
+.lp-consent a { color: var(--lp-blue); }
+.lp-consent input { margin-top: 3px; accent-color: var(--lp-blue); }
+
+/* ── Crear personaje ─────────────────────────────────────────────────────── */
+.lp-stepper { display: flex; align-items: center; gap: 14px; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; }
+.lp-stepper .done { color: var(--lp-cyan); }
+.lp-stepper .active { color: var(--lp-blue); }
+.lp-stepper .pending { color: var(--lp-dim); }
+.lp-stepper i { width: 24px; height: 1px; background: var(--lp-border); }
+.lp-create { display: grid; grid-template-columns: 1fr 380px; gap: 44px; padding: 44px; align-items: start; }
+.lp-create-main { display: flex; flex-direction: column; gap: 32px; }
+.lp-title { margin: 0; font-size: 34px; font-weight: 700; color: var(--lp-text); }
+.lp-title-sub { margin: 8px 0 0; font-size: 14px; color: var(--lp-muted); }
+.lp-group { display: flex; flex-direction: column; gap: 12px; }
+.lp-classes { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.lp-class {
+  border: 1px solid rgba(78, 140, 255, 0.2); padding: 16px 14px; cursor: pointer; background: transparent;
+  text-align: left; font-family: inherit; transition: border-color 0.15s ease, background 0.15s ease;
+}
+.lp-class:hover { border-color: rgba(78, 140, 255, 0.5); }
+.lp-class.sel { border-color: var(--lp-blue); background: rgba(78, 140, 255, 0.1); }
+.lp-class-name { font-size: 15px; font-weight: 700; color: var(--lp-body); }
+.lp-class.sel .lp-class-name { color: var(--lp-text); }
+.lp-class-role { font-size: 12px; color: var(--lp-muted); margin-top: 4px; }
+.lp-rowcols { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+.lp-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.lp-pill {
+  font-family: inherit; font-size: 13px; font-weight: 600; color: var(--lp-body);
+  border: 1px solid var(--lp-border); background: transparent; padding: 7px 15px; cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+.lp-pill:hover { border-color: rgba(78, 140, 255, 0.55); }
+.lp-pill.sel { color: #070b13; background: var(--lp-blue); border-color: var(--lp-blue); }
+.lp-side { display: flex; flex-direction: column; gap: 16px; }
+.lp-preview {
+  border: 1px solid var(--lp-border); box-shadow: 0 0 40px rgba(78, 140, 255, 0.1); min-height: 300px;
+  background: var(--lp-stripes); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 16px;
+}
+.lp-preview .lp-mono { font-size: 12px; color: var(--lp-dim); }
+.lp-head-sel { display: flex; align-items: center; gap: 12px; }
+.lp-head-arrow {
+  font-family: inherit; font-size: 14px; color: var(--lp-body); background: var(--lp-surface);
+  border: 1px solid var(--lp-border); width: 30px; height: 30px; cursor: pointer;
+}
+.lp-head-arrow:hover { border-color: var(--lp-blue); }
+.lp-head-lbl { font-size: 12px; letter-spacing: 0.1em; color: var(--lp-muted); }
+.lp-attrs { border: 1px solid var(--lp-line); padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.lp-attrs-title { font-size: 12px; font-weight: 600; letter-spacing: 0.12em; color: var(--lp-muted); text-transform: uppercase; }
+.lp-attr { display: flex; justify-content: space-between; font-size: 14px; }
+.lp-attr span:first-child { color: var(--lp-muted); }
+.lp-attr span:last-child { color: var(--lp-text); font-weight: 600; }
+.lp-note { font-size: 11px; color: var(--lp-dim); letter-spacing: 0.04em; }
+
+/* Personajes existentes (lista + jugar) */
+.lp-chars { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.lp-char {
+  border: 1px solid rgba(78, 140, 255, 0.2); background: var(--lp-surface); padding: 14px; cursor: pointer;
+  text-align: center; font-family: inherit; display: flex; flex-direction: column; align-items: center; gap: 4px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.lp-char:hover { border-color: rgba(78, 140, 255, 0.5); }
+.lp-char.sel { border-color: var(--lp-blue); background: rgba(78, 140, 255, 0.1); }
+.lp-char-name { font-size: 15px; font-weight: 700; color: var(--lp-text); }
+.lp-char-meta { font-size: 12px; color: var(--lp-muted); }
+
+@media (max-width: 900px) {
+  .lp-hero, .lp-two-col, .lp-create { grid-template-columns: 1fr; }
+  .lp-features { grid-template-columns: repeat(2, 1fr); }
+  .lp-h1 { font-size: 44px; }
+  .lp-nav { display: none; }
+  .lp-header { padding: 14px 20px; }
+  .lp-hero, .lp-create { padding: 32px 20px; }
+}

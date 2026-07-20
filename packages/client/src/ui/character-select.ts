@@ -42,8 +42,8 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
   let fClass = 1;
   let fHead = RACES[1]!.heads[1][0];
 
-  const card = document.createElement("div");
-  card.className = "card card-wide fade-in";
+  const wrap = document.createElement("div");
+  wrap.className = "lp-root";
 
   function headRange(): readonly [number, number] {
     return RACES[fRace]!.heads[fGender === 2 ? 2 : 1];
@@ -91,7 +91,7 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
   async function onCreate(btn: HTMLButtonElement): Promise<void> {
     if (!fName.trim()) { setError("INVALID_NAME"); return; }
     btn.disabled = true;
-    btn.textContent = "Creando...";
+    btn.textContent = "CREANDO...";
     setError(null);
     try {
       clampHead();
@@ -109,101 +109,163 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
       setError(err instanceof ApiError ? err.code : "UNKNOWN_ERROR");
     } finally {
       btn.disabled = false;
-      btn.textContent = "Crear personaje";
+      btn.textContent = "CREAR PERSONAJE";
     }
   }
 
   function render(): void {
     if (loading) {
-      card.innerHTML = `<div class="brand"><div class="brand-title">AoTum</div><div class="brand-sub">Cargando personajes...</div></div>`;
+      wrap.innerHTML = `
+        <div class="lp-header">
+          <div class="lp-brand"><div class="lp-logo"></div><span class="lp-word">AOTUM</span><span class="lp-beta">BETA</span></div>
+        </div>
+        <div class="lp-create"><div class="lp-title-sub" style="padding:44px">Cargando personajes...</div></div>`;
       return;
     }
     clampHead();
     const canCreate = characters.length < MAX_CHARS;
     const selected = characters.find((c) => c.id === selectedId);
     const attrs = raceAttributes(fRace);
+    const raceName = RACES[fRace]?.name ?? "";
+    const className = CLASSES[fClass]?.name ?? "";
 
+    // Personajes existentes (no está en el diseño, pero el flujo lo requiere).
     const charsHtml = characters.map((c) => {
       const cls = CLASSES[c.classId ?? 1];
-      const spr = spritesReady ? charSpriteHtml(c.bodyId ?? 21, c.headId ?? 1, 1, 66) : "";
+      const spr = spritesReady ? charSpriteHtml(c.bodyId ?? 21, c.headId ?? 1, 1, 60) : "";
       return `
-        <div class="char-card${c.id === selectedId ? " selected" : ""}" data-id="${c.id}">
+        <button type="button" class="lp-char${c.id === selectedId ? " sel" : ""}" data-id="${c.id.toString()}">
           ${spr}
-          <div class="char-name">${escapeHtml(c.name)}</div>
-          <div class="char-level">Nv ${c.level.toString()}${cls ? ` · ${escapeHtml(cls.name)}` : ""}</div>
-          <div class="char-meta">${RACES[c.race ?? 1]?.name ?? ""}</div>
-        </div>`;
+          <div class="lp-char-name">${escapeHtml(c.name)}</div>
+          <div class="lp-char-meta">Nv ${c.level.toString()}${cls ? ` · ${escapeHtml(cls.name)}` : ""}</div>
+        </button>`;
     }).join("");
 
-    const emptySlots = Array.from({ length: MAX_CHARS - characters.length }, () => `
-      <div class="char-card empty"><div class="char-name">— vacío —</div><div class="char-meta">slot libre</div></div>`).join("");
+    const existingSection = characters.length
+      ? `<div class="lp-group">
+           <label class="lp-label">TUS PERSONAJES</label>
+           <div class="lp-chars">${charsHtml}</div>
+         </div>`
+      : "";
 
-    const optBtns = (items: [number, string, string?][], sel: number, attr: string): string =>
-      items.map(([id, label, title]) => `<button type="button" class="opt-btn${id === sel ? " active" : ""}" data-${attr}="${id.toString()}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</button>`).join("");
+    // Grilla de clases reales (7). Diseño: repeat(4,1fr), tarjeta nombre + rol.
+    const classCards = Object.values(CLASSES).map((c) => `
+      <button type="button" class="lp-class${c.id === fClass ? " sel" : ""}" data-class="${c.id.toString()}">
+        <div class="lp-class-name">${escapeHtml(c.name)}</div>
+        <div class="lp-class-role">${escapeHtml(c.description)}</div>
+      </button>`).join("");
 
-    const createPanel = canCreate ? `
-      <div class="create-panel">
-        <div class="create-preview">
-          ${spritesReady ? charSpriteHtml(previewBody(), fHead, 2.4, 150) : ""}
-          <div class="head-selector">
-            <button type="button" class="opt-btn head-arrow" data-head="-1">◀</button>
-            <span class="head-lbl">Cabeza</span>
-            <button type="button" class="opt-btn head-arrow" data-head="1">▶</button>
+    const racePills = Object.values(RACES).map((r) => `
+      <button type="button" class="lp-pill${r.id === fRace ? " sel" : ""}" data-race="${r.id.toString()}" title="${escapeHtml(r.description)}">${escapeHtml(r.name)}</button>`).join("");
+
+    const genderPills = [1, 2].map((g) => `
+      <button type="button" class="lp-pill${g === fGender ? " sel" : ""}" data-gender="${g.toString()}">${escapeHtml(GENDERS[g] ?? (g === 2 ? "Mujer" : "Hombre"))}</button>`).join("");
+
+    const createFields = canCreate ? `
+      <div class="lp-group">
+        <label class="lp-label" for="create-name">NOMBRE</label>
+        <input class="lp-input" id="create-name" type="text" minlength="3" maxlength="16" value="${escapeHtml(fName)}"
+               placeholder="Elegí un nombre único" autocomplete="off" style="max-width:420px" />
+      </div>
+      <div class="lp-group">
+        <label class="lp-label">CLASE</label>
+        <div class="lp-classes">${classCards}</div>
+      </div>
+      <div class="lp-rowcols">
+        <div class="lp-group">
+          <label class="lp-label">RAZA</label>
+          <div class="lp-pills">${racePills}</div>
+        </div>
+        <div class="lp-group">
+          <label class="lp-label">GÉNERO</label>
+          <div class="lp-pills">${genderPills}</div>
+        </div>
+      </div>`
+      : `<div class="lp-title-sub">Llegaste al máximo de ${MAX_CHARS.toString()} personajes. Elegí uno para jugar.</div>`;
+
+    // Atributos fijos por raza (fieles al AO original): panel de solo lectura,
+    // sin "tirar dados". Se recalcula al cambiar de raza.
+    const attrRows = [
+      ["Fuerza", attrs.str],
+      ["Agilidad", attrs.agi],
+      ["Inteligencia", attrs.int],
+      ["Carisma", attrs.car],
+      ["Constitución", attrs.con],
+    ].map(([label, val]) => `<div class="lp-attr"><span>${label as string}</span><span>${(val as number).toString()}</span></div>`).join("");
+
+    wrap.innerHTML = `
+      <div class="lp-header">
+        <div class="lp-brand"><div class="lp-logo"></div><span class="lp-word">AOTUM</span><span class="lp-beta">BETA</span></div>
+        <div class="lp-stepper">
+          <span class="done">01 CUENTA</span><i></i>
+          <span class="active">02 PERSONAJE</span><i></i>
+          <span class="pending">03 JUGAR</span>
+        </div>
+        <button type="button" class="lp-backlink" id="logout-btn">Salir</button>
+      </div>
+
+      <div class="lp-create">
+        <div class="lp-create-main">
+          <div>
+            <h1 class="lp-title">Creá tu personaje</h1>
+            <p class="lp-title-sub">Datos y balance idénticos al Argentum Online original.</p>
           </div>
-          <div class="attr-line">FUE ${attrs.str.toString()} · AGI ${attrs.agi.toString()} · INT ${attrs.int.toString()} · CON ${attrs.con.toString()} · CAR ${attrs.car.toString()}</div>
+          ${error ? `<div class="lp-error">${humanize(error)}</div>` : ""}
+          ${existingSection}
+          ${createFields}
         </div>
-        <div class="create-form">
-          <input id="create-name" type="text" minlength="3" maxlength="16" value="${escapeHtml(fName)}"
-                 placeholder="nombre (3-16, sin espacios)" autocomplete="off" />
-          <div class="opt-group"><span class="opt-lbl">Género</span><div class="opt-row">${optBtns([[1, GENDERS[1] ?? "Hombre"], [2, GENDERS[2] ?? "Mujer"]], fGender, "gender")}</div></div>
-          <div class="opt-group"><span class="opt-lbl">Raza</span><div class="opt-row">${optBtns(Object.values(RACES).map((r) => [r.id, r.name, r.description] as [number, string, string]), fRace, "race")}</div></div>
-          <div class="opt-group"><span class="opt-lbl">Clase</span><div class="opt-row">${optBtns(Object.values(CLASSES).map((c) => [c.id, c.name, c.description] as [number, string, string]), fClass, "class")}</div></div>
-          <div class="opt-desc">${escapeHtml(RACES[fRace]?.description ?? "")}<br>${escapeHtml(CLASSES[fClass]?.description ?? "")}</div>
-          <button type="button" class="button" id="create-btn">Crear personaje</button>
+
+        <div class="lp-side">
+          <div class="lp-preview">
+            ${spritesReady ? charSpriteHtml(previewBody(), fHead, 2.4, 150) : `<span class="lp-mono">[ sprite del personaje ]</span>`}
+            ${canCreate ? `
+            <div class="lp-head-sel">
+              <button type="button" class="lp-head-arrow" data-head="-1">◀</button>
+              <span class="lp-head-lbl">CABEZA</span>
+              <button type="button" class="lp-head-arrow" data-head="1">▶</button>
+            </div>` : ""}
+          </div>
+
+          <div class="lp-attrs">
+            <div class="lp-attrs-title">ATRIBUTOS · ${escapeHtml(className.toUpperCase())} ${escapeHtml(raceName.toUpperCase())}</div>
+            ${attrRows}
+            <div class="lp-note">Atributos fijos según raza — fieles al AO original.</div>
+          </div>
+
+          ${canCreate ? `<button type="button" class="lp-cta lp-cta--full" id="create-btn">CREAR PERSONAJE</button>` : ""}
+          <button type="button" class="lp-cta lp-cta--full" id="play-btn" ${selected ? "" : "disabled"}>${selected ? `JUGAR CON ${escapeHtml(selected.name.toUpperCase())}` : "ELEGÍ UN PERSONAJE"}</button>
         </div>
-      </div>` : `<div class="muted">Llegaste al máximo de ${MAX_CHARS.toString()} personajes.</div>`;
+      </div>
+    `;
 
-    card.innerHTML = `
-      <div class="brand"><div class="brand-title">Tus personajes</div><div class="brand-sub">elegí uno o creá uno nuevo (hasta ${MAX_CHARS.toString()})</div></div>
-      ${error ? `<div class="error-msg">${humanize(error)}</div>` : ""}
-      <div class="chars-grid">${charsHtml}${emptySlots}</div>
-      ${createPanel}
-      <div class="divider">acción</div>
-      <div class="char-actions">
-        <button type="button" class="button button-secondary" id="logout-btn">Cerrar sesión</button>
-        <button type="button" class="button" id="play-btn" ${selected ? "" : "disabled"}>${selected ? `Jugar con ${escapeHtml(selected.name)}` : "Elegí un personaje"}</button>
-      </div>`;
-
-    // Wiring
-    card.querySelectorAll<HTMLDivElement>(".char-card[data-id]").forEach((el) => {
+    // Wiring — personajes existentes.
+    wrap.querySelectorAll<HTMLButtonElement>(".lp-char[data-id]").forEach((el) => {
       el.addEventListener("click", () => {
         const id = Number.parseInt(el.dataset.id ?? "", 10);
         if (!Number.isNaN(id)) { selectedId = id; render(); }
       });
     });
 
-    const nameInput = card.querySelector<HTMLInputElement>("#create-name");
+    // Wiring — formulario de creación.
+    const nameInput = wrap.querySelector<HTMLInputElement>("#create-name");
     if (nameInput) {
       nameInput.addEventListener("input", () => { fName = nameInput.value; });
     }
-    card.querySelectorAll<HTMLButtonElement>("[data-gender]").forEach((b) => b.addEventListener("click", () => { fGender = Number(b.dataset.gender); clampHead(); render(); }));
-    card.querySelectorAll<HTMLButtonElement>("[data-race]").forEach((b) => b.addEventListener("click", () => { fRace = Number(b.dataset.race); clampHead(); render(); }));
-    card.querySelectorAll<HTMLButtonElement>("[data-class]").forEach((b) => b.addEventListener("click", () => { fClass = Number(b.dataset.class); render(); }));
-    card.querySelectorAll<HTMLButtonElement>("[data-head]").forEach((b) => b.addEventListener("click", () => { cycleHead(Number(b.dataset.head)); render(); }));
-    card.querySelector<HTMLButtonElement>("#create-btn")?.addEventListener("click", (ev) => { ev.preventDefault(); void onCreate(ev.currentTarget as HTMLButtonElement); });
+    wrap.querySelectorAll<HTMLButtonElement>("[data-gender]").forEach((b) => b.addEventListener("click", () => { fGender = Number(b.dataset.gender); clampHead(); render(); }));
+    wrap.querySelectorAll<HTMLButtonElement>("[data-race]").forEach((b) => b.addEventListener("click", () => { fRace = Number(b.dataset.race); clampHead(); render(); }));
+    wrap.querySelectorAll<HTMLButtonElement>("[data-class]").forEach((b) => b.addEventListener("click", () => { fClass = Number(b.dataset.class); render(); }));
+    wrap.querySelectorAll<HTMLButtonElement>("[data-head]").forEach((b) => b.addEventListener("click", () => { cycleHead(Number(b.dataset.head)); render(); }));
+    wrap.querySelector<HTMLButtonElement>("#create-btn")?.addEventListener("click", (ev) => { ev.preventDefault(); void onCreate(ev.currentTarget as HTMLButtonElement); });
 
-    card.querySelector<HTMLButtonElement>("#logout-btn")?.addEventListener("click", () => { cb.onLogout(); });
-    card.querySelector<HTMLButtonElement>("#play-btn")?.addEventListener("click", () => { if (selected) cb.onPlay(selected); });
+    wrap.querySelector<HTMLButtonElement>("#logout-btn")?.addEventListener("click", () => { cb.onLogout(); });
+    wrap.querySelector<HTMLButtonElement>("#play-btn")?.addEventListener("click", () => { if (selected) cb.onPlay(selected); });
   }
 
-  const overlay = document.createElement("div");
-  overlay.className = "overlay";
-  overlay.appendChild(card);
-  root.appendChild(overlay);
+  root.appendChild(wrap);
 
   void load();
 
-  return () => { overlay.remove(); };
+  return () => { wrap.remove(); };
 }
 
 function escapeHtml(s: string): string {

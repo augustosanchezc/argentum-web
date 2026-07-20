@@ -35,71 +35,100 @@ function humanize(code: string): string {
 export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => void {
   let mode: Mode = "login";
 
-  const card = document.createElement("div");
-  card.className = "card card-narrow fade-in";
+  const wrap = document.createElement("div");
+  wrap.className = "lp-root";
 
   function render(): void {
     const isLogin = mode === "login";
-    card.innerHTML = `
-      <div class="brand">
-        <div class="brand-title">AoTum</div>
-        <div class="brand-sub">${isLogin ? "Iniciar sesión" : "Crear cuenta"}</div>
+    wrap.innerHTML = `
+      <div class="lp-header">
+        <div class="lp-brand">
+          <div class="lp-logo"></div>
+          <span class="lp-word">AOTUM</span>
+          <span class="lp-beta">BETA</span>
+        </div>
+        <button type="button" class="lp-backlink" id="auth-toggle">
+          ${isLogin ? "← Volver al inicio" : "← Volver a iniciar sesión"}
+        </button>
       </div>
 
-      <div class="error-msg" id="login-error" style="display:none"></div>
-
-      <form id="auth-form" novalidate>
-        <div class="form-row">
-          <label for="auth-email">Email</label>
-          <input id="auth-email" type="email" required minlength="3" maxlength="254"
-                 placeholder="tu@email.com" autocomplete="email" />
-        </div>
-        <div class="form-row">
-          <label for="auth-password">Contraseña</label>
-          <input id="auth-password" type="password" required minlength="8" maxlength="200"
-                 placeholder="Al menos 8 caracteres" autocomplete="${isLogin ? "current-password" : "new-password"}" />
+      <div class="lp-two-col">
+        <div class="lp-visual">
+          <span class="lp-mono">[ arte / screenshot del mundo ]</span>
+          <div class="lp-eyebrow">EL MUNDO TE ESPERA</div>
+          <div class="lp-visual-title">Retomá donde<br>lo dejaste</div>
         </div>
 
-        ${!isLogin ? `
-        <div class="form-row form-row--consent">
-          <label class="consent-label">
-            <input type="checkbox" id="auth-consent" required />
-            Acepto los
-            <a href="/docs/legal/terminos" target="_blank" rel="noopener noreferrer">Términos de Uso</a>
-            y la
-            <a href="/docs/legal/privacidad" target="_blank" rel="noopener noreferrer">Política de Privacidad</a>
-          </label>
+        <div class="lp-formcol">
+          <form class="lp-form" id="auth-form" novalidate>
+            <div>
+              <h1>${isLogin ? "Iniciar sesión" : "Crear cuenta"}</h1>
+              <p class="lp-form-sub">${isLogin ? "Entrá con tu cuenta para jugar." : "Creá tu cuenta para empezar a jugar."}</p>
+            </div>
+
+            <div class="lp-error" id="login-error" style="display:none"></div>
+
+            <div class="lp-field">
+              <label class="lp-label" for="auth-email">EMAIL</label>
+              <input class="lp-input" id="auth-email" type="email" required minlength="3" maxlength="254"
+                     placeholder="tu@email.com" autocomplete="email" />
+            </div>
+
+            <div class="lp-field">
+              <div class="lp-label-row">
+                <label class="lp-label" for="auth-password">CONTRASEÑA</label>
+                ${isLogin ? `<a class="lp-link" data-forgot>¿La olvidaste?</a>` : ""}
+              </div>
+              <input class="lp-input" id="auth-password" type="password" required minlength="8" maxlength="200"
+                     placeholder="${isLogin ? "••••••••" : "Al menos 8 caracteres"}" autocomplete="${isLogin ? "current-password" : "new-password"}" />
+            </div>
+
+            ${!isLogin ? `
+            <label class="lp-consent">
+              <input type="checkbox" id="auth-consent" required />
+              <span>Acepto los
+                <a href="/docs/legal/terminos" target="_blank" rel="noopener noreferrer">Términos de Uso</a>
+                y la
+                <a href="/docs/legal/privacidad" target="_blank" rel="noopener noreferrer">Política de Privacidad</a>
+              </span>
+            </label>
+            ${TURNSTILE_SITEKEY ? `<div class="cf-turnstile" data-sitekey="${TURNSTILE_SITEKEY}"></div>` : ""}
+            ` : ""}
+
+            <button type="submit" class="lp-cta lp-cta--full" id="auth-submit">
+              ${isLogin ? "ENTRAR" : "CREAR CUENTA Y ENTRAR"}
+            </button>
+
+            <div class="lp-divider">
+              <span></span><em>${isLogin ? "¿PRIMERA VEZ?" : "¿YA TENÉS CUENTA?"}</em><span></span>
+            </div>
+
+            <button type="button" class="lp-ghost" id="auth-secondary">
+              ${isLogin ? "Crear cuenta y personaje" : "Iniciar sesión"}
+            </button>
+          </form>
         </div>
-        ${TURNSTILE_SITEKEY ? `<div class="form-row"><div class="cf-turnstile" data-sitekey="${TURNSTILE_SITEKEY}"></div></div>` : ""}
-        ` : ""}
-
-        <button type="submit" class="button" id="auth-submit">
-          ${isLogin ? "Entrar" : "Crear cuenta y entrar"}
-        </button>
-      </form>
-
-      <div class="divider">o</div>
-
-      <button type="button" class="link-button" id="auth-toggle">
-        ${isLogin ? "¿Sos nuevo? Crear cuenta" : "¿Ya tenés cuenta? Iniciar sesión"}
-      </button>
+      </div>
     `;
 
-    const form = card.querySelector<HTMLFormElement>("#auth-form")!;
-    const emailInput = card.querySelector<HTMLInputElement>("#auth-email")!;
-    const passwordInput = card.querySelector<HTMLInputElement>("#auth-password")!;
-    const submitBtn = card.querySelector<HTMLButtonElement>("#auth-submit")!;
-    const errorBox = card.querySelector<HTMLDivElement>("#login-error")!;
-    const toggleBtn = card.querySelector<HTMLButtonElement>("#auth-toggle")!;
-    const consentCheckbox = card.querySelector<HTMLInputElement>("#auth-consent");
+    const form = wrap.querySelector<HTMLFormElement>("#auth-form")!;
+    const emailInput = wrap.querySelector<HTMLInputElement>("#auth-email")!;
+    const passwordInput = wrap.querySelector<HTMLInputElement>("#auth-password")!;
+    const submitBtn = wrap.querySelector<HTMLButtonElement>("#auth-submit")!;
+    const errorBox = wrap.querySelector<HTMLDivElement>("#login-error")!;
+    const toggleBtn = wrap.querySelector<HTMLButtonElement>("#auth-toggle")!;
+    const secondaryBtn = wrap.querySelector<HTMLButtonElement>("#auth-secondary")!;
+    const consentCheckbox = wrap.querySelector<HTMLInputElement>("#auth-consent");
 
     emailInput.focus();
     if (!isLogin) ensureTurnstileScript();
 
-    toggleBtn.addEventListener("click", () => {
+    const toggle = (): void => {
       mode = mode === "login" ? "register" : "login";
       render();
-    });
+    };
+    toggleBtn.addEventListener("click", toggle);
+    secondaryBtn.addEventListener("click", toggle);
 
     form.addEventListener("submit", async (ev) => {
       ev.preventDefault();
@@ -141,19 +170,15 @@ export function renderLogin(root: HTMLElement, onLoggedIn: () => void): () => vo
         errorBox.textContent = humanize(code);
         errorBox.style.display = "block";
         submitBtn.disabled = false;
-        submitBtn.textContent = mode === "login" ? "Entrar" : "Crear cuenta y entrar";
+        submitBtn.textContent = mode === "login" ? "ENTRAR" : "CREAR CUENTA Y ENTRAR";
       }
     });
   }
 
   render();
-
-  const overlay = document.createElement("div");
-  overlay.className = "overlay";
-  overlay.appendChild(card);
-  root.appendChild(overlay);
+  root.appendChild(wrap);
 
   return () => {
-    overlay.remove();
+    wrap.remove();
   };
 }

@@ -1,80 +1,108 @@
-// Página de inicio / landing (referencia del usuario: "Arte Inicial 1").
-// Se muestra después del login: barra de navegación, tarjetas de acción
-// (Mundo Abierto → personajes, Arenas) y un panel "De qué se trata".
-// Tema azul homogéneo (arte 4), en línea con el resto del cliente.
+// Landing pública (se muestra tras el login). Rediseño hi-fi "MMO moderno"
+// del handoff de diseño: header + hero a 2 columnas + franja de 4 features.
+// Prefijo .lp- en el CSS para no colisionar con el HUD in-game.
 
 interface HomeCallbacks {
-  onEnterWorld: () => void; // "Ir a personajes" → selección de personaje
-  onLogout: () => void;
+  onEnterWorld: () => void; // "JUGAR AHORA" / "PERSONAJES" → selección de personaje
+  onLogout: () => void; // "MI CUENTA" / cerrar sesión
 }
-
-const NAV = [
-  { key: "inicio", label: "Inicio", icon: "⌂" },
-  { key: "personajes", label: "Personajes", icon: "☰" },
-  { key: "ranking", label: "Ranking", icon: "🏆" },
-  { key: "wiki", label: "Wiki", icon: "📖" },
-] as const;
 
 // Secciones todavía no implementadas → placeholder "próximamente".
 const COMING_SOON = "Esta sección está en construcción. Pronto vas a poder usarla.";
 
 export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
   const wrap = document.createElement("div");
-  wrap.className = "ao-home";
-
-  const navButtons = NAV.map(
-    (n) => `<button class="ao-home__nav-item${n.key === "inicio" ? " active" : ""}" data-nav="${n.key}"><span>${n.icon}</span>${n.label}</button>`,
-  ).join("");
+  wrap.className = "lp-root";
 
   wrap.innerHTML = `
-    <header class="ao-home__top">
-      <div class="ao-home__brand"><span class="ao-home__logo">AT</span> AoTum</div>
-      <nav class="ao-home__nav">${navButtons}</nav>
-      <div class="ao-home__account">
-        <span class="ao-home__user">Mi cuenta</span>
-        <button class="ao-home__logout" data-nav="logout" title="Cerrar sesión">⇥</button>
+    <div class="lp-header">
+      <div class="lp-brand">
+        <div class="lp-logo"></div>
+        <span class="lp-word">AOTUM</span>
+        <span class="lp-beta">BETA</span>
       </div>
-    </header>
+      <nav class="lp-nav">
+        <a class="active" data-nav="inicio">INICIO</a>
+        <a data-nav="personajes">PERSONAJES</a>
+        <a data-nav="ranking">RANKING</a>
+        <a data-nav="wiki">WIKI</a>
+      </nav>
+      <button type="button" class="lp-btn-account" data-nav="cuenta">MI CUENTA</button>
+    </div>
 
-    <main class="ao-home__body">
-      <section class="ao-home__cards">
-        <div class="ao-home__card ao-home__card--world">
-          <div class="ao-home__card-tag">MUNDO ABIERTO</div>
-          <p class="ao-home__card-desc">Explorá el mundo de Argentum: ciudades, dungeons, criaturas y jugadores.</p>
-          <button class="ao-home__card-btn" data-act="world">Ir a personajes</button>
+    <div class="lp-hero">
+      <div>
+        <div class="lp-status">
+          <span class="lp-dot" id="lp-status-dot"></span>
+          <span class="lp-status-label" id="lp-status-label">SERVIDOR ONLINE</span>
         </div>
-      </section>
+        <h1 class="lp-h1">Jugá Argentum<br>sin instalar <span>nada</span></h1>
+        <p class="lp-lead">Port web de Argentum Online Libre, fiel a los datos y el balance del original. Todo se parsea de la fuente open source y corre 100% en el navegador.</p>
+        <div class="lp-cta-row">
+          <button type="button" class="lp-cta" data-act="play">JUGAR AHORA</button>
+          <button type="button" class="lp-ghost" data-nav="ranking">Ver ranking</button>
+        </div>
+        <div class="lp-stats">
+          <div><div class="lp-stat-num">100%</div><div class="lp-stat-lbl">EN EL NAVEGADOR</div></div>
+          <div><div class="lp-stat-num">Open</div><div class="lp-stat-lbl">SOURCE DATA</div></div>
+          <div><div class="lp-stat-num">Diaria</div><div class="lp-stat-lbl">FRECUENCIA DE UPDATES</div></div>
+        </div>
+      </div>
+      <div class="lp-shot"><span>[ screenshot del juego en vivo ]</span></div>
+    </div>
 
-      <section class="ao-home__about">
-        <div class="ao-home__about-head">
-          <span class="ao-home__about-tag">DE QUÉ SE TRATA</span>
-        </div>
-        <h1 class="ao-home__about-title">AoTum — Beta</h1>
-        <div class="ao-home__about-text">
-          <p>AoTum es un port web de Argentum Online Libre, fiel a los datos y el balance del juego original (todo se parsea de la fuente open source de AO Libre). Corre 100% en el navegador.</p>
-          <p>Es una beta en desarrollo: se van sumando funciones día a día — sonidos, oficios, ordenar hechizos/items y todo lo necesario para una mejor jugabilidad.</p>
-          <p>Cualquier feedback o reporte de bug es bienvenido.</p>
-        </div>
-      </section>
-    </main>
+    <div class="lp-features">
+      <div class="lp-feature">
+        <h3>Mundo abierto</h3>
+        <p>Ciudades, dungeons, criaturas y jugadores.</p>
+      </div>
+      <div class="lp-feature">
+        <h3>Balance original</h3>
+        <p>Datos parseados directo de AO Libre.</p>
+      </div>
+      <div class="lp-feature">
+        <h3>Beta en desarrollo</h3>
+        <p>Sonidos, oficios y más, sumándose día a día.</p>
+      </div>
+      <div class="lp-feature lp-feature--accent">
+        <h3>Tu feedback importa</h3>
+        <p>Cualquier reporte de bug es bienvenido. <a data-nav="feedback">Reportar →</a></p>
+      </div>
+    </div>
   `;
 
   const placeholder = (title: string): void => {
-    // Aviso simple para secciones aún no construidas.
     alert(`${title}\n\n${COMING_SOON}`);
   };
 
-  wrap.querySelectorAll<HTMLButtonElement>("[data-nav]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const key = b.dataset.nav;
-      if (key === "logout") { cb.onLogout(); return; }
+  wrap.querySelectorAll<HTMLElement>("[data-nav]").forEach((el) => {
+    el.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const key = el.dataset.nav;
       if (key === "personajes") { cb.onEnterWorld(); return; }
+      if (key === "cuenta") { cb.onLogout(); return; }
       if (key === "inicio") return;
-      placeholder(b.textContent?.trim() ?? "Sección");
+      placeholder(el.textContent?.trim() ?? "Sección");
     });
   });
-  wrap.querySelector<HTMLButtonElement>("[data-act='world']")?.addEventListener("click", () => { cb.onEnterWorld(); });
+  wrap.querySelector<HTMLButtonElement>("[data-act='play']")?.addEventListener("click", () => { cb.onEnterWorld(); });
+
+  // Indicador "SERVIDOR ONLINE": estado real vía /health. 200 → cian; fallo → rojo.
+  const dot = wrap.querySelector<HTMLElement>("#lp-status-dot");
+  const label = wrap.querySelector<HTMLElement>("#lp-status-label");
+  let cancelled = false;
+  void fetch("/health", { method: "GET" })
+    .then((res) => {
+      if (cancelled || !dot || !label) return;
+      if (!res.ok) throw new Error("offline");
+    })
+    .catch(() => {
+      if (cancelled || !dot || !label) return;
+      dot.classList.add("lp-dot--off");
+      label.classList.add("lp-status-label--off");
+      label.textContent = "SERVIDOR OFFLINE";
+    });
 
   root.appendChild(wrap);
-  return () => { wrap.remove(); };
+  return () => { cancelled = true; wrap.remove(); };
 }
