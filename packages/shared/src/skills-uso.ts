@@ -101,21 +101,22 @@ export function initialSkillsFor(classId: number): SkillSet {
 }
 
 // Nivel al que todas las skills llegan a 100.
+// Las skills llegan a 100 en este nivel (34, como el AO). NO antes: del 1 al 34
+// hay progresión real.
 export const SKILL_MAX_LEVEL = 34;
-// Las skills quedan MAXEADAS (100) en este nivel. Antes se estiraba hasta el 34,
-// que dejaba el golpe muy flojo a nivel bajo/medio (se le erraba hasta a un
-// murciélago). Ahora maxean al 15 con una curva cóncava fuerte, así el golpe se
-// vuelve fiable mucho antes; del 15 en adelante ya están al tope.
-export const SKILL_CAP_LEVEL = 15;
+// Exponente de la curva cóncava (< 1 = cóncava; más bajo = más front-load). 0.3
+// sube MUY rápido al principio (nivel 1 ya ~35, cruza el umbral de agilidad) y
+// recién topa en 100 al nivel 34, así el golpe es fiable temprano sin maxear todo.
+const SKILL_CURVE_EXP = 0.3;
 
 // Skills escaladas por NIVEL: en este server las 21 skills suben junto con el
-// nivel (no por uso). Curva CÓNCAVA (raíz cuadrada) que llega a 100 en el nivel
-// SKILL_CAP_LEVEL (15) y sube MUY rápido al principio. Aplica igual a TODAS las
-// clases; cada una conserva sus propios números (modAtaque, golpe por nivel,
-// agilidad) en las fórmulas de combate. Ej: nivel 3 → 45, nivel 8 → 73, nivel 15 → 100.
+// nivel (no por uso). Curva CÓNCAVA fuerte 100·(nivel/34)^0.3, con 100 en el
+// nivel 34. Aplica igual a TODAS las clases; cada una conserva sus propios
+// números (modAtaque, golpe por nivel, agilidad) en las fórmulas de combate.
+// Ej: nivel 1 → 35, nivel 5 → 56, nivel 12 → 73, nivel 34 → 100.
 export function skillsForLevel(level: number): SkillSet {
-  const t = Math.max(0, Math.min(1, level / SKILL_CAP_LEVEL));
-  const v = Math.round(100 * Math.sqrt(t));
+  const t = Math.max(0, Math.min(1, level / SKILL_MAX_LEVEL));
+  const v = Math.min(100, Math.round(100 * Math.pow(t, SKILL_CURVE_EXP)));
   const out = {} as SkillSet;
   for (const k of Object.keys(SKILL_NAMES) as SkillKey[]) out[k] = v;
   return out;
