@@ -2062,22 +2062,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consoleMsg(s, "", "global", SND_BEBER);
         } else if (agiMax > 0 || strMax > 0) {
           // Drogas del AO: Amarilla (+AGI, InvUsuario.bas L1816) / Verde (+STR,
-          // L1839). Cada toma SUMA RandomNumber(Min,Max) al atributo ya (posible-
-          // mente) drogado y ACUMULA hasta el tope, no re-tira de cero. El bonus
-          // se guarda aparte del base (agiBonus/strBonus).
-          // House rule: el tope es MAXATRIBUTOS (40) PLANO — se quitó el límite de
-          // 2×base del AO para que cualquier raza pueda llegar a 40 con el buff
-          // (p. ej. humano str 19 → 40, no 38).
-          const MAX_ATRIB = 40;
+          // L1839). Cada toma SUMA RandomNumber(Min,Max) al bonus ya acumulado,
+          // no re-tira de cero. El bonus se guarda aparte del base.
+          // House rule: el BUFF (bonus) topa en +21 sobre el atributo base de cada
+          // clase (ej: humano str 19 → 40 con el buff al máximo).
+          const BUFF_MAX = 21;
           if (agiMax > 0) {
             const roll = randInt(def.agiBoostMin ?? def.agiBoost ?? agiMax, agiMax);
-            const eff = Math.min(s.agi + s.agiBonus + roll, MAX_ATRIB);
-            s.agiBonus = Math.max(0, eff - s.agi);
+            s.agiBonus = Math.min(s.agiBonus + roll, BUFF_MAX);
           }
           if (strMax > 0) {
             const roll = randInt(def.strBoostMin ?? def.strBoost ?? strMax, strMax);
-            const eff = Math.min(s.str + s.strBonus + roll, MAX_ATRIB);
-            s.strBonus = Math.max(0, eff - s.str);
+            s.strBonus = Math.min(s.strBonus + roll, BUFF_MAX);
           }
           // Duración de la droga: house rule de 100s para verde/amarilla (en AO
           // eran ~40s). Fija, independiente del DuracionEfecto del obj.dat.
@@ -2970,21 +2966,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       } else if ((spell.agiBoostMax ?? spell.agiBoost ?? 0) > 0 || (spell.strBoostMax ?? spell.strBoost ?? 0) > 0) {
         // Celeridad / Fuerza sobre un aliado (o uno mismo): +RandomNumber(Min,Max).
         // ACUMULATIVO como las pociones: cada casteo SUMA el roll al bonus ya
-        // existente, no re-tira de cero. Tope MAXATRIBUTOS (40) PLANO (mismo house
-        // rule que las pociones: sin el límite de 2×base, así el máximo es 40).
+        // existente, no re-tira de cero. Mismo house rule que las pociones: el
+        // buff (bonus) topa en +21 sobre el atributo base.
         const rint = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (Math.max(lo, hi) - lo + 1));
-        const MAX_ATRIB = 40;
+        const BUFF_MAX = 21;
         const agiMax = spell.agiBoostMax ?? spell.agiBoost ?? 0;
         const strMax = spell.strBoostMax ?? spell.strBoost ?? 0;
         if (agiMax > 0) {
           const roll = rint(spell.agiBoostMin ?? spell.agiBoost ?? agiMax, agiMax);
-          const eff = Math.min(target.agi + target.agiBonus + roll, MAX_ATRIB);
-          target.agiBonus = Math.max(0, eff - target.agi);
+          target.agiBonus = Math.min(target.agiBonus + roll, BUFF_MAX);
         }
         if (strMax > 0) {
           const roll = rint(spell.strBoostMin ?? spell.strBoost ?? strMax, strMax);
-          const eff = Math.min(target.str + target.strBonus + roll, MAX_ATRIB);
-          target.strBonus = Math.max(0, eff - target.str);
+          target.strBonus = Math.min(target.strBonus + roll, BUFF_MAX);
         }
         // House rule: duración 100s, igual que las pociones verde/amarilla (no
         // los ~48s de spell.buffSeconds del AO), para que poción y hechizo duren lo mismo.
