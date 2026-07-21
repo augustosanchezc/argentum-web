@@ -83,6 +83,8 @@ export interface Session {
   quitAt: number;
   // Silenciado por un GM (/silenciar): epoch ms hasta cuándo no puede hablar.
   silencedUntil: number;
+  // IP del cliente (para /banip). Se setea al crear la sesión desde req.ip.
+  ip: string;
   // Economía e inventario
   gold: number;
   inventory: InventorySlot[];
@@ -242,6 +244,7 @@ export class SessionRegistry {
       homeTravelUntil: 0,
       quitAt: 0,
       silencedUntil: 0,
+      ip: "",
       gold: 0,
       inventory: [],
       equippedWeapon: null,

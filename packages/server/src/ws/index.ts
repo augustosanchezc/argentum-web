@@ -156,6 +156,7 @@ import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
 import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
+import { isIpBanned, banIp, unbanIp } from "../world/ip-bans.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
 import {
@@ -918,6 +919,13 @@ setInterval(() => {
 export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance) => {
   app.get("/ws", { websocket: true }, (socket, req) => {
     let session: Session | null = null;
+    // IP real del cliente (trustProxy lee el X-Forwarded-For de Caddy). Si está
+    // baneada, se cierra la conexión de entrada.
+    const clientIp = req.ip || "";
+    if (isIpBanned(clientIp)) {
+      socket.close(CLOSE_AUTH_FAILED, "IP_BANNED");
+      return;
+    }
 
     const handshakeTimer = setTimeout(() => {
       if (!session) {
@@ -3782,7 +3790,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|echar|carcel|silenciar|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|echar|carcel|silenciar|banip|unbanip|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3963,6 +3971,31 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           }
           consoleMsg(s, `${banning ? "Baneaste" : "Desbaneaste"} la cuenta de ${name}.`, "global");
         })();
+        return;
+      }
+      // /BANIP nombre|ip — banea la IP (de un jugador online o una IP directa) y
+      // lo desconecta. La IP no puede volver a conectarse.
+      const banip = /^\/banip\s+(.+)$/i.exec(text);
+      if (banip) {
+        const arg = banip[1]!.trim();
+        // Si el argumento parece una IP, se banea directo; si no, se busca al jugador.
+        const looksIp = /^[0-9a-f:.]+$/i.test(arg) && (arg.includes(".") || arg.includes(":"));
+        const t = looksIp ? undefined : findOnlineByName(arg);
+        const ip = t ? t.ip : looksIp ? arg : "";
+        if (!ip) { consoleMsg(s, "No encontré ese jugador online (o IP inválida).", "global"); return; }
+        if (!banIp(ip)) { consoleMsg(s, `La IP ${ip} ya estaba baneada.`, "global"); return; }
+        // Echar a TODOS los conectados desde esa IP.
+        for (const o of sessions.all()) {
+          if (o.ip === ip) { consoleMsg(o, "Tu IP fue baneada.", "global"); o.socket.close(CLOSE_NORMAL, "IP_BANNED"); }
+        }
+        consoleMsg(s, `IP ${ip} baneada${t ? ` (${t.characterName})` : ""}.`, "global");
+        return;
+      }
+      // /UNBANIP ip — quita el baneo de una IP.
+      const unbanip = /^\/unbanip\s+(\S+)$/i.exec(text);
+      if (unbanip) {
+        const ok = unbanIp(unbanip[1]!.trim());
+        consoleMsg(s, ok ? `IP ${unbanip[1]!.trim()} desbaneada.` : "Esa IP no estaba baneada.", "global");
         return;
       }
       // /DONDE nombre — ubicación de un jugador.
@@ -4200,7 +4233,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
       consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir\n" +
-        "Extra: /echar <nombre> · /carcel <nombre> [min] · /silenciar <nombre> [min] · /ban <nombre> · /unban <nombre> · /donde <nombre> · /sumtodos · /telealltodos <mapa> <x> <y> · /curar [nombre] · /revivir <nombre> · /masskill · /limpiar · /quienes · /info <nombre> · /setfaccion <nombre> <ciudadano|armada|caos> · /darexp <nombre> <n> · /renombrar <viejo> <nuevo>", "global");
+        "Extra: /echar <nombre> · /carcel <nombre> [min] · /silenciar <nombre> [min] · /ban <nombre> · /unban <nombre> · /banip <nombre|ip> · /unbanip <ip> · /donde <nombre> · /sumtodos · /telealltodos <mapa> <x> <y> · /curar [nombre] · /revivir <nombre> · /masskill · /limpiar · /quienes · /info <nombre> · /setfaccion <nombre> <ciudadano|armada|caos> · /darexp <nombre> <n> · /renombrar <viejo> <nuevo>", "global");
     }
 
     // /EST de AO Libre (SendUserStatsTxt): desglose completo en la consola.
@@ -4490,6 +4523,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         map.id,
         spawnPos,
       );
+      session.ip = clientIp; // para /banip
 
       session.direction = parseDirection(character.direction);
       session.classId = character.classId;
