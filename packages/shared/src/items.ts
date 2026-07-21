@@ -92,6 +92,9 @@ export interface ItemDef {
   readonly anim?: number;
   // Carteles (objType 8): texto que muestran al interactuar.
   readonly texto?: string;
+  // Pergaminos (objType 24): hechizo que enseñan (HechizoIndex de obj.dat →
+  // id en AO_SPELLS). Al hacer doble-click el personaje lo aprende.
+  readonly spellId?: number;
   // Puertas (objType 6): estado y contrapartes abierta/cerrada + llave.
   readonly cerrada?: boolean;
   readonly llave?: number;

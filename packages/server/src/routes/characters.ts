@@ -169,6 +169,9 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
           equippedWeapon: kit.weapon,
           equippedArmor: kit.armor,
           skills: initialSkillsFor(classId),
+          // Sistema de pergaminos (fiel a AO): arranca sin hechizos; los aprende
+          // usando pergaminos (objType 24) con doble-click.
+          knownSpells: [],
         })
         .returning({
           id: characters.id,

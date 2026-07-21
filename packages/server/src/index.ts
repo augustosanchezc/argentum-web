@@ -43,11 +43,25 @@ async function main(): Promise<void> {
   const loop = createGameLoop({ info: (msg) => app.log.info(msg) });
   loop.start();
 
+  let closing = false;
   const close = async (signal: string): Promise<void> => {
+    // Reentrancia: un segundo SIGTERM/SIGINT no debe disparar otro flush ni
+    // cerrar la DB dos veces (haría fallar el flush en curso).
+    if (closing) return;
+    closing = true;
     app.log.info({ signal }, "[ao-server] cierre solicitado");
-    loop.stop();
-    // Guardar el progreso de TODOS los conectados ANTES de cerrar la DB: sin
+    // Watchdog: si el flush/cierre se cuelga, salimos igual antes de que el
+    // orquestador mande SIGKILL (grace 30s) — así no quedamos colgados. unref()
+    // para que este timer no mantenga vivo el proceso si el cierre va bien.
+    const watchdog = setTimeout(() => {
+      app.log.error("[ao-server] cierre excedió el tiempo límite; saliendo");
+      process.exit(1);
+    }, 25_000);
+    watchdog.unref();
+    // Cortar el game loop primero (frena mutaciones del mundo: IA, regen) y
+    // guardar el progreso de TODOS los conectados ANTES de cerrar la DB: sin
     // esto, cada deploy (SIGTERM) perdía lo hecho desde el último autosave.
+    loop.stop();
     try {
       await flushAllSessions();
       app.log.info("[ao-server] progreso de sesiones guardado");

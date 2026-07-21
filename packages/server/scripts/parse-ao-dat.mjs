@@ -137,6 +137,11 @@ function generateItems() {
       const texto = str(m, "texto");
       if (texto) parts.push(`texto: ${q(texto)}`);
     }
+    // Pergaminos (objType 24): HechizoIndex → hechizo que enseñan al usarlos.
+    if (objType === 24) {
+      const hechizo = num(m, "hechizoindex");
+      if (hechizo > 0) parts.push(`spellId: ${hechizo}`);
+    }
     // Puertas (objType 6): estado + contrapartes (AccionParaPuerta).
     if (objType === 6) {
       if (num(m, "cerrada") === 1) parts.push(`cerrada: true`);

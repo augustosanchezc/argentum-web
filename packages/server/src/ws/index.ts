@@ -76,6 +76,7 @@ import {
   getAoSpell,
   getSkill,
   knownSpellsFor,
+  spellRequirement,
   type WhisperSendRequest,
   type WhisperReceived,
   type CriminalUpdate,
@@ -415,6 +416,7 @@ async function persistPosition(s: Session): Promise<void> {
       thirst: s.thirst,
       skills: s.skills,
       skillsXp: s.skillsXp,
+      knownSpells: s.knownSpells,
       quests: s.quests,
       questsDone: s.questsDone,
       faction: s.faction,
@@ -709,7 +711,9 @@ function resolvePlayerDeath(victim: Session, killer: Session | null): void {
 function sendSpellsKnown(s: Session): void {
   const pkt: SpellsKnown = {
     op: ServerToClientOp.SpellsKnown,
-    spellIds: knownSpellsFor(s.classId, s.level),
+    // Sistema de pergaminos: el libro son los hechizos aprendidos (persistidos),
+    // ya no se derivan del nivel.
+    spellIds: s.knownSpells,
   };
   send(s.socket, pkt);
 }
@@ -1747,7 +1751,12 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       npc.hp = Math.max(0, npc.hp - amount);
       // XP por daño efectivo, proporcional a la vida del NPC.
       const effective = Math.min(amount, prevHp);
-      awardCombatXp(s, Math.floor((npc.type.xpReward * effective) / npc.type.maxHp));
+      const xpGolpe = Math.floor((npc.type.xpReward * effective) / npc.type.maxHp);
+      awardCombatXp(s, xpGolpe);
+      // Aviso al chat por cada golpe con XP (el número en negrita con "!!").
+      if (xpGolpe > 0) {
+        consoleMsg(s, `Has golpeado a un ${npc.type.name} y te ha dado **${xpGolpe.toString()}!!** de experiencia`, "global");
+      }
 
       // Las mascotas del atacante asisten contra este NPC (FollowAmo).
       if (npc.hp > 0 && npc.ownerCharacterId !== s.characterId) {
@@ -1991,6 +2000,33 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         s.lastPotionAt = now;
       }
       s.lastUseAt = now;
+
+      // Pergaminos (objType 24): al doble-click enseñan un hechizo. Fiel al AO:
+      // restringido por clase y nivel (CLASS_SPELLBOOK); se consume al aprenderlo
+      // y el hechizo queda permanente (persistido) en el personaje.
+      if (def.spellId !== undefined) {
+        const spellId = def.spellId;
+        const spellName = getAoSpell(spellId)?.name ?? "este hechizo";
+        const req = spellRequirement(s.classId, spellId);
+        if (!req) {
+          consoleMsg(s, `Tu clase no puede aprender ${spellName}.`, "combate");
+          return;
+        }
+        if (s.level < req.minLevel) {
+          consoleMsg(s, `Necesitás ser nivel ${req.minLevel.toString()} para aprender ${spellName}.`, "combate");
+          return;
+        }
+        if (s.knownSpells.includes(spellId)) {
+          consoleMsg(s, `Ya conocés ${spellName}.`, "combate");
+          return;
+        }
+        s.knownSpells = [...s.knownSpells, spellId];
+        consumeOne(s, pkt.item);
+        sendSpellsKnown(s);
+        consoleMsg(s, `¡Has aprendido ${spellName}!`, "combate");
+        void persistPosition(s).catch(() => undefined);
+        return;
+      }
 
       if (def.type === "potion") {
         // AO tira RandomNumber(MinModificador, MaxModificador) en cada uso.
@@ -2817,7 +2853,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (s.deadUntil !== 0) return;
       const spell = getAoSpell(pkt.spellId);
       if (!spell) return;
-      if (!knownSpellsFor(s.classId, s.level).includes(pkt.spellId)) return;
+      // Solo se puede lanzar un hechizo aprendido (pergamino usado), no derivado
+      // del nivel.
+      if (!s.knownSpells.includes(pkt.spellId)) return;
 
       const now = Date.now();
       // IntervaloLanzaHechizo (1400ms) + castear tras golpear (GolpeMagia).
@@ -4445,6 +4483,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           thirst: characters.thirst,
           skills: characters.skills,
           skillsXp: characters.skillsXp,
+          knownSpells: characters.knownSpells,
           quests: characters.quests,
           questsDone: characters.questsDone,
           faction: characters.faction,
@@ -4544,6 +4583,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // el nivel 34 (no por uso).
       session.skills = skillsForLevel(session.level);
       session.skillsXp = { ...(character.skillsXp as Partial<Record<string, number>>) };
+      // Hechizos: si el personaje es previo al sistema de pergaminos
+      // (known_spells NULL) hereda su libro por nivel; si ya migró, usa el
+      // aprendido (aunque esté vacío = arrancó sin hechizos).
+      session.knownSpells = character.knownSpells ?? knownSpellsFor(session.classId, session.level);
       session.quests = character.quests.map((aq) => ({ id: aq.id, kills: [...aq.kills] }));
       session.questsDone = [...character.questsDone];
       session.faction = character.faction;

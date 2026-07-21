@@ -79,6 +79,23 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
+  // Renderiza texto con **negrita** inline (markdown mínimo): los tramos entre
+  // pares de ** se muestran en <b>. Se arma con nodos del DOM (nunca innerHTML)
+  // para no inyectar HTML que venga del servidor.
+  function appendInlineText(el: HTMLElement, raw: string): void {
+    const parts = raw.split("**");
+    parts.forEach((part, i) => {
+      if (part === "") return;
+      if (i % 2 === 1) {
+        const b = document.createElement("b");
+        b.textContent = part;
+        el.append(b);
+      } else {
+        el.append(document.createTextNode(part));
+      }
+    });
+  }
+
   function appendMessage(msg: ChatMessage): void {
     const row = document.createElement("div");
     const kind = msg.kind ?? "normal";
@@ -102,7 +119,7 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
     }
     const text = document.createElement("span");
     text.className = "ao-chat__text";
-    text.textContent = msg.text;
+    appendInlineText(text, msg.text);
     if (msg.color) {
       text.style.color = msg.color;
       text.style.fontWeight = "700";

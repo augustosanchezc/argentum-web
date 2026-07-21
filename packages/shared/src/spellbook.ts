@@ -59,3 +59,22 @@ export function knownSpellsFor(classId: number, level: number): number[] {
   const book = CLASS_SPELLBOOK[classId] ?? [];
   return book.filter((e) => level >= e.minLevel).map((e) => e.spellId);
 }
+
+// La entrada del libro (hechizo + nivel mínimo) de un hechizo para una clase, o
+// undefined si esa clase no puede aprenderlo. Con el sistema de pergaminos esta
+// tabla define QUÉ hechizos puede aprender cada clase y a partir de qué nivel.
+export function spellRequirement(classId: number, spellId: number): SpellbookEntry | undefined {
+  return (CLASS_SPELLBOOK[classId] ?? []).find((e) => e.spellId === spellId);
+}
+
+// Nivel mínimo del hechizo para la clase (para mostrarlo en el nombre del libro:
+// "Flecha Mágica - Lv. XX"). undefined si la clase no lo aprende.
+export function spellMinLevel(classId: number, spellId: number): number | undefined {
+  return spellRequirement(classId, spellId)?.minLevel;
+}
+
+// Si la clase puede usar magia (tiene hechizos aprendibles). Guerrero/Arquero/
+// Asesino no; Mago/Clérigo/Druida/Paladín sí.
+export function classUsesMagic(classId: number): boolean {
+  return (CLASS_SPELLBOOK[classId] ?? []).length > 0;
+}

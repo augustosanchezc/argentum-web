@@ -29,6 +29,9 @@ export interface Session {
   // Skills por uso (21 skills del AO, 0-100) + XP parcial hacia el próximo punto.
   skills: SkillSet;
   skillsXp: Partial<Record<SkillKey, number>>;
+  // Hechizos aprendidos (ids de AO_SPELLS). Se aprenden usando pergaminos
+  // (objType 24) y quedan persistidos en el personaje.
+  knownSpells: number[];
   str: number;
   agi: number;
   int_: number;
@@ -213,6 +216,7 @@ export class SessionRegistry {
       description: "",
       skills: emptySkills(),
       skillsXp: {},
+      knownSpells: [],
       str: 18,
       agi: 13,
       int_: 12,

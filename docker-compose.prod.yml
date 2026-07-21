@@ -28,6 +28,13 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    # tini como PID 1: reenvía SIGTERM al proceso Node y limpia zombies.
+    init: true
+    # Tiempo de gracia para el apagado: el server hace flush de TODAS las
+    # sesiones a la DB al recibir SIGTERM (deploy). El default de Docker es 10s;
+    # lo subimos a 30s para que un flush con muchos jugadores nunca se corte por
+    # SIGKILL y no se pierda progreso (XP, items).
+    stop_grace_period: 30s
     env_file: .env.prod
     environment:
       NODE_ENV: production

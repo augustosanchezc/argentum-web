@@ -428,6 +428,7 @@ export async function startGameScene(
   // (ui/inventory.ts). Acá solo mantenemos el estado y lo empujamos.
   const panelStats: PanelStats = {
     name: character.name,
+    classId: 1,
     level: 1,
     xpInto: 0,
     xpForNext: 1,
@@ -3176,6 +3177,7 @@ export async function startGameScene(
     panelStats.maxHp = p.maxHp;
     panelStats.mana = p.mana ?? 0;
     panelStats.maxMana = p.maxMana ?? 0;
+    panelStats.classId = p.classId;
     panelStats.level = p.level;
     // Mantener el label propio (Lv. N) al día al subir de nivel.
     const selfVisual = entityVisuals.get(character.id);

@@ -71,6 +71,13 @@
       "when": 1751932800000,
       "tag": "0009_add_account_role",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1752019200000,
+      "tag": "0010_known_spells",
+      "breakpoints": true
     }
   ]
 }

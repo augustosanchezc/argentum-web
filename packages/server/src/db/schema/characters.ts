@@ -57,6 +57,11 @@ export const characters = pgTable(
       .$type<Partial<Record<string, number>>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
+    // Hechizos aprendidos (ids de AO_SPELLS), aprendidos con pergaminos. Es
+    // NULLABLE a propósito: NULL = personaje previo al sistema de pergaminos
+    // (se hereda su libro por nivel al loguear); [] = personaje nuevo que
+    // arranca sin hechizos y los aprende con pergaminos.
+    knownSpells: jsonb("known_spells").$type<number[]>(),
     // Misiones activas (con progreso de kills) y completadas.
     quests: jsonb("quests")
       .$type<Array<{ id: number; kills: number[] }>>()

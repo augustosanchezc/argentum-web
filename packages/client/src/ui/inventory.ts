@@ -1,4 +1,4 @@
-import { getAoSpell, getItem, type InventorySlot } from "@ao/shared";
+import { classUsesMagic, getAoSpell, getItem, spellMinLevel, type InventorySlot } from "@ao/shared";
 
 // Panel lateral clásico del AO (siempre visible, tecla I lo oculta):
 //   - Cabecera: nombre, nivel, oro.
@@ -23,6 +23,7 @@ export interface InventoryData {
 
 export interface PanelStats {
   name: string;
+  classId: number;
   level: number;
   xpInto: number;
   xpForNext: number;
@@ -454,7 +455,12 @@ export function mountInventory(
     if (spellIds.length === 0) {
       const empty = document.createElement("div");
       empty.className = "ao-spells__empty";
-      empty.textContent = "Tu clase no usa magia.";
+      // Clase mágica sin hechizos aún (arranca sin ellos, se aprenden con
+      // pergaminos) vs. clase sin magia.
+      empty.textContent =
+        stats && classUsesMagic(stats.classId)
+          ? "Aún no aprendiste hechizos. Usá un pergamino para aprenderlos."
+          : "Tu clase no usa magia.";
       spellsEl.appendChild(empty);
       return;
     }
@@ -466,9 +472,13 @@ export function mountInventory(
       row.dataset.spellId = id.toString();
       if (selectedSpell === id) row.classList.add("ao-spells__row--selected");
       row.draggable = true;
+      // Restricción de nivel del hechizo (fiel a AO): se muestra en el nombre,
+      // p. ej. "Flecha Mágica - Lv. 12". Sale de CLASS_SPELLBOOK según la clase.
+      const minLv = stats ? spellMinLevel(stats.classId, id) : undefined;
+      const nameLabel = minLv !== undefined ? `${spell.name} - Lv. ${minLv.toString()}` : spell.name;
       row.title = `«${spell.magicWords}» — maná ${spell.manaCost.toString()} · doble-click: agregar a macros`;
       row.innerHTML = `
-        <span class="ao-spells__name">${spell.name}</span>
+        <span class="ao-spells__name">${nameLabel}</span>
         <span class="ao-spells__mana">${spell.manaCost.toString()} MP</span>
         <button class="ao-spells__infobtn" type="button" title="Info del hechizo">ℹ</button>
       `;

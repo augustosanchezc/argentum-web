@@ -50,4 +50,12 @@ WORKDIR /app/packages/server
 # proyecto se desarrolla con push y las migraciones quedaban incompletas
 # (drift), lo que rompía el arranque en un deploy limpio. Si push falla, el
 # contenedor no arranca (fail-fast). tsx resuelve @ao/shared desde la fuente.
-CMD ["sh", "-c", "pnpm exec drizzle-kit push --force && pnpm exec tsx src/index.ts"]
+#
+# CRÍTICO — señales: corremos el server con `exec node --import tsx` (loader
+# in-process, SIN subproceso). Así el proceso Node que tiene el handler de
+# SIGTERM ES el que recibe la señal del `docker stop` del deploy, y alcanza a
+# hacer el flush de TODAS las sesiones a la DB antes de morir. Con el
+# `pnpm exec tsx` anterior, Node quedaba como nieto de `sh` (sh→pnpm→tsx→node) y
+# la señal NO se propagaba: el server moría por SIGKILL sin guardar, perdiendo el
+# progreso desde el último autosave. El `exec` reemplaza al shell tras migrar.
+CMD ["sh", "-c", "pnpm exec drizzle-kit push --force && exec node --import tsx src/index.ts"]
