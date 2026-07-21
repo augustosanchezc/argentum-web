@@ -142,6 +142,8 @@ function generateItems() {
       const hechizo = num(m, "hechizoindex");
       if (hechizo > 0) parts.push(`spellId: ${hechizo}`);
     }
+    // Ropa/armadura solo para mujeres (Mujer=1). Filtro de género en el panel.
+    if (num(m, "mujer") === 1) parts.push(`mujer: true`);
     // Puertas (objType 6): estado + contrapartes (AccionParaPuerta).
     if (objType === 6) {
       if (num(m, "cerrada") === 1) parts.push(`cerrada: true`);

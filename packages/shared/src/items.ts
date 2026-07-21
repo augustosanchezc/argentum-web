@@ -95,6 +95,9 @@ export interface ItemDef {
   // Pergaminos (objType 24): hechizo que enseñan (HechizoIndex de obj.dat →
   // id en AO_SPELLS). Al hacer doble-click el personaje lo aprende.
   readonly spellId?: number;
+  // Ropa/armadura solo para MUJERES (Mujer=1 en obj.dat). Sin el flag = varón/
+  // unisex. Se usa para filtrar en el panel admin al armar vendedores.
+  readonly mujer?: boolean;
   // Puertas (objType 6): estado y contrapartes abierta/cerrada + llave.
   readonly cerrada?: boolean;
   readonly llave?: number;

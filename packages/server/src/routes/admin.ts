@@ -273,6 +273,8 @@ export const registerAdminRoutes: FastifyPluginAsync = async (app: FastifyInstan
         id, name: d.name, type: d.type, objType: d.objType, value: d.value, graphic: d.graphic,
         minHit: d.minHit ?? 0, maxHit: d.maxHit ?? 0, defense: d.defense ?? 0,
         heal: d.heal ?? 0, manaHeal: d.manaHeal ?? 0, damageBonus: d.damageBonus ?? 0,
+        // Para los filtros del editor de vendedores (género + clase).
+        mujer: d.mujer ?? false, forbiddenClasses: d.forbiddenClasses ?? [],
       });
       if (out.length >= 400) break;
     }

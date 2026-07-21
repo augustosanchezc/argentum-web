@@ -558,7 +558,10 @@ function openNpc(number){
   if(isNpc){
     html += "<div class='sect'><h3>Items que vende</h3><div id='shopList' class='give-results'></div>"+
       "<div class='toolbar' style='margin-top:8px'><input type='number' id='shopAddCode' placeholder='código de item' style='width:150px'><button id='shopAddBtn' type='button'>+ Agregar por código</button></div>"+
-      "<div class='toolbar' style='margin-top:6px'><input type='text' id='shopSearch' placeholder='o buscar item por nombre para agregar…' style='flex:1'></div><div class='give-results' id='shopSearchRes'></div></div>";
+      "<div class='filters' style='margin-top:8px'><span class='lbl'>Tipo</span><button class='fbtn active' data-sstype=''>Todos</button><button class='fbtn' data-sstype='armor'>Armaduras</button><button class='fbtn' data-sstype='helmet'>Cascos</button><button class='fbtn' data-sstype='shield'>Escudos</button><button class='fbtn' data-sstype='weapon'>Armas</button></div>"+
+      "<div class='filters' style='margin-top:6px'><span class='lbl'>Género</span><button class='fbtn active' data-ssgender=''>Todos</button><button class='fbtn' data-ssgender='1'>Hombre</button><button class='fbtn' data-ssgender='2'>Mujer</button></div>"+
+      "<div class='filters' style='margin-top:6px'><span class='lbl'>Clase</span><button class='fbtn active' data-ssclass=''>Todas</button><button class='fbtn' data-ssclass='1'>Guerrero</button><button class='fbtn' data-ssclass='2'>Mago</button><button class='fbtn' data-ssclass='3'>Clérigo</button><button class='fbtn' data-ssclass='4'>Arquero</button><button class='fbtn' data-ssclass='5'>Asesino</button><button class='fbtn' data-ssclass='6'>Druida</button><button class='fbtn' data-ssclass='7'>Paladín</button></div>"+
+      "<div class='toolbar' style='margin-top:6px'><input type='text' id='shopSearch' placeholder='buscar por nombre (opcional)…' style='flex:1'></div><div class='give-results' id='shopSearchRes'></div></div>";
   }
   if(r.kind==="creature"){
     html += "<div class='sect'><h3>Drops (probabilidad)</h3><div id='dropList'></div>"+
@@ -581,8 +584,34 @@ function openNpc(number){
       catch(e){ alert("Error: "+e.message); }
     };
     $("shopList").addEventListener("click", function(e){ var rm=e.target.dataset&&e.target.dataset.shoprm; if(rm!=null){ shop.splice(Number(rm),1); renderShop(); } });
-    var ss=$("shopSearch");
-    ss.oninput = debounce(async function(){ var q=ss.value.trim(); if(q.length<2){ $("shopSearchRes").innerHTML=""; return; } var items=await api("/admin/api/items?search="+encodeURIComponent(q)); $("shopSearchRes").innerHTML = items.slice(0,30).map(function(it){ return "<div class='give-row' data-shopadd='"+it.id+"' data-sname='"+esc(it.name)+"'><span class='name'>"+esc(it.name)+"</span><span class='id'>#"+it.id+"</span></div>"; }).join(""); }, 250);
+    var ssType="", ssGender="", ssClass="";
+    function shopRow(it){ var g=it.mujer?" <span class='muted' style='font-size:10px'>♀ mujer</span>":""; return "<div class='give-row' data-shopadd='"+it.id+"' data-sname='"+esc(it.name)+"'><span class='name'>"+esc(it.name)+g+"</span><span class='id'>#"+it.id+"</span></div>"; }
+    function runShopSearch(){
+      var q=$("shopSearch")?$("shopSearch").value.trim():"";
+      // Necesita al menos un filtro o 2+ letras para no traer todo el catálogo.
+      if(q.length<2 && !ssType && !ssGender && !ssClass){ $("shopSearchRes").innerHTML=""; return; }
+      var parts=[]; if(q) parts.push("search="+encodeURIComponent(q)); if(ssType) parts.push("type="+ssType);
+      api("/admin/api/items?"+parts.join("&")).then(function(items){
+        var f=items.filter(function(it){
+          if(ssGender==="2" && !it.mujer) return false;      // solo mujer
+          if(ssGender==="1" && it.mujer) return false;       // varón/unisex
+          if(ssClass){ var c=Number(ssClass); if(it.forbiddenClasses && it.forbiddenClasses.indexOf(c)>=0) return false; }
+          return true;
+        });
+        $("shopSearchRes").innerHTML = f.length ? f.slice(0,40).map(shopRow).join("") : "<div class='muted' style='padding:6px'>Sin resultados con esos filtros.</div>";
+      }).catch(function(){});
+    }
+    $("shopSearch").oninput = debounce(runShopSearch, 250);
+    ["sstype","ssgender","ssclass"].forEach(function(attr){
+      $("modalCard").querySelectorAll("[data-"+attr+"]").forEach(function(b){
+        b.addEventListener("click", function(){
+          var v=b.getAttribute("data-"+attr);
+          if(attr==="sstype") ssType=v; else if(attr==="ssgender") ssGender=v; else ssClass=v;
+          $("modalCard").querySelectorAll("[data-"+attr+"]").forEach(function(x){ x.classList.toggle("active", x===b); });
+          runShopSearch();
+        });
+      });
+    });
     $("shopSearchRes").addEventListener("click", function(e){ var el=e.target.closest?e.target.closest("[data-shopadd]"):null; if(!el) return; var iid=Number(el.dataset.shopadd); if(!shop.some(function(s){ return s.id===iid; })) shop.push({id:iid,name:el.dataset.sname}); renderShop(); });
   }
 
