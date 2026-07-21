@@ -178,6 +178,26 @@ function npcAttack(npc: NpcInstance, target: Session, now: number): void {
   }
 }
 
+// Lado LIBRE del objetivo más cercano a la criatura (uno de los 4 ortogonales).
+// Con esto las criaturas RODEAN al jugador (un lado cada una) en vez de apilarse
+// en fila detrás. Devuelve null si los 4 lados están ocupados/bloqueados.
+function freeAttackSide(npc: NpcInstance, target: Vector2): Vector2 | null {
+  const sides: Vector2[] = [
+    { x: target.x, y: target.y - 1 },
+    { x: target.x, y: target.y + 1 },
+    { x: target.x - 1, y: target.y },
+    { x: target.x + 1, y: target.y },
+  ];
+  let best: Vector2 | null = null;
+  let bestDist = Infinity;
+  for (const s of sides) {
+    if (!isTileFree(npc.mapId, s, npc.id, npc.type.waterOnly)) continue;
+    const d = chebyshev(npc.position, s);
+    if (d < bestDist) { bestDist = d; best = s; }
+  }
+  return best;
+}
+
 function npcMoveToward(npc: NpcInstance, target: { position: Vector2 }, now: number): void {
   for (const dir of stepDirsToward(npc.position, target.position)) {
     const next: Vector2 = {
@@ -332,7 +352,11 @@ function processNpcs(now: number): void {
       }
     } else if (npc.type.canMove && now - npc.lastMoveAt >= npc.type.moveCooldownMs) {
       // Movement=1 en NPCs.dat = estático (comerciantes, guardias de puesto).
-      npcMoveToward(npc, target, now);
+      // Rodear: apuntar al LADO LIBRE del jugador más cercano (no a su tile
+      // exacto), así 4 criaturas cubren los 4 lados en vez de hacer fila. Si los
+      // 4 lados están ocupados, se acerca igual (fallback al tile del jugador).
+      const side = freeAttackSide(npc, target.position);
+      npcMoveToward(npc, side ? { position: side } : target, now);
     }
   }
 }
