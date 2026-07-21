@@ -2650,7 +2650,7 @@ export async function startGameScene(
       text,
       resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
-        fill: "#f2c94c",
+        fill: "#d4af37",
         fontFamily: "Verdana, Geneva, sans-serif",
         fontSize: 9,
         fontWeight: "bold",
@@ -2660,28 +2660,27 @@ export async function startGameScene(
       }),
     });
     label.anchor.set(0.5, 0.5);
-    const padX = 6;
     const padY = 4;
-    const w = Math.ceil(label.width) + padX * 2;
     const h = Math.ceil(label.height) + padY * 2;
-    const gold = 0xf2c94c;
-    const W = w / 2, H = h / 2, r = 4, tw = 4, tl = 6;
+    const H = h / 2;
+    const rad = H; // extremos TOTALMENTE redondeados (forma de cápsula/píldora)
+    // padX >= H para que el texto entre en el tramo recto y no lo tapen las curvas.
+    const padX = Math.ceil(H) + 2;
+    const w = Math.ceil(label.width) + padX * 2;
+    const cx = Math.max(0, w / 2 - rad); // centro de los dos extremos redondeados
+    const tw = 4, tl = 6;
+    const gold = 0xd4af37; // dorado un poco más oscuro
     const g = new Graphics();
-    // UN SOLO contorno: globo redondeado con la cuña integrada en el borde
-    // inferior (centrada, apuntando a la cabeza). Al ser un único path, el relleno
-    // y el borde salen limpios (sin costuras ni doble línea). Borde fino (1px).
-    g.moveTo(-W + r, -H)
-      .lineTo(W - r, -H)
-      .quadraticCurveTo(W, -H, W, -H + r)
-      .lineTo(W, H - r)
-      .quadraticCurveTo(W, H, W - r, H)
+    // Cápsula: dos extremos redondeados (sin esquinas) + la cuña integrada en el
+    // borde inferior, todo como UN solo contorno → relleno y borde limpios.
+    g.moveTo(-cx, -H)
+      .lineTo(cx, -H)
+      .arc(cx, 0, rad, -Math.PI / 2, Math.PI / 2)      // extremo derecho
       .lineTo(tw, H)
-      .lineTo(0, H + tl)
+      .lineTo(0, H + tl)                                // cuña hacia la cabeza
       .lineTo(-tw, H)
-      .lineTo(-W + r, H)
-      .quadraticCurveTo(-W, H, -W, H - r)
-      .lineTo(-W, -H + r)
-      .quadraticCurveTo(-W, -H, -W + r, -H)
+      .lineTo(-cx, H)
+      .arc(-cx, 0, rad, Math.PI / 2, 3 * Math.PI / 2)   // extremo izquierdo
       .closePath()
       .fill({ color: 0x000000, alpha: 0.85 })
       .stroke({ width: 1, color: gold, join: "round" });
