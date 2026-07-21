@@ -439,8 +439,10 @@ export function mountInventory(
     const showAgi = stats.buffExpiresAt > now && stats.agiBonus > 0;
     drugStrEl.hidden = !showStr;
     drugAgiEl.hidden = !showAgi;
-    if (showStr) drugStrEl.innerHTML = `💪 <b>+${stats.strBonus.toString()}</b> <em>${secs.toString()}s</em>`;
-    if (showAgi) drugAgiEl.innerHTML = `🏃 <b>+${stats.agiBonus.toString()}</b> <em>${secs.toString()}s</em>`;
+    // El número es el TOTAL (atributo base + bonus del buff), no solo el bonus:
+    // p. ej. un paladín humano con Fuerza al máximo muestra 40, su fuerza real.
+    if (showStr) drugStrEl.innerHTML = `💪 <b>${(stats.str + stats.strBonus).toString()}</b> <em>${secs.toString()}s</em>`;
+    if (showAgi) drugAgiEl.innerHTML = `🏃 <b>${(stats.agi + stats.agiBonus).toString()}</b> <em>${secs.toString()}s</em>`;
     if ((showStr || showAgi) && !buffTimer) {
       buffTimer = setInterval(renderDrugs, 1000);
     } else if (!showStr && !showAgi && buffTimer) {

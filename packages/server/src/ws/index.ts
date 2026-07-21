@@ -2054,18 +2054,20 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         } else if (agiMax > 0 || strMax > 0) {
           // Drogas del AO: Amarilla (+AGI, InvUsuario.bas L1816) / Verde (+STR,
           // L1839). Cada toma SUMA RandomNumber(Min,Max) al atributo ya (posible-
-          // mente) drogado y topea por MAXATRIBUTOS (40) y por el DOBLE del base
-          // (L1822/L1824). O sea: se ACUMULA entre pociones hasta el tope, no se
-          // re-tira de cero. El bonus se guarda aparte del base (agiBonus/strBonus).
+          // mente) drogado y ACUMULA hasta el tope, no re-tira de cero. El bonus
+          // se guarda aparte del base (agiBonus/strBonus).
+          // House rule: el tope es MAXATRIBUTOS (40) PLANO — se quitó el límite de
+          // 2×base del AO para que cualquier raza pueda llegar a 40 con el buff
+          // (p. ej. humano str 19 → 40, no 38).
           const MAX_ATRIB = 40;
           if (agiMax > 0) {
             const roll = randInt(def.agiBoostMin ?? def.agiBoost ?? agiMax, agiMax);
-            const eff = Math.min(s.agi + s.agiBonus + roll, MAX_ATRIB, 2 * s.agi);
+            const eff = Math.min(s.agi + s.agiBonus + roll, MAX_ATRIB);
             s.agiBonus = Math.max(0, eff - s.agi);
           }
           if (strMax > 0) {
             const roll = randInt(def.strBoostMin ?? def.strBoost ?? strMax, strMax);
-            const eff = Math.min(s.str + s.strBonus + roll, MAX_ATRIB, 2 * s.str);
+            const eff = Math.min(s.str + s.strBonus + roll, MAX_ATRIB);
             s.strBonus = Math.max(0, eff - s.str);
           }
           // Duración de la droga: house rule de 100s para verde/amarilla (en AO
@@ -2958,21 +2960,21 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         stopMeditating(target);
       } else if ((spell.agiBoostMax ?? spell.agiBoost ?? 0) > 0 || (spell.strBoostMax ?? spell.strBoost ?? 0) > 0) {
         // Celeridad / Fuerza sobre un aliado (o uno mismo): +RandomNumber(Min,Max).
-        // ACUMULATIVO como las pociones (AO): cada casteo SUMA el roll al bonus
-        // ya existente y topa por MAXATRIBUTOS (40) y por el doble del base — no
-        // re-tira de cero (antes se pisaba el bonus, no acumulaba).
+        // ACUMULATIVO como las pociones: cada casteo SUMA el roll al bonus ya
+        // existente, no re-tira de cero. Tope MAXATRIBUTOS (40) PLANO (mismo house
+        // rule que las pociones: sin el límite de 2×base, así el máximo es 40).
         const rint = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (Math.max(lo, hi) - lo + 1));
         const MAX_ATRIB = 40;
         const agiMax = spell.agiBoostMax ?? spell.agiBoost ?? 0;
         const strMax = spell.strBoostMax ?? spell.strBoost ?? 0;
         if (agiMax > 0) {
           const roll = rint(spell.agiBoostMin ?? spell.agiBoost ?? agiMax, agiMax);
-          const eff = Math.min(target.agi + target.agiBonus + roll, MAX_ATRIB, 2 * target.agi);
+          const eff = Math.min(target.agi + target.agiBonus + roll, MAX_ATRIB);
           target.agiBonus = Math.max(0, eff - target.agi);
         }
         if (strMax > 0) {
           const roll = rint(spell.strBoostMin ?? spell.strBoost ?? strMax, strMax);
-          const eff = Math.min(target.str + target.strBonus + roll, MAX_ATRIB, 2 * target.str);
+          const eff = Math.min(target.str + target.strBonus + roll, MAX_ATRIB);
           target.strBonus = Math.max(0, eff - target.str);
         }
         target.buffUntil = Date.now() + (spell.buffSeconds ?? 48) * 1000;
