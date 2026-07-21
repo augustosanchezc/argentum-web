@@ -205,7 +205,10 @@ function buildMapDataPacket(map: MapState): MapData {
     kind: "player" as const,
     // Muerto = fantasma (casper): el cuerpo vivo NO se filtra al re-entrar.
     bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
-    headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
+    // Navegando = sin cabeza (solo el barco). Antes esta línea del MAP_DATA usaba
+    // s.headId crudo, así que al CAMBIAR DE MAPA el cliente reconstruía la entidad
+    // con la cabeza real y reaparecía flotando sobre el barco.
+    headId: computeVisibleHead(s),
     graphic: 0,
     criminal: isCriminal(s),
     faction: s.faction,
