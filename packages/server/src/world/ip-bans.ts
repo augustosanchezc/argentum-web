@@ -32,9 +32,22 @@ export function isIpBanned(ip: string): boolean {
   return ip !== "" && banned.has(ip);
 }
 
-// Devuelve true si se agregó (false si vacía o ya estaba).
+// IP pública baneable: NO loopback ni rangos privados. Guard anti-desastre: si
+// por un proxy mal configurado la IP fuese la interna (172.x/10.x/127.x), banearla
+// echaría a TODOS. En ese caso banIp se niega.
+function isBannableIp(ip: string): boolean {
+  if (!ip) return false;
+  if (ip === "::1" || ip.startsWith("127.")) return false; // loopback
+  if (ip.startsWith("10.") || ip.startsWith("192.168.")) return false;
+  const m = /^172\.(\d+)\./.exec(ip);
+  if (m && Number(m[1]) >= 16 && Number(m[1]) <= 31) return false; // 172.16-31.x
+  if (ip.startsWith("fc") || ip.startsWith("fd")) return false; // IPv6 privada (ULA)
+  return true;
+}
+
+// Devuelve true si se agregó (false si no es baneable o ya estaba).
 export function banIp(ip: string): boolean {
-  if (!ip || banned.has(ip)) return false;
+  if (!isBannableIp(ip) || banned.has(ip)) return false;
   banned.add(ip);
   persist();
   return true;

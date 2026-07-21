@@ -24,11 +24,11 @@
         reverse_proxy ao-server:3000 {
             header_up Host {host}
             header_up X-Forwarded-Proto {scheme}
-            # IP real del cliente para el rate-limit y la allowlist del panel.
-            # Detrás de Cloudflare, la IP verdadera viene en CF-Connecting-IP;
-            # se propaga como X-Forwarded-For (Fastify trustProxy la lee).
-            header_up X-Real-IP {http.request.header.CF-Connecting-IP}
-            header_up X-Forwarded-For {http.request.header.CF-Connecting-IP}
+            # IP real del cliente (rate-limit, allowlist del panel, /banip). Sin
+            # Cloudflare, Caddy termina el TLS directo del cliente, así que el
+            # remote es la IP verdadera. Caddy ya agrega X-Forwarded-For por
+            # defecto; forzamos X-Real-IP al remote real (Fastify trustProxy lo lee).
+            header_up X-Real-IP {http.request.remote.host}
         }
     }
 
