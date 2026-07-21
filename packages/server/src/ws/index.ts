@@ -354,6 +354,15 @@ function computeVisibleBody(s: Session): number {
   return s.bodyId;
 }
 
+// Cabeza visible del jugador: NAVEGANDO no se ve (solo el barco/galera/galeón);
+// muerto = cabeza fantasma (Casper); si no, su cabeza real. Navegar tiene
+// prioridad sobre muerto (barcos no caen al morir → igual se ve solo el barco).
+function computeVisibleHead(s: Session): number {
+  if (s.navigating) return 0;
+  if (s.deadUntil !== 0) return CASPER_HEAD;
+  return s.headId;
+}
+
 const CLOSE_NORMAL = 1000;
 const CLOSE_AUTH_FAILED = 4001;
 const CLOSE_UNKNOWN_OPCODE = 4002;
@@ -790,7 +799,7 @@ function sendInventoryUpdate(s: Session): void {
       op: ServerToClientOp.EntityAppearance,
       id: s.characterId as EntityId,
       bodyId: visible,
-      headId: s.headId,
+      headId: computeVisibleHead(s),
       ...equip,
     };
     broadcastToMap(s.mapId, appearance);
@@ -873,7 +882,7 @@ setInterval(() => {
       maxHp: s.maxHp,
       kind: "player",
       bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
-      headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
+      headId: computeVisibleHead(s),
       graphic: 0,
       criminal: isCriminal(s),
       faction: s.faction,
@@ -1255,7 +1264,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         kind: "player",
         // El muerto sigue muerto al cruzar de mapa (fantasma, no se "resucita").
         bodyId: s.deadUntil !== 0 ? CASPER_BODY : s.visibleBodyId,
-        headId: s.deadUntil !== 0 ? CASPER_HEAD : s.headId,
+        headId: computeVisibleHead(s),
         graphic: 0,
         criminal: isCriminal(s),
         faction: s.faction,
@@ -4701,7 +4710,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         maxHp: session.maxHp,
         kind: "player",
         bodyId: session.deadUntil !== 0 ? CASPER_BODY : session.visibleBodyId,
-        headId: session.deadUntil !== 0 ? CASPER_HEAD : session.headId,
+        headId: computeVisibleHead(session),
         graphic: 0,
         criminal: isCriminal(session),
         faction: session.faction,
