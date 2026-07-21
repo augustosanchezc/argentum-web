@@ -1,4 +1,4 @@
-import { classUsesMagic, getAoSpell, getItem, spellMinLevel, type InventorySlot } from "@ao/shared";
+import { classUsesMagic, getAoSpell, getItem, spellLearnLevel, type InventorySlot } from "@ao/shared";
 
 // Panel lateral clásico del AO (siempre visible, tecla I lo oculta):
 //   - Cabecera: nombre, nivel, oro.
@@ -474,9 +474,10 @@ export function mountInventory(
       row.dataset.spellId = id.toString();
       if (selectedSpell === id) row.classList.add("ao-spells__row--selected");
       row.draggable = true;
-      // Restricción de nivel del hechizo (fiel a AO): se muestra en el nombre,
-      // p. ej. "Flecha Mágica - Lv. 12". Sale de CLASS_SPELLBOOK según la clase.
-      const minLv = stats ? spellMinLevel(stats.classId, id) : undefined;
+      // Restricción de nivel del hechizo: se muestra en el nombre, p. ej.
+      // "Flecha Mágica - Lv. 12". Es por-hechizo (igual para todas las clases):
+      // el nivel al que la Magia alcanza el minSkill del hechizo.
+      const minLv = spellLearnLevel(id);
       const nameLabel = minLv !== undefined ? `${spell.name} - Lv. ${minLv.toString()}` : spell.name;
       row.title = `«${spell.magicWords}» — maná ${spell.manaCost.toString()} · doble-click: agregar a macros`;
       row.innerHTML = `

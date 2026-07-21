@@ -76,7 +76,8 @@ import {
   getAoSpell,
   getSkill,
   knownSpellsFor,
-  spellRequirement,
+  spellLearnLevel,
+  classUsesMagic,
   type WhisperSendRequest,
   type WhisperReceived,
   type CriminalUpdate,
@@ -2010,19 +2011,30 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       }
       s.lastUseAt = now;
 
-      // Pergaminos (objType 24): al doble-click enseñan un hechizo. Fiel al AO:
-      // restringido por clase y nivel (CLASS_SPELLBOOK); se consume al aprenderlo
-      // y el hechizo queda permanente (persistido) en el personaje.
+      // Pergaminos (objType 24): al doble-click enseñan un hechizo. Fiel a AO
+      // Libre (ClasePuedeUsarItem): CUALQUIER clase mágica puede aprender el
+      // hechizo salvo que el pergamino la prohíba (ClaseProhibida = forbidden
+      // Classes). El único otro requisito es el nivel: el hechizo se aprende
+      // cuando tu Magia (derivada del nivel) alcanza su minSkill. Se consume al
+      // aprenderlo y queda permanente (persistido) en el personaje.
       if (def.spellId !== undefined) {
         const spellId = def.spellId;
         const spellName = getAoSpell(spellId)?.name ?? "este hechizo";
-        const req = spellRequirement(s.classId, spellId);
-        if (!req) {
+        if (!classUsesMagic(s.classId)) {
+          consoleMsg(s, "Tu clase no puede usar magia.", "combate");
+          return;
+        }
+        if (def.forbiddenClasses?.includes(s.classId)) {
           consoleMsg(s, `Tu clase no puede aprender ${spellName}.`, "combate");
           return;
         }
-        if (s.level < req.minLevel) {
-          consoleMsg(s, `Necesitás ser nivel ${req.minLevel.toString()} para aprender ${spellName}.`, "combate");
+        const reqLevel = spellLearnLevel(spellId);
+        if (reqLevel === undefined) {
+          consoleMsg(s, `${spellName} no se puede aprender.`, "combate");
+          return;
+        }
+        if (s.level < reqLevel) {
+          consoleMsg(s, `Necesitás ser nivel ${reqLevel.toString()} para aprender ${spellName}.`, "combate");
           return;
         }
         if (s.knownSpells.includes(spellId)) {

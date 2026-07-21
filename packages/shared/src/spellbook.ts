@@ -2,6 +2,8 @@
 // clase y desde qué nivel. En el AO original se aprenden con pergaminos;
 // hasta implementar el drop/compra de pergaminos, el libro se desbloquea
 // por nivel con la progresión típica de cada clase.
+import { getAoSpell } from "./spells.generated.js";
+import { skillsForLevel } from "./skills-uso.js";
 
 export interface SpellbookEntry {
   readonly spellId: number; // ID en Hechizos.dat (AO_SPELLS)
@@ -73,8 +75,23 @@ export function spellMinLevel(classId: number, spellId: number): number | undefi
   return spellRequirement(classId, spellId)?.minLevel;
 }
 
-// Si la clase puede usar magia (tiene hechizos aprendibles). Guerrero/Arquero/
-// Asesino no; Mago/Clérigo/Druida/Paladín sí.
+// Si la clase puede usar magia (tiene hechizos aprendibles). Guerrero/Arquero no;
+// Mago/Clérigo/Druida/Paladín/Asesino sí.
 export function classUsesMagic(classId: number): boolean {
   return (CLASS_SPELLBOOK[classId] ?? []).length > 0;
+}
+
+// Nivel al que un hechizo se puede APRENDER (y castear): el primer nivel cuya
+// skill de Magia alcanza el minSkill del hechizo. En AO el casteo se gatea por
+// Magia (y acá la skill sale del nivel: L1→35 … L34→100), así que aprender un
+// pergamino tiene el mismo umbral. Es IGUAL para todas las clases mágicas (fiel
+// a AO Libre: la restricción real es ClaseProhibida del pergamino, no la clase).
+// undefined = minSkill inalcanzable (>100): hechizos especiales de NPC/GM.
+export function spellLearnLevel(spellId: number): number | undefined {
+  const spell = getAoSpell(spellId);
+  if (!spell) return undefined;
+  for (let lvl = 1; lvl <= 34; lvl++) {
+    if (skillsForLevel(lvl).magia >= spell.minSkill) return lvl;
+  }
+  return undefined;
 }
