@@ -2958,11 +2958,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         stopMeditating(target);
       } else if ((spell.agiBoostMax ?? spell.agiBoost ?? 0) > 0 || (spell.strBoostMax ?? spell.strBoost ?? 0) > 0) {
         // Celeridad / Fuerza sobre un aliado (o uno mismo): +RandomNumber(Min,Max).
+        // ACUMULATIVO como las pociones (AO): cada casteo SUMA el roll al bonus
+        // ya existente y topa por MAXATRIBUTOS (40) y por el doble del base — no
+        // re-tira de cero (antes se pisaba el bonus, no acumulaba).
         const rint = (lo: number, hi: number): number => lo + Math.floor(Math.random() * (Math.max(lo, hi) - lo + 1));
+        const MAX_ATRIB = 40;
         const agiMax = spell.agiBoostMax ?? spell.agiBoost ?? 0;
         const strMax = spell.strBoostMax ?? spell.strBoost ?? 0;
-        if (agiMax > 0) target.agiBonus = rint(spell.agiBoostMin ?? spell.agiBoost ?? agiMax, agiMax);
-        if (strMax > 0) target.strBonus = rint(spell.strBoostMin ?? spell.strBoost ?? strMax, strMax);
+        if (agiMax > 0) {
+          const roll = rint(spell.agiBoostMin ?? spell.agiBoost ?? agiMax, agiMax);
+          const eff = Math.min(target.agi + target.agiBonus + roll, MAX_ATRIB, 2 * target.agi);
+          target.agiBonus = Math.max(0, eff - target.agi);
+        }
+        if (strMax > 0) {
+          const roll = rint(spell.strBoostMin ?? spell.strBoost ?? strMax, strMax);
+          const eff = Math.min(target.str + target.strBonus + roll, MAX_ATRIB, 2 * target.str);
+          target.strBonus = Math.max(0, eff - target.str);
+        }
         target.buffUntil = Date.now() + (spell.buffSeconds ?? 48) * 1000;
       } else if (spell.paraliza || spell.inmoviliza) {
         // Control PvP: respeta zonas seguras y party.
