@@ -225,9 +225,24 @@ function tryLoadMap(mapId: number): MapState | null {
     // #6: TODAS las puertas siempre abiertas (incluso con llave). Al cargar el
     // mapa abrimos cada puerta (objType 6): gráfico de puerta abierta + tile
     // transitable. Nunca se cierran (handleTileInteract las ignora).
+    // Tiles con un exit funcional (para pintar solo los teleports que realmente
+    // transportan; ver objType 19 abajo).
+    const portalSrc = new Set(portals.map((p) => p.y * raw.width + p.x));
     for (const [idx, obj] of objects) {
       const def = getItem(obj.item);
-      if (!def || def.objType !== 6) continue;
+      if (!def) continue;
+      // Teleports (objType 19): funcionan por el exit del .inf pero eran
+      // INVISIBLES — su gráfico (remolino) nunca llegaba a layer3 (solo se
+      // pintaban puertas y los EXTRA_PORTALS). Pintamos el remolino SOLO donde
+      // hay un exit funcional, así se ven todos los teleports reales sin ensuciar
+      // con los marcadores invisibles "No ves nada interesante" (item 1043) que el
+      // AO usa en clusters decorativos sin salida. Si el objeto no trae gráfico
+      // (marcador invisible con exit), caemos al remolino estándar del AO (669).
+      if (def.objType === 19) {
+        if (portalSrc.has(idx)) layer3[idx] = def.graphic > 0 ? def.graphic : 669;
+        continue;
+      }
+      if (def.objType !== 6) continue;
       let openId = obj.item;
       let openGrh = def.graphic;
       if ((def.indexAbierta ?? 0) > 0) {
