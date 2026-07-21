@@ -2977,7 +2977,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           const eff = Math.min(target.str + target.strBonus + roll, MAX_ATRIB);
           target.strBonus = Math.max(0, eff - target.str);
         }
-        target.buffUntil = Date.now() + (spell.buffSeconds ?? 48) * 1000;
+        // House rule: duración 100s, igual que las pociones verde/amarilla (no
+        // los ~48s de spell.buffSeconds del AO), para que poción y hechizo duren lo mismo.
+        target.buffUntil = Date.now() + 100 * 1000;
       } else if (spell.paraliza || spell.inmoviliza) {
         // Control PvP: respeta zonas seguras y party.
         if (target.characterId === s.characterId) return;
