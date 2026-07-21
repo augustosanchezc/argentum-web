@@ -2636,9 +2636,10 @@ export async function startGameScene(
     v.overheadUntil = performance.now() + 2_500 + text.length * 60;
   }
 
-  // Palabras mágicas al estilo AO Libre: texto plano flotante sobre la cabeza
-  // (SIN globo de diálogo), como el ChatOverHead original del AO. Reusa el slot
-  // y el lifetime de overheadText para que se limpie solo y no se solape.
+  // Palabras mágicas: globo de FONDO NEGRO con BORDE BLANCO y TEXTO BLANCO,
+  // centrado ARRIBA DE LA CABEZA (sin cola: no sale de la boca, a diferencia del
+  // globo de diálogo). Reusa el slot y el lifetime de overheadText para que se
+  // limpie solo y no se solape.
   function showMagicWords(v: EntityVisual, text: string): void {
     if (v.overheadText) {
       v.container.removeChild(v.overheadText);
@@ -2650,21 +2651,30 @@ export async function startGameScene(
       resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
         fill: "#ffffff",
-        stroke: { color: 0x000000, width: 3 },
-        fontFamily: "Arial, sans-serif",
+        fontFamily: "Verdana, Geneva, sans-serif",
         fontSize: 9,
         fontWeight: "bold",
         align: "center",
         wordWrap: true,
-        wordWrapWidth: 130,
+        wordWrapWidth: 120,
       }),
     });
-    label.anchor.set(0.5, 1);
+    label.anchor.set(0.5, 0.5);
+    const padX = 6;
+    const padY = 4;
+    const w = Math.ceil(label.width) + padX * 2;
+    const h = Math.ceil(label.height) + padY * 2;
+    const g = new Graphics();
+    g.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: 0x000000, alpha: 0.85 }).stroke({ width: 1.5, color: 0xffffff });
+    const bubble = new Container();
+    bubble.addChild(g);
+    bubble.addChild(label);
+    // Centrado sobre la cabeza (sin desplazamiento por dirección ni cola).
     const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
-    label.x = 0;
-    label.y = headTop - 6;
-    v.container.addChild(label);
-    v.overheadText = label;
+    bubble.x = 0;
+    bubble.y = headTop - 8 - h / 2;
+    v.container.addChild(bubble);
+    v.overheadText = bubble;
     v.overheadUntil = performance.now() + 2_500 + text.length * 60;
   }
 
