@@ -101,3 +101,7 @@ export function createCharacter(input: CreateCharacterInput): Promise<CharacterS
     body: JSON.stringify(input),
   });
 }
+
+export function deleteCharacter(id: number): Promise<void> {
+  return jsonRequest<void>(`/characters/${id.toString()}`, { method: "DELETE" });
+}

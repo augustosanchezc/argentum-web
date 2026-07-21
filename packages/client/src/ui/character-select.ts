@@ -2,6 +2,7 @@ import {
   ApiError,
   type CharacterSummary,
   createCharacter,
+  deleteCharacter,
   listCharacters,
 } from "../api";
 import { clearToken } from "../auth";
@@ -15,6 +16,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   INVALID_NAME: "El nombre debe tener 3-16 letras o números, sin espacios.",
   MAX_CHARACTERS_REACHED: "Ya tenés el máximo de 5 personajes.",
   INVALID_TOKEN: "Sesión expirada.",
+  CHARACTER_NOT_FOUND: "Ese personaje ya no existe.",
+  DELETE_FAILED: "No se pudo borrar el personaje.",
   UNKNOWN_ERROR: "No se pudo crear el personaje.",
 };
 
@@ -113,6 +116,27 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
     }
   }
 
+  async function onDelete(id: number): Promise<void> {
+    const target = characters.find((c) => c.id === id);
+    if (!target) return;
+    // Confirmación (acción irreversible). Nativo, como el resto de avisos.
+    if (!window.confirm(`¿Seguro que querés borrar a ${target.name}? Se pierde todo su progreso y no se puede deshacer.`)) return;
+    setError(null);
+    try {
+      await deleteCharacter(id);
+      characters = characters.filter((c) => c.id !== id);
+      if (selectedId === id) selectedId = characters[0]?.id ?? null;
+      render();
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 401) {
+        clearToken();
+        cb.onAuthExpired();
+        return;
+      }
+      setError(err instanceof ApiError ? err.code : "DELETE_FAILED");
+    }
+  }
+
   function render(): void {
     if (loading) {
       wrap.innerHTML = `
@@ -135,6 +159,7 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
       const spr = spritesReady ? charSpriteHtml(c.bodyId ?? 21, c.headId ?? 1, 1, 60) : "";
       return `
         <button type="button" class="lp-char${c.id === selectedId ? " sel" : ""}" data-id="${c.id.toString()}">
+          <span class="lp-char-del" data-del="${c.id.toString()}" role="button" tabindex="0" title="Borrar personaje" aria-label="Borrar ${escapeHtml(c.name)}">✕</span>
           ${spr}
           <div class="lp-char-name">${escapeHtml(c.name)}</div>
           <div class="lp-char-meta">Nv ${c.level.toString()}${cls ? ` · ${escapeHtml(cls.name)}` : ""}</div>
@@ -243,6 +268,20 @@ export function renderCharacterSelect(root: HTMLElement, cb: Callbacks): () => v
       el.addEventListener("click", () => {
         const id = Number.parseInt(el.dataset.id ?? "", 10);
         if (!Number.isNaN(id)) { selectedId = id; render(); }
+      });
+    });
+    // Wiring — botón borrar de cada tarjeta. stopPropagation para NO seleccionar
+    // la tarjeta al borrar. Enter/espacio también disparan (es role="button").
+    wrap.querySelectorAll<HTMLElement>(".lp-char-del[data-del]").forEach((el) => {
+      const trigger = (ev: Event): void => {
+        ev.stopPropagation();
+        ev.preventDefault();
+        const id = Number.parseInt(el.dataset.del ?? "", 10);
+        if (!Number.isNaN(id)) void onDelete(id);
+      };
+      el.addEventListener("click", trigger);
+      el.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") trigger(ev);
       });
     });
 

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyPluginAsync } from "fastify";
 import { initialSkillsFor, isValidHead, RACES, type InventorySlot } from "@ao/shared";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { characters } from "../db/schema/characters.js";
 import { calcInitialStatsRaced } from "../world/classes.js";
@@ -191,6 +191,31 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
       }
 
       return reply.code(201).send(character);
+    },
+  );
+
+  // Borrar un personaje de la cuenta. El WHERE incluye accountId + el
+  // .returning confirma que existía Y era del dueño autenticado, así una cuenta
+  // nunca puede borrar personajes de otra. Borrar la fila elimina todo su estado
+  // (inventario, banco, hechizos… viven en JSONB de la misma fila); ninguna otra
+  // tabla tiene FK a characters, así que no quedan datos huérfanos.
+  app.delete<{ Params: { id: string } }>(
+    "/:id",
+    { preHandler: [app.authenticate] },
+    async (req, reply) => {
+      const { accountId } = req.user;
+      const charId = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(charId) || charId <= 0) {
+        return reply.code(400).send({ error: "INVALID_ID" });
+      }
+      const [deleted] = await db
+        .delete(characters)
+        .where(and(eq(characters.id, charId), eq(characters.accountId, accountId)))
+        .returning({ id: characters.id });
+      if (!deleted) {
+        return reply.code(404).send({ error: "CHARACTER_NOT_FOUND" });
+      }
+      return reply.code(204).send();
     },
   );
 };
