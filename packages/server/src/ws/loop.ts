@@ -6,7 +6,6 @@ import {
   type EntityId,
   type EntitySpawn,
   type EntityUpdate,
-  type Respawn,
   type Vector2,
 } from "@ao/shared";
 import {
@@ -265,9 +264,9 @@ function processNpcs(now: number): void {
 
       // Respawn aleatorio por mapa: si es una criatura de caza y el admin
       // habilitó el pool de este mapa, reaparece como una del pool (al azar).
-      // El tipo cambia → refrescamos apariencia/nombre con despawn+spawn
-      // (el paquete Respawn solo lleva pos/hp).
-      const typeChanged = rerollCreatureType(npc);
+      // Puede cambiar el tipo (apariencia/nombre); igual SIEMPRE recreamos la
+      // entidad con despawn+spawn más abajo.
+      rerollCreatureType(npc);
 
       npc.hp = npc.type.maxHp;
       // Respawn en posición ALEATORIA del mapa (nunca en el mismo lugar donde
@@ -281,33 +280,30 @@ function processNpcs(now: number): void {
       npc.ownerCharacterId = null;
       npc.petTargetNpcId = null;
 
-      if (typeChanged) {
-        const despawn: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
-        broadcastToMap(npc.mapId, despawn);
-        const spawn: EntitySpawn = {
-          op: ServerToClientOp.EntitySpawn,
-          id: npc.id as EntityId,
-          position: { x: npc.position.x, y: npc.position.y },
-          direction: npc.direction,
-          name: npc.type.name,
-          hp: npc.hp,
-          maxHp: npc.type.maxHp,
-          kind: "npc",
-          bodyId: npc.type.bodyId,
-          headId: npc.type.headId,
-          graphic: 0,
-        };
-        broadcastToMap(npc.mapId, spawn);
-      } else {
-        const respawn: Respawn = {
-          op: ServerToClientOp.Respawn,
-          id: npc.id as EntityId,
-          position: { x: npc.position.x, y: npc.position.y },
-          hp: npc.hp,
-          maxHp: npc.type.maxHp,
-        };
-        broadcastToMap(npc.mapId, respawn);
-      }
+      // SIEMPRE recreamos la entidad con despawn+spawn (antes: solo si cambiaba
+      // el tipo; si no, un `Respawn` liviano de pos/hp que ASUMÍA que el cliente
+      // ya tenía la entidad). Eso fallaba para NPCs que estaban muertos cuando el
+      // jugador cargó el mapa — MAP_DATA solo manda vivos, así que el cliente
+      // nunca los tuvo: el `Respawn` no los creaba y el siguiente EntityUpdate de
+      // la IA los dibujaba como placeholder "?<id> / Lv.1 Guerrero". El despawn
+      // limpia cualquier entidad previa (viva/oculta o inexistente) y el spawn la
+      // recrea con kind "npc", nombre y body correctos.
+      const despawn: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
+      broadcastToMap(npc.mapId, despawn);
+      const spawn: EntitySpawn = {
+        op: ServerToClientOp.EntitySpawn,
+        id: npc.id as EntityId,
+        position: { x: npc.position.x, y: npc.position.y },
+        direction: npc.direction,
+        name: npc.type.name,
+        hp: npc.hp,
+        maxHp: npc.type.maxHp,
+        kind: "npc",
+        bodyId: npc.type.bodyId,
+        headId: npc.type.headId,
+        graphic: 0,
+      };
+      broadcastToMap(npc.mapId, spawn);
       continue;
     }
 
