@@ -62,6 +62,8 @@ export interface Session {
   resting: boolean;
   // Seguro /SEG: con true no se puede atacar ciudadanos.
   safeOn: boolean;
+  // GM: /eliminarnpc armado — el próximo click a un vendedor lo elimina.
+  armedDeleteNpc: boolean;
   // Navegación: en barco (body = barco, solo se mueve por agua).
   navigating: boolean;
   boatBody: number;
@@ -238,6 +240,7 @@ export class SessionRegistry {
       lastWorkAt: 0,
       resting: false,
       safeOn: true,
+      armedDeleteNpc: false,
       navigating: false,
       boatBody: 0,
       deadUntil: 0,

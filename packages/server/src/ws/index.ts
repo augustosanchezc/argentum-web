@@ -158,6 +158,7 @@ import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
 import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
+import { addNpcDeletion } from "../world/npc-deletions.js";
 import { isIpBanned, banIp, unbanIp } from "../world/ip-bans.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
@@ -2328,6 +2329,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const npc = npcs.get(targetId);
       if (!npc || npc.mapId !== s.mapId) return;
 
+      // GM /eliminarnpc armado: el click a un vendedor/banquero lo ELIMINA del
+      // mundo (en vez de abrir la tienda) y persiste la baja para que no vuelva
+      // a aparecer tras un redeploy. Es de un solo uso (se desarma al usarlo).
+      if (s.armedDeleteNpc && s.role >= 3) {
+        s.armedDeleteNpc = false;
+        if (!npc.type.merchant && !npc.type.banker) {
+          consoleMsg(s, "Solo se pueden eliminar vendedores o banqueros. Cancelado.", "global");
+          return;
+        }
+        addNpcDeletion(npc.mapId, npc.type.number, npc.spawn.x, npc.spawn.y);
+        npcs.remove(npc.id);
+        const gone: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
+        broadcastToMap(npc.mapId, gone);
+        consoleMsg(s, `NPC eliminado: ${npc.type.name} (#${npc.type.number.toString()}). No reaparecerá.`, "global");
+        return;
+      }
+
       // Sacerdote por click (Acciones.bas L125-140): distancia ≤ 10 —
       // revive al muerto y cura al herido.
       if (npc.type.isPriest && chebyshev(s.position, npc.position) <= 10) {
@@ -3862,7 +3880,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|echar|carcel|silenciar|banip|unbanip|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|eliminarnpc|echar|carcel|silenciar|banip|unbanip|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3910,6 +3928,20 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         } else {
           consoleMsg(s, "No hay criaturas atacables cerca.", "global");
         }
+        return;
+      }
+      // /ELIMINARNPC: arma el modo eliminar. El próximo click sobre un vendedor
+      // o banquero lo borra del mundo de forma permanente (persiste el redeploy).
+      // Toggle: si ya estaba armado, lo cancela.
+      if (/^\/eliminarnpc$/i.test(text)) {
+        s.armedDeleteNpc = !s.armedDeleteNpc;
+        consoleMsg(
+          s,
+          s.armedDeleteNpc
+            ? "Eliminar NPC ARMADO: hacé click en el vendedor/banquero a eliminar. (/eliminarnpc de nuevo para cancelar)"
+            : "Eliminar NPC cancelado.",
+          "global",
+        );
         return;
       }
       // /LLUVIA: toggle global (Lloviendo del AO).
@@ -4304,7 +4336,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /morir\n" +
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /eliminarnpc · /morir\n" +
         "Extra: /echar <nombre> · /carcel <nombre> [min] · /silenciar <nombre> [min] · /ban <nombre> · /unban <nombre> · /banip <nombre|ip> · /unbanip <ip> · /donde <nombre> · /sumtodos · /telealltodos <mapa> <x> <y> · /curar [nombre] · /revivir <nombre> · /masskill · /limpiar · /quienes · /info <nombre> · /setfaccion <nombre> <ciudadano|armada|caos> · /darexp <nombre> <n> · /renombrar <viejo> <nuevo>", "global");
     }
 

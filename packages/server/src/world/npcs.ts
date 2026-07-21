@@ -4,6 +4,7 @@ import type { Direction, Vector2 } from "@ao/shared";
 import { getMap, isWalkable, loadedMapIds } from "./maps.js";
 import { NPC_DEFS, type NpcDefData } from "./npcs.generated.js";
 import { overridePath, readOverrideOrSeed } from "./overrides-dir.js";
+import { isNpcDeleted } from "./npc-deletions.js";
 
 export const NPC_ID_BASE = 1_000_000;
 
@@ -289,6 +290,9 @@ class NpcRegistry {
           continue;
         }
         const pos = findWalkableNear(mapId, { x: s.x, y: s.y }, type.waterOnly);
+        // Salteamos los NPCs que un GM eliminó (/eliminarnpc) — persistido en el
+        // volumen para que la eliminación sobreviva a los redeploy.
+        if (isNpcDeleted(mapId, s.npcNumber, pos.x, pos.y)) continue;
         const id = this.nextId++;
         this.byId.set(id, {
           id, type, mapId,
@@ -315,6 +319,12 @@ class NpcRegistry {
 
   get(id: number): NpcInstance | undefined { return this.byId.get(id); }
   all(): IterableIterator<NpcInstance> { return this.byId.values(); }
+  // Saca un NPC del mundo (para /eliminarnpc). Devuelve la instancia borrada.
+  remove(id: number): NpcInstance | undefined {
+    const npc = this.byId.get(id);
+    if (npc) this.byId.delete(id);
+    return npc;
+  }
 
   inMap(mapId: number): NpcInstance[] {
     const out: NpcInstance[] = [];
