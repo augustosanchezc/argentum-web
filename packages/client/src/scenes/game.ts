@@ -2669,7 +2669,6 @@ export async function startGameScene(
     const w = Math.ceil(label.width) + padX * 2;
     const cx = Math.max(0, w / 2 - rad); // centro de los dos extremos redondeados
     const tw = 4, tl = 6;
-    const gold = 0xd4af37; // dorado un poco más oscuro
     const g = new Graphics();
     // Cápsula: dos extremos redondeados (sin esquinas) + la cuña integrada en el
     // borde inferior, todo como UN solo contorno → relleno y borde limpios.
@@ -2683,7 +2682,7 @@ export async function startGameScene(
       .arc(-cx, 0, rad, Math.PI / 2, 3 * Math.PI / 2)   // extremo izquierdo
       .closePath()
       .fill({ color: 0x000000, alpha: 0.85 })
-      .stroke({ width: 1, color: gold, join: "round" });
+      .stroke({ width: 1, color: 0xffffff, join: "round" });
     const bubble = new Container();
     bubble.addChild(g);
     bubble.addChild(label);
