@@ -159,6 +159,7 @@ import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
 import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
 import { addNpcDeletion } from "../world/npc-deletions.js";
+import { addBlock, removeBlock, isBlockStored } from "../world/blocked-tiles.js";
 import { isIpBanned, banIp, unbanIp } from "../world/ip-bans.js";
 import { canAttackPlayer } from "../world/zones.js";
 import { activeDots, executeSkill } from "../world/skills.js";
@@ -3880,7 +3881,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // Jerarquía del AO: los comandos que otorgan recursos/poder o alteran el
       // mundo son exclusivos de Dios (rol 3). Consejero (1) y Semidiós (2) solo
       // acceden a utilidades de comunicación/moderación (/gmsg, /lluvia, /morir).
-      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|matarnpc|eliminarnpc|echar|carcel|silenciar|banip|unbanip|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
+      if (s.role < 3 && /^\/(oro|item|nivel|invocar|sumtodos|sum|telepto|telealltodos|telep|teleport|delteleport|blockpiso|matarnpc|eliminarnpc|echar|carcel|silenciar|banip|unbanip|ban|unban|donde|curar|revivir|masskill|limpiar|quienes|info|setfaccion|darexp|renombrar)\b/i.test(text)) {
         consoleMsg(s, "Ese comando requiere rango Dios (rol 3).", "global");
         return;
       }
@@ -3940,6 +3941,34 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           s.armedDeleteNpc
             ? "Eliminar NPC ARMADO: hacé click en el vendedor/banquero a eliminar. (/eliminarnpc de nuevo para cancelar)"
             : "Eliminar NPC cancelado.",
+          "global",
+        );
+        return;
+      }
+      // /BLOCKPISO: bloquea (toggle) el tile donde está parado el GM para que
+      // ningún jugador pueda pisarlo. El GM sí puede volver con /telep (no valida
+      // walkability). Persiste el redeploy (blocked-tiles.json). El grh3 se manda
+      // con el gráfico ACTUAL del tile para no borrar nada.
+      if (/^\/blockpiso$/i.test(text)) {
+        const map = getMap(s.mapId);
+        if (!map) return;
+        const { x, y } = s.position;
+        const grh3 = map.layer3[y * map.width + x] ?? 0;
+        let blockedNow: boolean;
+        if (isBlockStored(s.mapId, x, y)) {
+          removeBlock(s.mapId, x, y);
+          blockedNow = false;
+        } else {
+          addBlock(s.mapId, x, y);
+          blockedNow = true;
+        }
+        const pkt: MapTileUpdate = { op: ServerToClientOp.MapTileUpdate, x, y, grh3, blocked: blockedNow };
+        broadcastToMap(s.mapId, pkt);
+        consoleMsg(
+          s,
+          blockedNow
+            ? `Piso BLOQUEADO en (${x.toString()}, ${y.toString()}). Ningún jugador puede pisarlo (vos volvés con /telep). /blockpiso de nuevo para liberar.`
+            : `Piso liberado en (${x.toString()}, ${y.toString()}).`,
           "global",
         );
         return;
@@ -4336,7 +4365,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, `Invocado: ${npc.type.name} (#${num.toString()}).`, "global");
         return;
       }
-      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /eliminarnpc · /morir\n" +
+      consoleMsg(s, "Comandos GM: /gmsg <texto> · /invisible · /teleport <mapa> <x> <y> · /delteleport · /telep <mapa> <x> <y> · /telepto <nombre> · /lluvia · /sum <nombre> · /nivel <n> · /oro <n> · /item <id> [cant] · /invocar <npc> · /matarnpc · /eliminarnpc · /blockpiso · /morir\n" +
         "Extra: /echar <nombre> · /carcel <nombre> [min] · /silenciar <nombre> [min] · /ban <nombre> · /unban <nombre> · /banip <nombre|ip> · /unbanip <ip> · /donde <nombre> · /sumtodos · /telealltodos <mapa> <x> <y> · /curar [nombre] · /revivir <nombre> · /masskill · /limpiar · /quienes · /info <nombre> · /setfaccion <nombre> <ciudadano|armada|caos> · /darexp <nombre> <n> · /renombrar <viejo> <nuevo>", "global");
     }
 

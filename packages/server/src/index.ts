@@ -9,6 +9,7 @@ import { npcs } from "./world/npcs.js";
 import { createGameLoop } from "./ws/loop.js";
 import { flushAllSessions } from "./ws/index.js";
 import { applyStoredTeleports } from "./world/teleports.js";
+import { applyStoredBlocks } from "./world/blocked-tiles.js";
 
 async function main(): Promise<void> {
   // Sentry debe inicializarse antes de construir la app para capturar errores
@@ -36,6 +37,10 @@ async function main(): Promise<void> {
   // mapas recién cargados, para que sobrevivan a los reinicios.
   const tps = applyStoredTeleports();
   if (tps > 0) app.log.info({ teleports: tps }, "[ao-server] teleports de GM re-aplicados");
+
+  // Re-aplicar los tiles bloqueados por GM (/blockpiso), también persistidos.
+  const blks = applyStoredBlocks();
+  if (blks > 0) app.log.info({ blocks: blks }, "[ao-server] tiles bloqueados de GM re-aplicados");
 
   // Crea las instancias de NPC del mundo antes de arrancar el loop.
   npcs.init();
