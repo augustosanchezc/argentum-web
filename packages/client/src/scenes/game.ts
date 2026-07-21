@@ -2650,7 +2650,7 @@ export async function startGameScene(
       text,
       resolution: WORLD_SCALE * (window.devicePixelRatio || 1),
       style: new TextStyle({
-        fill: "#ffffff",
+        fill: "#f2c94c",
         fontFamily: "Verdana, Geneva, sans-serif",
         fontSize: 9,
         fontWeight: "bold",
@@ -2664,12 +2664,19 @@ export async function startGameScene(
     const padY = 4;
     const w = Math.ceil(label.width) + padX * 2;
     const h = Math.ceil(label.height) + padY * 2;
+    const gold = 0xf2c94c;
     const g = new Graphics();
-    g.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: 0x000000, alpha: 0.85 }).stroke({ width: 1.5, color: 0xffffff });
+    g.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: 0x000000, alpha: 0.85 }).stroke({ width: 1.5, color: gold });
+    // Cuña (cola) centrada apuntando hacia abajo, hacia la cabeza. Relleno negro
+    // que arranca DENTRO del globo (tapa el borde inferior en ese tramo) + borde
+    // dorado solo en los dos lados de la cuña.
+    const ty = h / 2;
+    g.moveTo(-6, ty - 2).lineTo(0, ty + 7).lineTo(6, ty - 2).fill({ color: 0x000000, alpha: 0.85 });
+    g.moveTo(-6, ty - 2).lineTo(0, ty + 7).lineTo(6, ty - 2).stroke({ width: 1.5, color: gold });
     const bubble = new Container();
     bubble.addChild(g);
     bubble.addChild(label);
-    // Centrado sobre la cabeza (sin desplazamiento por dirección ni cola).
+    // Centrado sobre la cabeza; la cuña apunta hacia abajo, a la cabeza.
     const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
     bubble.x = 0;
     bubble.y = headTop - 8 - h / 2;
