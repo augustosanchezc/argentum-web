@@ -2665,14 +2665,26 @@ export async function startGameScene(
     const w = Math.ceil(label.width) + padX * 2;
     const h = Math.ceil(label.height) + padY * 2;
     const gold = 0xf2c94c;
+    const W = w / 2, H = h / 2, r = 4, tw = 4, tl = 6;
     const g = new Graphics();
-    g.roundRect(-w / 2, -h / 2, w, h, 6).fill({ color: 0x000000, alpha: 0.85 }).stroke({ width: 1.5, color: gold });
-    // Cuña (cola) centrada apuntando hacia abajo, hacia la cabeza. Relleno negro
-    // que arranca DENTRO del globo (tapa el borde inferior en ese tramo) + borde
-    // dorado solo en los dos lados de la cuña.
-    const ty = h / 2;
-    g.moveTo(-6, ty - 2).lineTo(0, ty + 7).lineTo(6, ty - 2).fill({ color: 0x000000, alpha: 0.85 });
-    g.moveTo(-6, ty - 2).lineTo(0, ty + 7).lineTo(6, ty - 2).stroke({ width: 1.5, color: gold });
+    // UN SOLO contorno: globo redondeado con la cuña integrada en el borde
+    // inferior (centrada, apuntando a la cabeza). Al ser un único path, el relleno
+    // y el borde salen limpios (sin costuras ni doble línea). Borde fino (1px).
+    g.moveTo(-W + r, -H)
+      .lineTo(W - r, -H)
+      .quadraticCurveTo(W, -H, W, -H + r)
+      .lineTo(W, H - r)
+      .quadraticCurveTo(W, H, W - r, H)
+      .lineTo(tw, H)
+      .lineTo(0, H + tl)
+      .lineTo(-tw, H)
+      .lineTo(-W + r, H)
+      .quadraticCurveTo(-W, H, -W, H - r)
+      .lineTo(-W, -H + r)
+      .quadraticCurveTo(-W, -H, -W + r, -H)
+      .closePath()
+      .fill({ color: 0x000000, alpha: 0.85 })
+      .stroke({ width: 1, color: gold, join: "round" });
     const bubble = new Container();
     bubble.addChild(g);
     bubble.addChild(label);
