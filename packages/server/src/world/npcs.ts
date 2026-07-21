@@ -53,6 +53,8 @@ export interface NpcType {
   readonly poderEvasion: number;
   // Domable (DoDomar): puntos de doma requeridos (0 = no domable).
   readonly domable: number;
+  // Criatura marina (TierraInValida): solo se mueve en agua, no pisa tierra.
+  readonly waterOnly: boolean;
   readonly goldMin: number;
   readonly goldMax: number;
   readonly drops: readonly NpcDrop[];
@@ -123,6 +125,7 @@ function toNpcType(number: number, d: NpcDefData): NpcType {
     poderAtaque: d.poderAtaque,
     poderEvasion: d.poderEvasion,
     domable: d.domable ?? 0,
+    waterOnly: d.waterOnly ?? false,
     // NPCTirarOro del AO tira GiveGLD FIJO (sin rango aleatorio): goldMin==goldMax.
     goldMin: d.giveGld,
     goldMax: d.giveGld,
@@ -247,17 +250,18 @@ export interface NpcInstance {
   petTargetNpcId: number | null;
 }
 
-function findWalkableNear(mapId: number, origin: Vector2): Vector2 {
+function findWalkableNear(mapId: number, origin: Vector2, waterOnly = false): Vector2 {
   const map = getMap(mapId);
   if (!map) return origin;
-  if (isWalkable(map, origin.x, origin.y)) return origin;
+  // waterOnly (criatura marina): "caminable" = agua, para no relocalizarla a tierra.
+  if (isWalkable(map, origin.x, origin.y, waterOnly)) return origin;
   for (let r = 1; r < 12; r += 1) {
     for (let dy = -r; dy <= r; dy += 1) {
       for (let dx = -r; dx <= r; dx += 1) {
         if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
         const x = origin.x + dx;
         const y = origin.y + dy;
-        if (isWalkable(map, x, y)) return { x, y };
+        if (isWalkable(map, x, y, waterOnly)) return { x, y };
       }
     }
   }
@@ -284,7 +288,7 @@ class NpcRegistry {
           unknown++;
           continue;
         }
-        const pos = findWalkableNear(mapId, { x: s.x, y: s.y });
+        const pos = findWalkableNear(mapId, { x: s.x, y: s.y }, type.waterOnly);
         const id = this.nextId++;
         this.byId.set(id, {
           id, type, mapId,
@@ -325,7 +329,7 @@ class NpcRegistry {
   spawnAt(npcNumber: number, mapId: number, at: Vector2): NpcInstance | null {
     const type = getNpcType(npcNumber);
     if (!type) return null;
-    const pos = findWalkableNear(mapId, at);
+    const pos = findWalkableNear(mapId, at, type.waterOnly);
     const id = this.nextId++;
     const inst: NpcInstance = {
       id, type, mapId,

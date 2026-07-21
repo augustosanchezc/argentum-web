@@ -321,6 +321,8 @@ function generateNpcs() {
     // Domable: puntos de doma requeridos (DoDomar del Trabajo.bas).
     const domable = num(m, "domable");
     if (domable > 0) parts.push(`domable: ${domable}`);
+    // Criatura marina (TierraInValida=1): solo se mueve en agua, no pisa tierra.
+    if (num(m, "tierrainvalida") === 1) parts.push(`waterOnly: true`);
     if (shopItems.length > 0) parts.push(`shopItems: [${shopItems.join(", ")}]`);
     if (drops.length > 0) {
       parts.push(`drops: [${drops.map((d) => `{ item: ${d.item}, qty: ${d.qty} }`).join(", ")}]`);
@@ -359,6 +361,8 @@ export interface NpcDefData {
   readonly questNumber?: number;
   // Domable (DoDomar): puntos de doma requeridos; ausente = no domable.
   readonly domable?: number;
+  // Criatura marina (TierraInValida=1): solo se mueve en agua, no pisa tierra.
+  readonly waterOnly?: boolean;
   readonly shopItems?: readonly number[];
   readonly drops?: ReadonlyArray<{ readonly item: number; readonly qty: number }>;
   // Sonidos del NPC (Snd1/2/3): se reproducen al atacar y al morir la criatura.

@@ -69,9 +69,11 @@ function stepDirsToward(from: Vector2, to: Vector2): Direction[] {
 // True si el tile es caminable y no está ocupado por un jugador o NPC vivo.
 // Excluye también los tiles de portal: una criatura parada encima bloqueaba
 // el cruce a los jugadores.
-function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number): boolean {
+function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number, waterOnly = false): boolean {
   const map = getMap(mapId);
-  if (!map || !isWalkable(map, pos.x, pos.y)) return false;
+  // Criaturas marinas (waterOnly): caminan SOLO en agua (isWalkable con navigating
+  // = true da agua). El resto, solo tierra. Sin esto, las marinas pisaban tierra.
+  if (!map || !isWalkable(map, pos.x, pos.y, waterOnly)) return false;
   if (map.portals.some((p) => p.x === pos.x && p.y === pos.y)) return false;
   for (const s of sessions.inMap(mapId)) {
     if (s.deadUntil === 0 && s.position.x === pos.x && s.position.y === pos.y) return false;
@@ -88,7 +90,7 @@ function isTileFree(mapId: number, pos: Vector2, excludeNpcId: number): boolean 
 // Elige un tile caminable y libre al azar del mapa, evitando `avoid` (para el
 // respawn aleatorio de criaturas: nunca reaparecen en el mismo lugar). Si en
 // varios intentos no encuentra, devuelve null y el caller cae al spawn fijo.
-function randomFreeTile(mapId: number, excludeNpcId: number, avoid: Vector2): Vector2 | null {
+function randomFreeTile(mapId: number, excludeNpcId: number, avoid: Vector2, waterOnly = false): Vector2 | null {
   const map = getMap(mapId);
   if (!map) return null;
   for (let i = 0; i < 50; i += 1) {
@@ -96,7 +98,7 @@ function randomFreeTile(mapId: number, excludeNpcId: number, avoid: Vector2): Ve
     const y = Math.floor(Math.random() * map.height);
     if (x === avoid.x && y === avoid.y) continue;
     const pos: Vector2 = { x, y };
-    if (isTileFree(mapId, pos, excludeNpcId)) return pos;
+    if (isTileFree(mapId, pos, excludeNpcId, waterOnly)) return pos;
   }
   return null;
 }
@@ -182,7 +184,7 @@ function npcMoveToward(npc: NpcInstance, target: { position: Vector2 }, now: num
       x: npc.position.x + DELTAS[dir].x,
       y: npc.position.y + DELTAS[dir].y,
     };
-    if (isTileFree(npc.mapId, next, npc.id)) {
+    if (isTileFree(npc.mapId, next, npc.id, npc.type.waterOnly)) {
       npc.position = next;
       npc.direction = dir;
       npc.lastMoveAt = now;
@@ -271,7 +273,7 @@ function processNpcs(now: number): void {
       npc.hp = npc.type.maxHp;
       // Respawn en posición ALEATORIA del mapa (nunca en el mismo lugar donde
       // murió). Si no hay tile libre, cae al spawn original.
-      const respawnPos = randomFreeTile(npc.mapId, npc.id, npc.position);
+      const respawnPos = randomFreeTile(npc.mapId, npc.id, npc.position, npc.type.waterOnly);
       npc.position = respawnPos ?? { x: npc.spawn.x, y: npc.spawn.y };
       npc.direction = "south";
       npc.deadUntil = 0;
