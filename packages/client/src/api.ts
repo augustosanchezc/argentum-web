@@ -105,3 +105,17 @@ export function createCharacter(input: CreateCharacterInput): Promise<CharacterS
 export function deleteCharacter(id: number): Promise<void> {
   return jsonRequest<void>(`/characters/${id.toString()}`, { method: "DELETE" });
 }
+
+export interface RankingEntry {
+  name: string;
+  level: number;
+  classId: number;
+  kills: number;
+}
+
+// Ranking público: top personajes por "level" o "kills", opcional filtro de clase.
+export function getRanking(sort: "level" | "kills", classId?: number): Promise<{ ranking: RankingEntry[] }> {
+  const q = new URLSearchParams({ sort });
+  if (classId) q.set("classId", classId.toString());
+  return jsonRequest<{ ranking: RankingEntry[] }>(`/ranking?${q.toString()}`);
+}

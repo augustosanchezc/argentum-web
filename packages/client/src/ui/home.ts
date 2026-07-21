@@ -8,6 +8,7 @@ interface HomeCallbacks {
 }
 
 import { startLiveMap } from "./live-map";
+import { openRanking } from "./ranking";
 
 // Secciones todavía no implementadas → placeholder "próximamente".
 const COMING_SOON = "Esta sección está en construcción. Pronto vas a poder usarla.";
@@ -77,6 +78,7 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
     alert(`${title}\n\n${COMING_SOON}`);
   };
 
+  let closeRanking: (() => void) | undefined;
   wrap.querySelectorAll<HTMLElement>("[data-nav]").forEach((el) => {
     el.addEventListener("click", (ev) => {
       ev.preventDefault();
@@ -84,6 +86,7 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
       if (key === "personajes") { cb.onEnterWorld(); return; }
       if (key === "cuenta") { cb.onLogout(); return; }
       if (key === "inicio") return;
+      if (key === "ranking") { closeRanking?.(); closeRanking = openRanking(wrap); return; }
       placeholder(el.textContent?.trim() ?? "Sección");
     });
   });
@@ -113,5 +116,5 @@ export function renderHome(root: HTMLElement, cb: HomeCallbacks): () => void {
   }
 
   root.appendChild(wrap);
-  return () => { cancelled = true; stopLive?.(); wrap.remove(); };
+  return () => { cancelled = true; stopLive?.(); closeRanking?.(); wrap.remove(); };
 }

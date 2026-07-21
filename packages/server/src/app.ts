@@ -20,6 +20,7 @@ import "./world/item-overrides.js";
 import "./world/game-config.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerCharactersRoutes } from "./routes/characters.js";
+import { registerRankingRoutes } from "./routes/ranking.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerWsRoutes } from "./ws/index.js";
 
@@ -180,6 +181,7 @@ export async function buildApp(): Promise<FastifyInstance> {
 
   await app.register(registerAuthRoutes, { prefix: "/auth" });
   await app.register(registerCharactersRoutes, { prefix: "/characters" });
+  await app.register(registerRankingRoutes, { prefix: "/ranking" });
   await app.register(registerAdminRoutes, { prefix: "/admin" });
   await app.register(registerWsRoutes);
 
