@@ -623,40 +623,21 @@ export async function startGameScene(
     }
   }
 
-  // Barra de HP de jugador, estilo panel lateral (.ao-bar--hp): roja, bordes
-  // redondeados y un poco más larga. Siempre roja (la de NPCs va por tramos).
-  function drawPlayerHpBar(g: Graphics, hp: number, maxHp: number): void {
-    const w = 52;
-    const h = 6;
-    const x = -w / 2;
-    const frac = maxHp > 0 ? Math.max(0, Math.min(1, hp / maxHp)) : 0;
-    g.clear();
-    g.roundRect(x - 1, -1, w + 2, h + 2, 4)
-      .fill({ color: 0x0a0805, alpha: 0.8 })
-      .stroke({ width: 1, color: 0x2a1f14 });
-    if (frac > 0) {
-      g.roundRect(x, 0, w * frac, h, 3).fill({ color: 0xc94a3a });
-    }
-  }
-
   // El AO original no muestra barras de vida flotantes. Compromiso: la barra
   // aparece SOLO al recibir daño, por 3 segundos, y siempre por ENCIMA del
   // sprite (calculado con su altura real — nunca sobre la cara).
   const HP_BAR_SHOW_MS = 3_000;
   function showEntityHpBar(v: EntityVisual): void {
+    // Los personajes ya no muestran barra de vida flotante (decisión de diseño).
     if (v.kind === "player") {
-      // Jugadores: barra roja SIEMPRE visible, DEBAJO del nombre.
-      drawPlayerHpBar(v.hpBar, v.hp, v.maxHp);
-      v.hpBar.y = 30;
-      v.hpBar.visible = true;
-      v.hpBarUntil = 0;
-    } else {
-      // NPCs/criaturas: como el AO, solo unos segundos al recibir daño, arriba.
-      drawHpBar(v.hpBar, v.hp, v.maxHp);
-      v.hpBar.y = v.bodySprite ? v.bodySprite.y - v.bodySprite.height - 10 : -34;
-      v.hpBar.visible = true;
-      v.hpBarUntil = performance.now() + HP_BAR_SHOW_MS;
+      v.hpBar.visible = false;
+      return;
     }
+    // NPCs/criaturas: como el AO, solo unos segundos al recibir daño, arriba.
+    drawHpBar(v.hpBar, v.hp, v.maxHp);
+    v.hpBar.y = v.bodySprite ? v.bodySprite.y - v.bodySprite.height - 10 : -34;
+    v.hpBar.visible = true;
+    v.hpBarUntil = performance.now() + HP_BAR_SHOW_MS;
   }
 
   // Dibuja la figura humana orientada en `facing`. Se llama al crear y cada
