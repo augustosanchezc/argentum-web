@@ -1383,12 +1383,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(s.mapId, update);
 
       // Fantasma: revivir si hay un sacerdote cerca.
-      // Caminar rompe el OCULTARSE (AO) — salvo el Asesino con armadura de
-      // Asesino equipada (sigilo de la clase). La invisibilidad por hechizo
-      // no se rompe al caminar.
+      // Caminar rompe el OCULTARSE (AO) — salvo dos casos de sigilo de clase:
+      // el Asesino con armadura de Asesino, o el Cazador con la Armadura de
+      // Cazador (item 360). La invisibilidad por hechizo no se rompe al caminar.
       if (s.hiding) {
         const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
-        const stealthy = s.classId === 5 && (armor?.name.includes("Asesino") ?? false);
+        const stealthy =
+          (s.classId === 5 && (armor?.name.includes("Asesino") ?? false)) ||
+          (s.classId === 4 && s.equippedArmor === 360);
         if (!stealthy) {
           s.hiding = false;
           if (s.invisibleUntil > Date.now()) {
