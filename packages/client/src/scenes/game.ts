@@ -2041,6 +2041,7 @@ export async function startGameScene(
         clickAttack(entId); // dispara al objetivo (server gasta la flecha)
       } else {
         // Piso vacío: la flecha se lanza y cae al suelo (se gasta).
+        lastLocalAttackAt = performance.now(); // dispara el reloj de cooldown
         client.send({ op: ClientToServerOp.ShootGround, x: tx, y: ty } satisfies ShootGroundRequest);
       }
       setArmedArrow(false);

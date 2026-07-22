@@ -528,6 +528,8 @@ export function mountInventory(
         : "0/0";
   }
 
+  // Fracción cargada del reloj de cooldown de ataque (overlay sobre el arma).
+  let weaponCdFrac = -1;
   function render(): void {
     goldEl.textContent = last.gold.toLocaleString("es");
     renderDefDmg();
@@ -615,6 +617,25 @@ export function mountInventory(
       gridEl.appendChild(cell);
     }
     fitIcons();
+    applyWeaponCd(); // re-aplicar el reloj de cooldown tras reconstruir el grid
+  }
+
+  // Overlay radial de cooldown de ataque (reloj amarillo) sobre el ARMA equipada.
+  // Se llama desde el tick del juego (setWeaponCooldown) y al re-renderizar el
+  // grid (que se reconstruye con replaceChildren y borraría el overlay).
+  function applyWeaponCd(): void {
+    const clearAll = (): void => gridEl.querySelectorAll(".ao-inv__cell-cd").forEach((c) => c.remove());
+    if (weaponCdFrac < 0 || weaponCdFrac >= 1 || last.equippedWeapon === null) { clearAll(); return; }
+    const idx = last.slots.findIndex((s) => s.item === last.equippedWeapon);
+    if (idx < 0) { clearAll(); return; }
+    const cell = gridEl.querySelector<HTMLElement>('.ao-inv__cell[data-slot="' + idx.toString() + '"]');
+    if (!cell) { clearAll(); return; }
+    gridEl.querySelectorAll<HTMLElement>(".ao-inv__cell-cd").forEach((c) => { if (c.parentElement !== cell) c.remove(); });
+    let ov = cell.querySelector<HTMLElement>(".ao-inv__cell-cd");
+    if (!ov) { ov = document.createElement("div"); ov.className = "ao-inv__cell-cd"; cell.appendChild(ov); }
+    // Sector amarillo que se llena en sentido horario desde arriba (reloj).
+    const deg = Math.round(weaponCdFrac * 360);
+    ov.style.background = "conic-gradient(from 0deg, rgba(255,210,40,0.55) " + deg.toString() + "deg, rgba(0,0,0,0) " + deg.toString() + "deg)";
   }
 
   trashEl.addEventListener("dragover", (ev) => {
@@ -672,19 +693,8 @@ export function mountInventory(
       }
     },
     setWeaponCooldown: (frac) => {
-      const clearAll = (): void => gridEl.querySelectorAll(".ao-inv__cell-cd").forEach((c) => c.remove());
-      if (frac < 0 || frac >= 1 || last.equippedWeapon === null) { clearAll(); return; }
-      const idx = last.slots.findIndex((s) => s.item === last.equippedWeapon);
-      if (idx < 0) { clearAll(); return; }
-      const cell = gridEl.querySelector<HTMLElement>('.ao-inv__cell[data-slot="' + idx.toString() + '"]');
-      if (!cell) { clearAll(); return; }
-      // Sacar overlays de otras celdas (si cambió el arma equipada).
-      gridEl.querySelectorAll<HTMLElement>(".ao-inv__cell-cd").forEach((c) => { if (c.parentElement !== cell) c.remove(); });
-      let ov = cell.querySelector<HTMLElement>(".ao-inv__cell-cd");
-      if (!ov) { ov = document.createElement("div"); ov.className = "ao-inv__cell-cd"; cell.appendChild(ov); }
-      // Sector amarillo que se llena en sentido horario desde arriba (reloj).
-      const deg = Math.round(frac * 360);
-      ov.style.background = "conic-gradient(rgba(255,221,64,0.45) " + deg.toString() + "deg, rgba(0,0,0,0) " + deg.toString() + "deg)";
+      weaponCdFrac = frac;
+      applyWeaponCd();
     },
     setLocation: (text) => {
       zoneEl.textContent = text;
