@@ -55,6 +55,9 @@ export enum ClientToServerOp {
   GuildLeave = 0x5a,
   GuildMessage = 0x5b,
   GuildOnline = 0x5c,
+  // Popup de clan: pedir la info del propio clan / editar descripción y reglas (líder).
+  GuildInfo = 0x68,
+  GuildEdit = 0x69,
   // Amigos (lista de 50 como el AO).
   FriendAdd = 0x5d,
   FriendRemove = 0x5e,
@@ -152,6 +155,8 @@ export enum ServerToClientOp {
   WhisperReceived = 0xa2,
   // Criminal
   CriminalUpdate = 0xb4,
+  // Info del propio clan para el popup (miembros + descripción + reglas).
+  GuildInfoResponse = 0xfd,
 }
 
 export interface LoginRequest {
@@ -850,6 +855,38 @@ export interface GuildMessageRequest {
 export interface GuildOnlineRequest {
   readonly op: ClientToServerOp.GuildOnline;
 }
+// C→S: pedir la info del propio clan para el popup (miembros + desc + reglas).
+export interface GuildInfoRequest {
+  readonly op: ClientToServerOp.GuildInfo;
+}
+// C→S: el líder edita la descripción y las reglas del clan.
+export interface GuildEditRequest {
+  readonly op: ClientToServerOp.GuildEdit;
+  readonly description: string;
+  readonly rules: string;
+}
+
+// Un miembro del clan, para el listado del popup.
+export interface GuildMemberInfo {
+  readonly name: string;
+  readonly level: number;
+  readonly classId: number;
+  readonly online: boolean;
+  readonly leader: boolean;
+}
+// S→C: info completa del propio clan (respuesta a GuildInfoRequest).
+export interface GuildInfoResponse {
+  readonly op: ServerToClientOp.GuildInfoResponse;
+  readonly name: string;
+  // 0 = Ciudadanos · 1 = Criminales.
+  readonly faction: number;
+  readonly description: string;
+  readonly rules: string;
+  // ¿El que pide es el líder? (habilita editar y ver el máximo).
+  readonly isLeader: boolean;
+  readonly maxMembers: number;
+  readonly members: readonly GuildMemberInfo[];
+}
 
 // Amigos: agregar/quitar por nombre y pedir la lista (respuestas por ConsoleMsg).
 export interface FriendAddRequest {
@@ -1023,6 +1060,8 @@ export type ClientPacket =
   | GuildLeaveRequest
   | GuildMessageRequest
   | GuildOnlineRequest
+  | GuildInfoRequest
+  | GuildEditRequest
   | FriendAddRequest
   | FriendRemoveRequest
   | FriendListRequest
@@ -1067,6 +1106,7 @@ export type ServerPacket =
   | QuestState
   | FactionUpdate
   | GuildTagUpdate
+  | GuildInfoResponse
   | MapTileUpdate
   | RainToggle
   | GameConfigMsg

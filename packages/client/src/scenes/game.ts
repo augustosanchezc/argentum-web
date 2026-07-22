@@ -103,6 +103,7 @@ import { mountMacroBar, type MacroBarHandle, type MacroSlot } from "../ui/macro-
 import { mountMinimap, type MinimapHandle } from "../ui/minimap";
 import { mountWorldMap, type WorldMapHandle } from "../ui/world-map";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
+import { mountGuildUi, type GuildUiHandle } from "../ui/guild";
 import { mountQuests, type QuestsHandle } from "../ui/quests";
 import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
@@ -1570,6 +1571,7 @@ export async function startGameScene(
   let shop: ShopHandle | null = null;
   let bank: BankHandle | null = null;
   let partyUi: PartyUiHandle | null = null;
+  let guildUi: GuildUiHandle | null = null;
   let tradeUi: TradeHandle | null = null;
   let statsPanel: StatsPanelHandle | null = null;
   let macroBar: MacroBarHandle | null = null;
@@ -2187,6 +2189,15 @@ export async function startGameScene(
       // Si está cerrado, el servidor lo abre al interactuar con el banquero.
       return;
     }
+    if (e.code === "KeyG") {
+      e.preventDefault();
+      // Clan: si el popup está abierto lo cierra; si no, pide la info al server
+      // (el popup se abre al llegar GuildInfoResponse; si no tenés clan, el
+      // server responde con un mensaje de consola).
+      if (guildUi?.isOpen()) guildUi.close();
+      else client?.send({ op: ClientToServerOp.GuildInfo });
+      return;
+    }
     if (e.code === keymap.stats) {
       e.preventDefault();
       const panel = root.querySelector<HTMLElement>(".ao-stats-panel");
@@ -2583,6 +2594,9 @@ export async function startGameScene(
         break;
       case ServerToClientOp.GuildTagUpdate:
         handleGuildTagUpdate(packet);
+        break;
+      case ServerToClientOp.GuildInfoResponse:
+        guildUi?.update(packet);
         break;
       case ServerToClientOp.MapTileUpdate:
         handleMapTileUpdate(packet);
@@ -3549,6 +3563,12 @@ export async function startGameScene(
       },
     });
 
+    guildUi = mountGuildUi(frame, {
+      onSaveText: (description, rules) => {
+        client?.send({ op: ClientToServerOp.GuildEdit, description, rules });
+      },
+    });
+
     inventory = mountInventory(sideCol, {
       onUse: (item) => {
         const def = getItem(item);
@@ -3656,7 +3676,7 @@ export async function startGameScene(
         chat?.appendMessage({ fromName: "", text: "Party: Alt+click en un jugador para invitarlo. /salirparty para salir.", timestamp: Date.now(), isSelf: false, kind: "global" });
       },
       onOpenClanes: () => {
-        chat?.appendMessage({ fromName: "", text: "Clanes: /fundarclan <nombre> (nv25+Liderazgo90) · /invitarclan <nombre> · /cmsg <texto> · /onlineclan.", timestamp: Date.now(), isSelf: false, kind: "global" });
+        chat?.appendMessage({ fromName: "", text: "Clanes: /fundarclan <nombre> (nv38 + 1.500.000 oro) · /invitarclan <nombre> · /cmsg <texto> · /onlineclan · tecla G: ver clan (miembros/descripción/reglas).", timestamp: Date.now(), isSelf: false, kind: "global" });
       },
       onOpenWorldMap: () => {
         worldMap?.open(currentMapId);
@@ -3941,6 +3961,7 @@ export async function startGameScene(
       shop?.destroy();
       bank?.destroy();
       partyUi?.destroy();
+      guildUi?.destroy();
       tradeUi?.destroy();
       statsPanel?.destroy();
       macroBar?.destroy();

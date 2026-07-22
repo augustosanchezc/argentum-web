@@ -3404,3 +3404,70 @@ html, body { background: #050506; height: 100%; }
   .lp-header { padding: 14px 20px; }
   .lp-hero, .lp-create { padding: 32px 20px; }
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   Popup de CLAN (ui/guild.ts) — miembros, descripción y reglas.
+   ══════════════════════════════════════════════════════════════════════ */
+.ao-guild {
+  position: fixed; inset: 0; z-index: 140; display: none;
+  align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.6);
+  font-family: "Segoe UI", system-ui, sans-serif;
+}
+.ao-guild--open { display: flex; }
+.ao-guild__box {
+  width: 640px; max-width: 94vw; max-height: 90vh; overflow: auto;
+  background: #14131c; border: 1px solid #2b2938; border-radius: 14px;
+  padding: 14px 16px; color: #d2cee2; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+.ao-guild__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 16px; }
+.ao-guild__titles { display: flex; align-items: baseline; gap: 10px; }
+.ao-guild__name { font-size: 18px; font-weight: 800; color: #f1f0f6; letter-spacing: 0.3px; }
+.ao-guild__faction { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ao-guild__faction--ciu { background: rgba(79, 143, 240, 0.18); color: #7ab0ff; border: 1px solid #2f6fd6; }
+.ao-guild__faction--crim { background: rgba(200, 50, 50, 0.18); color: #ff8080; border: 1px solid #8b1a1a; }
+.ao-guild__close {
+  flex: 0 0 auto; width: 30px; height: 30px; border-radius: 50%;
+  background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de; font-size: 13px; cursor: pointer; line-height: 1;
+}
+.ao-guild__close:hover { background: #2a2838; color: #fff; }
+.ao-guild__body { display: flex; gap: 16px; align-items: flex-start; }
+.ao-guild__col { display: flex; flex-direction: column; gap: 6px; }
+.ao-guild__col--members { flex: 0 0 240px; }
+.ao-guild__col--text { flex: 1 1 auto; min-width: 0; }
+.ao-guild__h { margin: 0 0 2px; font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; color: #8a86a4; font-weight: 700; }
+.ao-guild__count { color: #7ab0ff; }
+.ao-guild__members {
+  list-style: none; margin: 0; padding: 7px; display: flex; flex-direction: column; gap: 3px;
+  background: #0d0c13; border: 1px solid #2a2836; border-radius: 10px; max-height: 320px; overflow-y: auto;
+}
+.ao-guild__member { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 6px; }
+.ao-guild__member:hover { background: #1a1926; }
+.ao-guild__dot { flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%; background: #4a4860; }
+.ao-guild__member--online .ao-guild__dot { background: #4cb87e; box-shadow: 0 0 5px #4cb87e; }
+.ao-guild__mname { font-size: 13px; color: #e8e6f2; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ao-guild__mmeta { margin-left: auto; font-size: 11px; color: #8a86a4; white-space: nowrap; }
+.ao-guild__member:not(.ao-guild__member--online) .ao-guild__mname { color: #7d7a92; }
+.ao-guild__desc, .ao-guild__rules {
+  margin: 0 0 4px; font-size: 13px; line-height: 1.45; color: #c4c0d8; white-space: pre-wrap; word-break: break-word;
+  background: #0d0c13; border: 1px solid #2a2836; border-radius: 9px; padding: 8px 11px; min-height: 20px;
+}
+.ao-guild__desc-edit, .ao-guild__rules-edit {
+  display: none; width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; font-size: 13px;
+  color: #e8e6f2; background: #0d0c13; border: 1px solid #2f6fd6; border-radius: 9px; padding: 8px 11px;
+}
+.ao-guild__actions { display: flex; gap: 8px; margin-top: 8px; }
+.ao-guild__actions button {
+  font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 7px; cursor: pointer;
+  background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de;
+}
+.ao-guild__edit:hover, .ao-guild__save:hover, .ao-guild__cancel:hover { background: #2a2838; color: #fff; }
+.ao-guild__save { background: var(--gold-soft); border-color: var(--gold-dim); color: var(--gold-bright); }
+.ao-guild__save, .ao-guild__cancel { display: none; }
+/* En modo edición: ocultar texto plano, mostrar textareas + guardar/cancelar. */
+.ao-guild--editing .ao-guild__desc, .ao-guild--editing .ao-guild__rules { display: none; }
+.ao-guild--editing .ao-guild__desc-edit, .ao-guild--editing .ao-guild__rules-edit { display: block; }
+.ao-guild--editing .ao-guild__save, .ao-guild--editing .ao-guild__cancel { display: block; }
+@media (max-width: 620px) {
+  .ao-guild__body { flex-direction: column; }
+  .ao-guild__col--members { flex: 1 1 auto; width: 100%; }
+}

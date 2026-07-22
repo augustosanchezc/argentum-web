@@ -28,7 +28,10 @@ import {
   type EntityEffect,
   type FactionUpdate,
   type GuildCreateRequest,
+  type GuildEditRequest,
+  type GuildInfoResponse,
   type GuildInviteRequest,
+  type GuildMemberInfo,
   type GuildMessageRequest,
   type GuildTagUpdate,
   type MapTileUpdate,
@@ -178,11 +181,19 @@ import {
 } from "../world/factions.js";
 import {
   canFoundGuild,
+  canJoinGuild,
   createGuild,
+  factionName,
+  getGuild,
+  getGuildMembers,
   isGuildLeader,
   joinGuild,
   leaveGuild,
+  sessionFaction,
+  setGuildText,
   validGuildName,
+  GUILD_COST,
+  GUILD_MAX_MEMBERS,
 } from "../world/guilds.js";
 import { tickDots } from "../world/dots.js";
 import { bailPrice, isCriminal, setCriminal } from "../world/criminal.js";
@@ -568,6 +579,44 @@ function addGold(s: Session, amount: number): void {
   s.gold = Math.max(0, Math.min(MAX_GOLD, s.gold + amount));
 }
 
+// Mensaje de consola a una sesión (versión module-level de consoleMsg, para
+// usar desde funciones fuera del handler de conexión).
+function consoleTo(s: Session, text: string): void {
+  send(s.socket, { op: ServerToClientOp.ConsoleMsg, text, kind: "global" } satisfies ConsoleMsg);
+}
+
+// Auto-expulsión por facción: si el estado (ciudadano/criminal) de un miembro
+// deja de coincidir con la facción de su clan, se lo saca automáticamente.
+// Se llama cuando el estado puede cambiar (matar un ciudadano / pagar fianza).
+async function enforceGuildFaction(s: Session): Promise<void> {
+  if (!s.guildId) return;
+  const g = await getGuild(s.guildId);
+  if (!g) return;
+  if (sessionFaction(s) === g.faction) return;
+  const oldId = s.guildId;
+  const oldName = s.guildName ?? g.name;
+  const result = await leaveGuild(s);
+  s.guildId = null;
+  s.guildName = null;
+  consoleTo(
+    s,
+    `Tu alineación cambió y ya no coincidís con el clan ${oldName} (${factionName(g.faction)}): fuiste expulsado.`,
+  );
+  broadcastToMap(s.mapId, {
+    op: ServerToClientOp.GuildTagUpdate,
+    id: s.characterId as EntityId,
+    guild: null,
+  } satisfies GuildTagUpdate);
+  if (result.disbanded) return;
+  for (const member of sessions.all()) {
+    if (member.guildId !== oldId) continue;
+    consoleTo(member, `${s.characterName} fue expulsado del clan (cambió de alineación).`);
+    if (result.newLeaderId === member.characterId) {
+      consoleTo(member, `Ahora eres el líder del clan ${oldName}.`);
+    }
+  }
+}
+
 // Resolución única de la muerte de un jugador (melee, hechizo directo o veneno
 // DoT): cancela el trade del muerto, aplica la penalización de XP (10% del
 // progreso del nivel, como el AO), y si hay un matador jugador, actualiza los
@@ -716,6 +765,8 @@ function resolvePlayerDeath(victim: Session, killer: Session | null): void {
         expiresAt: 0, // persistente: se paga fianza al sacerdote
       };
       broadcastToMap(killer.mapId, criminalPkt);
+      // Volverse criminal puede sacarlo de un clan de ciudadanos.
+      void enforceGuildFaction(killer);
     }
     // Premios de facción al alcanzar umbrales de kills.
     checkFactionRewards(killer);
@@ -1211,6 +1262,16 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           break;
         case ClientToServerOp.GuildOnline:
           handleGuildOnline(session);
+          break;
+        case ClientToServerOp.GuildInfo:
+          void handleGuildInfo(session).catch((err) =>
+            req.log.error({ err }, "[guild] error al pedir info"),
+          );
+          break;
+        case ClientToServerOp.GuildEdit:
+          void handleGuildEdit(session, packet).catch((err) =>
+            req.log.error({ err }, "[guild] error al editar"),
+          );
           break;
         // Amigos
         case ClientToServerOp.FriendAdd:
@@ -2393,6 +2454,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
             } satisfies CriminalUpdate);
             consoleMsg(s, `El sacerdote perdona tus crímenes por ${price.toLocaleString("es")} de oro. Volvés a ser ciudadano. (La próxima fianza costará ${bailPrice(s.bailsPaid).toLocaleString("es")}.)`, "global", 214);
             sendInventoryUpdate(s);
+            // Dejar de ser criminal puede sacarlo de un clan de criminales.
+            void enforceGuildFaction(s);
           }
         } else if (s.hp < s.maxHp) {
           s.hp = s.maxHp;
@@ -3630,16 +3693,77 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "Nombre de clan inválido (3 a 30 letras, números o espacios).", "global");
         return;
       }
-      const g = await createGuild(pkt.name, s);
+      // La facción del clan queda fijada según el estado del fundador.
+      const faction = sessionFaction(s);
+      const g = await createGuild(pkt.name, s, faction);
       if (!g) {
         consoleMsg(s, "Ya existe un clan con ese nombre.", "global");
         return;
       }
+      // Cobrar el costo de fundación (canFoundGuild ya verificó que alcanza).
+      addGold(s, -GUILD_COST);
+      sendStatsUpdate(s);
       s.guildId = g.id;
       s.guildName = g.name;
-      consoleMsg(s, `¡Has fundado el clan ${g.name}! Invita miembros con /invitarclan <nombre>.`, "global");
+      consoleMsg(
+        s,
+        `¡Has fundado el clan ${g.name} (${factionName(faction)})! Invita miembros con /invitarclan <nombre>.`,
+        "global",
+      );
       broadcastGuildTag(s);
     }
+
+    // Arma la respuesta de info del clan y se la manda al que la pidió.
+    async function sendGuildInfo(s: Session): Promise<void> {
+      if (!s.guildId) {
+        consoleMsg(s, "No perteneces a ningún clan.", "global");
+        return;
+      }
+      const g = await getGuild(s.guildId);
+      if (!g) return;
+      const rows = await getGuildMembers(s.guildId);
+      const onlineIds = new Set<number>();
+      for (const sess of sessions.all()) {
+        if (sess.guildId === s.guildId) onlineIds.add(sess.characterId);
+      }
+      const members: GuildMemberInfo[] = rows.map((m) => ({
+        name: m.name,
+        level: m.level,
+        classId: m.classId,
+        online: onlineIds.has(m.id),
+        leader: m.id === g.leaderId,
+      }));
+      const pkt: GuildInfoResponse = {
+        op: ServerToClientOp.GuildInfoResponse,
+        name: g.name,
+        faction: g.faction,
+        description: g.description,
+        rules: g.rules,
+        isLeader: g.leaderId === s.characterId,
+        maxMembers: GUILD_MAX_MEMBERS,
+        members,
+      };
+      send(s.socket, pkt);
+    }
+
+    async function handleGuildInfo(s: Session): Promise<void> {
+      await sendGuildInfo(s);
+    }
+
+    async function handleGuildEdit(s: Session, pkt: GuildEditRequest): Promise<void> {
+      if (!s.guildId) {
+        consoleMsg(s, "No perteneces a ningún clan.", "global");
+        return;
+      }
+      if (!(await isGuildLeader(s))) {
+        consoleMsg(s, "Solo el líder del clan puede editar la descripción y las reglas.", "global");
+        return;
+      }
+      await setGuildText(s.guildId, pkt.description ?? "", pkt.rules ?? "");
+      consoleMsg(s, "Descripción y reglas del clan actualizadas.", "global");
+      await sendGuildInfo(s);
+    }
+
 
     async function handleGuildInvite(s: Session, pkt: GuildInviteRequest): Promise<void> {
       if (!s.guildId || !s.guildName) {
@@ -3661,8 +3785,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "Ese personaje no está online.", "global");
         return;
       }
-      if (target.guildId) {
-        consoleMsg(s, `${target.characterName} ya pertenece a un clan.`, "global");
+      const joinReason = await canJoinGuild(s.guildId, target);
+      if (joinReason) {
+        consoleMsg(s, joinReason.replace(/^Ya perteneces/, `${target.characterName} ya pertenece`), "global");
         return;
       }
       target.guildInvite = { guildId: s.guildId, guildName: s.guildName, from: s.characterName };
@@ -3681,8 +3806,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
       s.guildInvite = null;
-      if (s.guildId) {
-        consoleMsg(s, "Ya perteneces a un clan.", "global");
+      // Revalidar al aceptar (el cupo o la facción pudieron cambiar desde la invitación).
+      const joinReason = await canJoinGuild(invite.guildId, s);
+      if (joinReason) {
+        consoleMsg(s, joinReason, "global");
         return;
       }
       await joinGuild(invite.guildId, s);
