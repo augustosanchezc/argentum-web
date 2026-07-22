@@ -159,6 +159,7 @@ import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
 import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
 import { addNpcDeletion } from "../world/npc-deletions.js";
+import { addGmNpc, removeGmNpc } from "../world/gm-npcs.js";
 import { addBlock, removeBlock, isBlockStored } from "../world/blocked-tiles.js";
 import { isIpBanned, banIp, unbanIp } from "../world/ip-bans.js";
 import { canAttackPlayer } from "../world/zones.js";
@@ -1534,10 +1535,36 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(s.mapId, pkt);
     }
 
+    // GM /eliminarnpc armado: saca el NPC del mundo. Si lo invocó un GM (/invocar)
+    // lo quita de gm-npcs.json; si es del .inf del mapa, persiste la baja
+    // (npc-deletions). En ambos casos no reaparece tras un redeploy. Un solo uso.
+    function gmDeleteNpc(s: Session, npc: NpcInstance): void {
+      s.armedDeleteNpc = false;
+      if (npc.gmSpawned) {
+        removeGmNpc(npc.mapId, npc.type.number, npc.spawn.x, npc.spawn.y);
+      } else {
+        addNpcDeletion(npc.mapId, npc.type.number, npc.spawn.x, npc.spawn.y);
+      }
+      npcs.remove(npc.id);
+      const gone: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
+      broadcastToMap(npc.mapId, gone);
+      consoleMsg(s, `NPC eliminado: ${npc.type.name} (#${npc.type.number.toString()}). No reaparecerá.`, "global");
+    }
+
     function handleAttack(s: Session, attack: AttackRequest): void {
       const now = Date.now();
       const targetId = attack.targetId as unknown as number;
       if (targetId === s.characterId) return;
+
+      // GM con /eliminarnpc armado: clickear (atacar) a un NPC lo ELIMINA en vez de
+      // golpearlo — así se pueden sacar criaturas/jefes invocados con /invocar.
+      if (s.armedDeleteNpc && s.role >= 3 && isNpcId(targetId)) {
+        const npc = npcs.get(targetId);
+        if (npc && npc.mapId === s.mapId) {
+          gmDeleteNpc(s, npc);
+          return;
+        }
+      }
 
       const prep = prepareAttack(s, now);
       if (!prep) return;
@@ -2334,16 +2361,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       // mundo (en vez de abrir la tienda) y persiste la baja para que no vuelva
       // a aparecer tras un redeploy. Es de un solo uso (se desarma al usarlo).
       if (s.armedDeleteNpc && s.role >= 3) {
-        s.armedDeleteNpc = false;
-        if (!npc.type.merchant && !npc.type.banker) {
-          consoleMsg(s, "Solo se pueden eliminar vendedores o banqueros. Cancelado.", "global");
-          return;
-        }
-        addNpcDeletion(npc.mapId, npc.type.number, npc.spawn.x, npc.spawn.y);
-        npcs.remove(npc.id);
-        const gone: EntityDespawn = { op: ServerToClientOp.EntityDespawn, id: npc.id as EntityId };
-        broadcastToMap(npc.mapId, gone);
-        consoleMsg(s, `NPC eliminado: ${npc.type.name} (#${npc.type.number.toString()}). No reaparecerá.`, "global");
+        gmDeleteNpc(s, npc);
         return;
       }
 
@@ -4343,11 +4361,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const invocar = /^\/invocar\s+(\d+)$/i.exec(text);
       if (invocar) {
         const num = parseInt(invocar[1]!, 10);
-        const npc = npcs.spawnAt(num, s.mapId, s.position);
+        const npc = npcs.spawnAt(num, s.mapId, s.position, true);
         if (!npc) {
           consoleMsg(s, `No existe el NPC número ${num.toString()}.`, "global");
           return;
         }
+        // Persistimos la invocación para que el NPC sobreviva a un reinicio/redeploy.
+        addGmNpc(s.mapId, num, npc.spawn.x, npc.spawn.y);
         const spawn: EntitySpawn = {
           op: ServerToClientOp.EntitySpawn,
           id: npc.id as EntityId,

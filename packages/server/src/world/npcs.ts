@@ -5,6 +5,7 @@ import { getMap, isWalkable, loadedMapIds } from "./maps.js";
 import { NPC_DEFS, type NpcDefData } from "./npcs.generated.js";
 import { overridePath, readOverrideOrSeed } from "./overrides-dir.js";
 import { isNpcDeleted } from "./npc-deletions.js";
+import { storedGmNpcs } from "./gm-npcs.js";
 
 export const NPC_ID_BASE = 1_000_000;
 
@@ -249,6 +250,9 @@ export interface NpcInstance {
   // Mascota (DoDomar): personaje amo y NPC objetivo al que asiste.
   ownerCharacterId: number | null;
   petTargetNpcId: number | null;
+  // Invocado por un GM (/invocar): persistido en gm-npcs.json, se re-crea al
+  // arrancar y solo un GM lo puede sacar (/eliminarnpc).
+  gmSpawned: boolean;
 }
 
 function findWalkableNear(mapId: number, origin: Vector2, waterOnly = false): Vector2 {
@@ -307,10 +311,18 @@ class NpcRegistry {
           targetCharacterId: null,
           ownerCharacterId: null,
           petTargetNpcId: null,
+          gmSpawned: false,
         });
         spawned++;
       }
     }
+    // Re-invocamos los NPCs que un GM sumó con /invocar (persistidos en el
+    // volumen) para que sobrevivan al reinicio/redeploy.
+    let gmRestored = 0;
+    for (const g of storedGmNpcs()) {
+      if (this.spawnAt(g.npcNumber, g.mapId, { x: g.x, y: g.y }, true)) gmRestored++;
+    }
+    if (gmRestored > 0) console.log(`[npcs] ${gmRestored.toString()} NPCs de GM (/invocar) restaurados`);
     console.log(
       `[npcs] ${spawned.toString()} NPCs spawneados desde los .inf de ${loadedMapIds().length.toString()} mapas` +
       (unknown > 0 ? ` (${unknown.toString()} npcIndex sin entrada en NPCs.dat, ignorados)` : ""),
@@ -336,7 +348,7 @@ class NpcRegistry {
 
   // Spawnea un NPC/criatura en runtime cerca de `at` (para el comando GM de
   // invocar). Devuelve la instancia, o null si el número no existe en NPCs.dat.
-  spawnAt(npcNumber: number, mapId: number, at: Vector2): NpcInstance | null {
+  spawnAt(npcNumber: number, mapId: number, at: Vector2, gmSpawned = false): NpcInstance | null {
     const type = getNpcType(npcNumber);
     if (!type) return null;
     const pos = findWalkableNear(mapId, at, type.waterOnly);
@@ -354,6 +366,7 @@ class NpcRegistry {
       targetCharacterId: null,
       ownerCharacterId: null,
       petTargetNpcId: null,
+      gmSpawned,
     };
     this.byId.set(id, inst);
     return inst;
