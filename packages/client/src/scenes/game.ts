@@ -3372,8 +3372,9 @@ export async function startGameScene(
   // visible para jugadores). Ej: "Lv. 32" / "Jasmine - Guerrero".
   function applyNameTag(v: EntityVisual): void {
     if (v.kind !== "player") return;
-    // Ya no se muestra "Lv. N / Clase" arriba (molestaba): solo el nombre debajo.
-    v.nameLabel.text = v.name;
+    // Nombre y, si pertenece a un clan, el tag <Clan> en una segunda línea
+    // debajo (como el AO clásico). El label está centrado y ancla arriba.
+    v.nameLabel.text = v.guild ? `${v.name}\n<${v.guild}>` : v.name;
   }
 
   function handleFactionUpdate(p: FactionUpdate): void {
