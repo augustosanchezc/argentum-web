@@ -85,6 +85,9 @@ export interface InventoryHandle {
   setStats(stats: PanelStats): void;
   setSpells(spellIds: ReadonlyArray<number>): void;
   clearSpellSelection(): void;
+  // Overlay radial de cooldown de ataque (reloj amarillo) sobre el arma
+  // equipada. frac 0..1 = fracción ya cargada; <0 o >=1 = oculto.
+  setWeaponCooldown(frac: number): void;
   // Texto de zona actual (nombre del mapa) en el box de vitales.
   setLocation(text: string): void;
   // Contenedor donde se aloja el panel de party (integrado al panel derecho).
@@ -667,6 +670,21 @@ export function mountInventory(
         selectedSpell = null;
         renderSpells();
       }
+    },
+    setWeaponCooldown: (frac) => {
+      const clearAll = (): void => gridEl.querySelectorAll(".ao-inv__cell-cd").forEach((c) => c.remove());
+      if (frac < 0 || frac >= 1 || last.equippedWeapon === null) { clearAll(); return; }
+      const idx = last.slots.findIndex((s) => s.item === last.equippedWeapon);
+      if (idx < 0) { clearAll(); return; }
+      const cell = gridEl.querySelector<HTMLElement>('.ao-inv__cell[data-slot="' + idx.toString() + '"]');
+      if (!cell) { clearAll(); return; }
+      // Sacar overlays de otras celdas (si cambió el arma equipada).
+      gridEl.querySelectorAll<HTMLElement>(".ao-inv__cell-cd").forEach((c) => { if (c.parentElement !== cell) c.remove(); });
+      let ov = cell.querySelector<HTMLElement>(".ao-inv__cell-cd");
+      if (!ov) { ov = document.createElement("div"); ov.className = "ao-inv__cell-cd"; cell.appendChild(ov); }
+      // Sector amarillo que se llena en sentido horario desde arriba (reloj).
+      const deg = Math.round(frac * 360);
+      ov.style.background = "conic-gradient(rgba(255,221,64,0.45) " + deg.toString() + "deg, rgba(0,0,0,0) " + deg.toString() + "deg)";
     },
     setLocation: (text) => {
       zoneEl.textContent = text;

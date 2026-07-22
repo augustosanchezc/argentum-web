@@ -2338,6 +2338,8 @@ export async function startGameScene(
   window.addEventListener("pointerdown", unlockAudio);
 
   // -- Ticker: interpolacion + pump de teclas mantenidas --
+  // Estado del reloj de cooldown de ataque (overlay sobre el arma equipada).
+  let cooldownWasActive = false;
   const tick = (): void => {
     const now = performance.now();
     // Tiles animados (agua/lava): frame = reloj global → todas las celdas
@@ -2443,6 +2445,20 @@ export async function startGameScene(
         hudTileY = ownV.position.y;
         minimap?.setPos(ownV.position.x, ownV.position.y);
         updateHudLocation(currentMapName, currentMapId, ownV.position.x, ownV.position.y);
+      }
+    }
+    // Reloj radial de cooldown de ataque sobre el ARMA EQUIPADA: se llena en
+    // círculo (amarillo transparente) durante el cooldown del arma (arco =
+    // serverArrowMs, melee = serverMeleeMs) y desaparece al poder golpear de nuevo.
+    {
+      const cdMs = selfWeaponRanged ? serverArrowMs : serverMeleeMs;
+      const cdFrac =
+        selfEquippedWeapon !== null && lastLocalAttackAt > 0 && now - lastLocalAttackAt < cdMs
+          ? (now - lastLocalAttackAt) / cdMs
+          : -1;
+      if (cdFrac >= 0 || cooldownWasActive) {
+        inventory?.setWeaponCooldown(cdFrac);
+        cooldownWasActive = cdFrac >= 0;
       }
     }
   };
