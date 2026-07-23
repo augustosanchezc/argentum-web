@@ -763,7 +763,7 @@ function dropAllItemsOnDeath(victim: Session): void {
   let dropped = 0;
   for (const slot of victim.inventory) {
     const def = getItem(slot.item);
-    if (!def || def.newbie || def.objType === 31 || FACTION_ARMOR_IDS.has(slot.item)) {
+    if (!def || def.newbie || def.objType === 31 || FACTION_ARMOR_IDS.has(slot.item) || def.factionReq !== undefined) {
       kept.push(slot);
       continue;
     }
@@ -2421,6 +2421,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (!isEquipped && s.role === 0 && def.forbiddenClasses?.includes(s.classId)) {
           consoleMsg(s, "Tu clase no puede usar este objeto.", "global");
           return;
+        }
+        // Armadura faccionaria por rango: requiere pertenecer a la facción y
+        // tener el rango (jerarquía) correspondiente. Sin rango, no se equipa.
+        if (!isEquipped && s.role === 0 && def.factionReq !== undefined) {
+          if (s.faction !== def.factionReq) {
+            consoleMsg(s, "Esta armadura es de la facción rival: no podés usarla.", "combate");
+            return;
+          }
+          if (s.factionRank < (def.factionRankReq ?? 1)) {
+            consoleMsg(s, `Necesitás el rango ${(def.factionRankReq ?? 1).toString()} de tu facción para equipar esta armadura.`, "combate");
+            return;
+          }
         }
         if (def.type === "weapon") s.equippedWeapon = isEquipped ? null : pkt.item;
         else if (def.type === "armor") s.equippedArmor = isEquipped ? null : pkt.item;
@@ -4839,7 +4851,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         }
         sess.factionRank += 1;
         addGold(sess, next.gold);
-        const armor = factionRankArmor(sess.faction, sess.factionRank, sess.classId);
+        const armor = factionRankArmor(sess.faction, sess.factionRank, sess.classId, sess.race);
         let armorMsg = "";
         if (armor !== undefined && carryCapacity(sess.inventory, armor) >= 1) {
           sess.inventory = addItem(sess.inventory, armor, 1);

@@ -53,6 +53,11 @@ export interface ItemDef {
   readonly bonusHit?: number;
   readonly bonusHitPvp?: number;
   readonly bonusHitNpc?: number;
+  // Armadura faccionaria por rango (jerarquía): requiere pertenecer a la facción
+  // `factionReq` (1 Armada · 2 Caos) y tener rango >= `factionRankReq` para
+  // equiparla. Estos items NO se caen al morir.
+  readonly factionReq?: number;
+  readonly factionRankReq?: number;
   // Armadura: NumRopaje — body de Personajes.ini que muestra el personaje
   // al equiparla (sistema de ropaje del AO).
   readonly bodyId?: number;
@@ -121,8 +126,13 @@ export function isWaterGraphic(g: number): boolean {
   return (g >= 1505 && g <= 1520) || (g >= 5665 && g <= 5680) || (g >= 13547 && g <= 13562);
 }
 
-export { ITEMS } from "./items.generated.js";
-import { ITEMS as _ITEMS } from "./items.generated.js";
+import { ITEMS as _GENERATED } from "./items.generated.js";
+import { CUSTOM_ITEMS } from "./items.custom.js";
+// Catálogo efectivo = base de AO Libre + items custom (armaduras faccionarias por
+// rango). Los custom usan ids ≥ 2000 para no colisionar con el catálogo base.
+export const ITEMS: Record<number, ItemDef> = { ..._GENERATED, ...CUSTOM_ITEMS };
+const _ITEMS = ITEMS;
+export { FACTION_RANK_ARMOR } from "./items.custom.js";
 
 // ── Overrides editables (panel de administración) ─────────────────────────
 // El catálogo base (items.generated) es el balance original de AO Libre y NO

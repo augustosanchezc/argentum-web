@@ -4,6 +4,7 @@
 // manualmente (/recompensa), que entrega la armadura faccionaria del rango.
 
 import type { Session } from "../ws/sessions.js";
+import { FACTION_RANK_ARMOR } from "@ao/shared";
 import { isCriminal } from "./criminal.js";
 
 export const FACTION_NONE = 0;
@@ -70,27 +71,22 @@ export function nextRank(faction: number, rankIdx: number): FactionRank | null {
   return factionRanks(faction)[rankIdx] ?? null;
 }
 
-// ── Recompensa de armadura por (facción, rango, clase) ──────────────────────
-// INTERIM: mapeo por ARQUETIPO (melee/caster) con la variante base (raza alta
-// varón). Se reemplaza por el listado por-clase × raza/género de
-// docs/facciones-armaduras.md cuando esté fijado. Ver TODO en handleRecompensa.
-const CASTER_CLASSES = new Set([2, 3, 6]); // Mago · Clérigo · Druida
-const REWARD_ARMOR: Record<number, { melee: number[]; caster: number[] }> = {
-  [FACTION_ARMADA]: { melee: [359, 195, 390, 497, 391], caster: [196, 381, 357, 986, 614] },
-  [FACTION_CAOS]: { melee: [677, 369, 683, 638, 481], caster: [518, 634, 684, 637, 640] },
-};
-export function factionRankArmor(faction: number, rankIdx1: number, classId: number): number | undefined {
-  const t = REWARD_ARMOR[faction];
-  if (!t) return undefined;
-  const arch = CASTER_CLASSES.has(classId) ? t.caster : t.melee;
-  return arch[rankIdx1 - 1];
+// ── Recompensa de armadura por (facción, rango, clase, raza) ────────────────
+// Variante de raza: Enano(5)/Gnomo(4) usan el cuerpo "E/G"; el resto el "alto".
+export function raceVariant(race: number): "alto" | "eg" {
+  return race === 4 || race === 5 ? "eg" : "alto";
+}
+// Item de armadura para (facción, rango 1..5, clase, raza). Sale del catálogo
+// custom generado (items.custom.ts): clona el sprite de la 2ª Jerarquía con
+// defensa escalada por rango; requiere ese rango para equiparse.
+export function factionRankArmor(faction: number, rankIdx1: number, classId: number, race: number): number | undefined {
+  return FACTION_RANK_ARMOR[faction]?.[classId]?.[raceVariant(race)]?.[rankIdx1 - 1];
 }
 
-// Armaduras faccionarias que NO se caen al morir (todas las de recompensa +
-// variantes E/G ya existentes).
+// Armaduras faccionarias CLÁSICAS que NO se caen al morir (las de recompensa
+// custom se detectan por su campo `factionReq`, ver dropAllItemsOnDeath).
 export const FACTION_ARMOR_IDS: ReadonlySet<number> = new Set([
-  195, 243, 359, 390, 391, 392, 393, 497, 196, 381, 357, 986, 614, // Armada
-  677, 678, 369, 379, 683, 638, 481, 518, 634, 684, 637, 640,       // Caos
+  195, 243, 390, 391, 392, 393, 369, 379, 677, 678,
 ]);
 
 // ── Enlistamiento ───────────────────────────────────────────────────────────
