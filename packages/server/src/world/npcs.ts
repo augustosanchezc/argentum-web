@@ -113,9 +113,9 @@ function toNpcType(number: number, d: NpcDefData): NpcType {
     moveCooldownMs: hostile ? 450 : 700,
     canMove,
     xpReward: d.giveExp,
-    // El intervalo de respawn del AO original es del server, no del .dat.
-    // Escalamos por HP: criaturas débiles vuelven rápido, jefes tardan.
-    respawnMs: d.attackable ? Math.min(300_000, 8_000 + d.maxHp * 40) : 0,
+    // Respawn INSTANTÁNEO (decisión de diseño): al morir una criatura, reaparece
+    // en un tile aleatorio del mapa en el siguiente tick (ver processNpcs).
+    respawnMs: 0,
     hostile,
     attackable: d.attackable,
     merchant,

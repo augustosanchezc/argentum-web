@@ -327,7 +327,7 @@ function chebyshev(a: Vector2, b: Vector2): number {
 // Duraciones de estados (el server original las maneja con contadores de
 // ticks de 500ms; estos son los valores efectivos típicos).
 const PARALYSIS_MS = 8_000;
-const IMMOBILIZE_MS = 5_000;
+const IMMOBILIZE_MS = 30_000;
 const INVISIBILITY_MS = 60_000;
 const BLINDNESS_MS = 6_000;
 const DUMB_MS = 8_000;
@@ -2506,11 +2506,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         // Oferta EFECTIVA (relee getNpcType para reflejar ediciones del panel
         // admin sin reiniciar el server; el typeCache se limpió al editar).
         const shopOffers = getNpcType(npc.type.number)?.shopOffers ?? npc.type.shopOffers;
-        // Descuento por skill Comerciar (Comercio.bas): precio / (1 + skill/100).
+        // Precio fijo por el valor base del item (el skill Comerciar ya no
+        // afecta los precios — decisión de diseño).
         const offers = shopOffers.map((it) => {
           const def = getItem(it);
-          const base = def ? def.value : 0;
-          return { item: it, price: Math.max(1, Math.round(base / (1 + s.skills.comerciar / 100))) };
+          return { item: it, price: Math.max(1, def ? def.value : 0) };
         });
         const shop: ShopOpen = {
           op: ServerToClientOp.ShopOpen,
@@ -2544,8 +2544,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (!offered) return;
       // Cantidad: 1..10.000 (tope de apilado del AO). addItem reparte en slots.
       const qty = Math.max(1, Math.min(Math.floor(pkt.qty) || 1, 10_000));
-      // Mismo precio con descuento que mostró la tienda.
-      const unit = Math.max(1, Math.round(def.value / (1 + s.skills.comerciar / 100)));
+      // Mismo precio que mostró la tienda: valor base (Comerciar no afecta precios).
+      const unit = Math.max(1, def.value);
       // Cuántas puede pagar realmente con el oro EN MANO (el del banco no cuenta)
       // y cuántas le ENTRAN (tope de stack 10k + tope de 24 slots).
       const space = carryCapacity(s.inventory, def.id);
