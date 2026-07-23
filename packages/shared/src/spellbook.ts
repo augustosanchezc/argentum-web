@@ -81,13 +81,33 @@ export function classUsesMagic(classId: number): boolean {
   return (CLASS_SPELLBOOK[classId] ?? []).length > 0;
 }
 
-// Nivel al que un hechizo se puede APRENDER (y castear): el primer nivel cuya
-// skill de Magia alcanza el minSkill del hechizo. En AO el casteo se gatea por
-// Magia (y acá la skill sale del nivel: L1→35 … L34→100), así que aprender un
-// pergamino tiene el mismo umbral. Es IGUAL para todas las clases mágicas (fiel
-// a AO Libre: la restricción real es ClaseProhibida del pergamino, no la clase).
+// Overrides manuales del nivel de aprendizaje, por spellId. Ajuste de balance
+// del server para los hechizos "fuertes" (control, invocaciones, resucitar,
+// invisibilidad): tienen prioridad sobre el umbral derivado del minSkill.
+// El resto de los hechizos sigue usando la curva de Magia por nivel.
+export const SPELL_LEARN_LEVEL_OVERRIDE: Record<number, number> = {
+  24: 15, // Inmovilizar
+  9: 15,  // Paralizar
+  23: 25, // Descarga Eléctrica
+  27: 20, // Invocar Elemental de Agua
+  26: 20, // Invocar Elemental de Fuego
+  28: 20, // Invocar Elemental de Tierra
+  10: 18, // Devolver Movilidad
+  42: 20, // Mimetismo
+  11: 32, // Resucitar
+  14: 25, // Invisibilidad
+};
+
+// Nivel al que un hechizo se puede APRENDER (y castear): un override manual si
+// existe, si no el primer nivel cuya skill de Magia alcanza el minSkill del
+// hechizo. En AO el casteo se gatea por Magia (y acá la skill sale del nivel:
+// L1→35 … L34→100), así que aprender un pergamino tiene el mismo umbral. Es
+// IGUAL para todas las clases mágicas (fiel a AO Libre: la restricción real es
+// ClaseProhibida del pergamino, no la clase).
 // undefined = minSkill inalcanzable (>100): hechizos especiales de NPC/GM.
 export function spellLearnLevel(spellId: number): number | undefined {
+  const override = SPELL_LEARN_LEVEL_OVERRIDE[spellId];
+  if (override !== undefined) return override;
   const spell = getAoSpell(spellId);
   if (!spell) return undefined;
   for (let lvl = 1; lvl <= 34; lvl++) {
