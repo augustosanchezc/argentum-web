@@ -74,8 +74,14 @@ export interface Session {
   // y fianzas pagadas (el precio crece por Fibonacci).
   pardonedKills: number;
   bailsPaid: number;
-  // Recompensas de facción ya cobradas (índice en FACTION_REWARDS).
+  // Recompensas de facción ya cobradas (índice en FACTION_REWARDS). [legacy]
   factionRewards: number;
+  // Sistema de puntos de facción: puntos acumulados y rango ya reclamado.
+  factionPoints: number;
+  factionRank: number;
+  // Anti-farmeo de puntos: última vez (ms) que este personaje mató a cada
+  // víctima (por characterId). No se persiste (memoria de sesión).
+  factionKillCooldowns: Map<number, number>;
   // Ocultarse (skill): true mientras está escondido — caminar lo rompe
   // (salvo Asesino con armadura de Asesino). Distinto de la invisibilidad
   // por hechizo (que no se rompe al caminar).
@@ -249,6 +255,9 @@ export class SessionRegistry {
       pardonedKills: 0,
       bailsPaid: 0,
       factionRewards: 0,
+      factionPoints: 0,
+      factionRank: 0,
+      factionKillCooldowns: new Map(),
       hiding: false,
       homeTravelUntil: 0,
       quitAt: 0,

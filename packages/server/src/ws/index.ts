@@ -178,13 +178,18 @@ import {
   ENLISTER_FACTION,
   FACTION_NAMES,
   FACTION_ARMOR_IDS,
-  FACTION_REWARDS,
   canEnlistArmada,
   canEnlistCaos,
-  factionKills,
-  factionRank,
+  factionRankName,
+  factionRankArmor,
+  killGivesFactionPoints,
+  killLevelValid,
+  nextRank,
+  POINTS_PER_KILL,
+  REKILL_COOLDOWN_MS,
   FACTION_ARMADA,
   FACTION_CAOS,
+  FACTION_NONE,
 } from "../world/factions.js";
 import {
   canFoundGuild,
@@ -534,6 +539,8 @@ async function persistPosition(s: Session): Promise<void> {
       pardonedKills: s.pardonedKills,
       bailsPaid: s.bailsPaid,
       factionRewards: s.factionRewards,
+      factionPoints: s.factionPoints,
+      factionRank: s.factionRank,
       equippedArrow: s.equippedArrow,
       updatedAt: new Date(),
     })
@@ -777,27 +784,33 @@ function dropAllItemsOnDeath(victim: Session): void {
   if (dropped > 0) notify(victim, "¡Has perdido tus pertenencias al morir!");
 }
 
-// Premios de facción: al alcanzar cada umbral de kills, oro + armadura
-// faccionaria (que no se cae al morir). `factionRewards` = ya cobrados.
-function checkFactionRewards(s: Session): void {
-  const table = FACTION_REWARDS[s.faction];
-  if (!table) return;
-  const kills = s.faction === FACTION_ARMADA ? s.criminalsKilled : s.citizensKilled;
-  let changed = false;
-  while (s.factionRewards < table.length && kills >= table[s.factionRewards]!.kills) {
-    const r = table[s.factionRewards]!;
-    addGold(s, r.gold);
-    if (r.armor !== undefined && carryCapacity(s.inventory, r.armor) >= 1) {
-      s.inventory = addItem(s.inventory, r.armor, 1);
-    }
-    notify(s, `¡La ${FACTION_NAMES[s.faction] ?? "facción"} te recompensa! +${r.gold.toLocaleString("es")} de oro${r.armor !== undefined ? " y una armadura faccionaria" : ""}.`, 6);
-    s.factionRewards += 1;
-    changed = true;
-  }
-  if (changed) {
-    sendInventoryUpdate(s);
-    sendStatsUpdate(s);
-  }
+// Pierde la facción (Armada al atacar ciudadanos): baja el flag y el rango.
+function loseFaction(s: Session, reason: string): void {
+  if (s.faction === FACTION_NONE) return;
+  s.faction = FACTION_NONE;
+  s.factionRank = 0;
+  consoleTo(s, reason);
+  broadcastToMap(s.mapId, {
+    op: ServerToClientOp.FactionUpdate,
+    id: s.characterId as EntityId,
+    faction: FACTION_NONE,
+  } satisfies FactionUpdate);
+  sendStatsUpdate(s);
+}
+
+// Puntos de facción por matar a otro jugador: +10 si la kill es VÁLIDA
+// (víctima no newbie + regla de nivel) y otorga puntos según la alineación del
+// matador, respetando el anti-farmeo (no re-kill del mismo par en 5 minutos).
+function awardFactionPoints(killer: Session, victim: Session): void {
+  const victimNewbie = victim.level <= NEWBIE_MAX_LEVEL;
+  if (!killLevelValid(killer.level, victim.level, victimNewbie)) return;
+  if (!killGivesFactionPoints(killer, victim)) return;
+  const now = Date.now();
+  const last = killer.factionKillCooldowns.get(victim.characterId) ?? 0;
+  if (now - last < REKILL_COOLDOWN_MS) return; // re-kill reciente: no cuenta
+  killer.factionKillCooldowns.set(victim.characterId, now);
+  killer.factionPoints += POINTS_PER_KILL;
+  consoleTo(killer, `+${POINTS_PER_KILL.toString()} puntos de facción (total: ${killer.factionPoints.toString()}).`);
 }
 
 function resolvePlayerDeath(victim: Session, killer: Session | null): void {
@@ -841,8 +854,8 @@ function resolvePlayerDeath(victim: Session, killer: Session | null): void {
       // Volverse criminal puede sacarlo de un clan de ciudadanos.
       void enforceGuildFaction(killer);
     }
-    // Premios de facción al alcanzar umbrales de kills.
-    checkFactionRewards(killer);
+    // Puntos de facción por la kill (sistema de puntos + /recompensa).
+    awardFactionPoints(killer, victim);
     sendStatsUpdate(killer);
   }
 }
@@ -1742,6 +1755,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "No podés atacar ciudadanos — desactivá el seguro (/SEG).", "combate");
         return;
       }
+      // La Armada Real pierde la facción al atacar a un ciudadano (incluye a
+      // otros Armada; los criminales/Caos sí se pueden atacar).
+      if (s.faction === FACTION_ARMADA && !isCriminal(target)) {
+        loseFaction(s, "¡Atacaste a un ciudadano! Fuiste expulsado de la Armada Real.");
+      }
 
       commitAttackCosts(s, prep, now);
       stopMeditating(target);
@@ -2564,30 +2582,18 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
 
-      // Enlistador de facción (Tancredo → Armada, Demonio → Legión).
+      // Enlistador de facción (Tancredo → Armada, Demonio → Legión). El
+      // enlistamiento y el ascenso se hacen con /enlistar y /recompensa cerca
+      // del NPC; al clickearlo solo mostramos el estado / instrucción.
       const enlistFaction = ENLISTER_FACTION[npc.type.number];
       if (enlistFaction !== undefined && chebyshev(s.position, npc.position) <= 5) {
         if (s.faction === enlistFaction) {
-          const kills = factionKills(s);
-          consoleMsg(s, `${FACTION_NAMES[s.faction]!}: tu rango es ${factionRank(s.faction, kills)} (${kills.toString()} bajas). Seguí luchando por la causa.`, "global");
-          return;
+          consoleMsg(s, `${FACTION_NAMES[s.faction]!}: sos ${factionRankName(s.faction, s.factionRank)} · ${s.factionPoints.toString()} puntos. Escribí /recompensa para ascender.`, "global");
+        } else if (s.faction === FACTION_NONE) {
+          consoleMsg(s, `Para unirte a la ${FACTION_NAMES[enlistFaction]!} escribí /enlistar (necesitás nivel y puntos de facción).`, "global");
+        } else {
+          consoleMsg(s, "Ya perteneces a la facción rival. No podés enlistarte acá.", "global");
         }
-        const reason = enlistFaction === FACTION_ARMADA ? canEnlistArmada(s) : canEnlistCaos(s);
-        if (reason !== null) {
-          consoleMsg(s, reason, "global");
-          return;
-        }
-        s.faction = enlistFaction;
-        consoleMsg(s, `¡Bienvenido a la ${FACTION_NAMES[enlistFaction]!}! Tu rango: ${factionRank(enlistFaction, factionKills(s))}.`, "global", 6);
-        // Premio de enlistamiento (oro + armadura faccionaria que no se cae).
-        checkFactionRewards(s);
-        const fPkt: FactionUpdate = {
-          op: ServerToClientOp.FactionUpdate,
-          id: s.characterId as EntityId,
-          faction: s.faction,
-        };
-        broadcastToMap(s.mapId, fPkt);
-        sendStatsUpdate(s);
         return;
       }
 
@@ -4772,7 +4778,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (await isGuildLeader(s)) consoleMsg(s, "Status: Líder", "global");
       }
       if (s.faction !== 0) {
-        consoleMsg(s, `Facción: ${FACTION_NAMES[s.faction] ?? ""} (${factionRank(s.faction, factionKills(s))})`, "global");
+        consoleMsg(s, `Facción: ${FACTION_NAMES[s.faction] ?? ""} · ${factionRankName(s.faction, s.factionRank)} · ${s.factionPoints.toString()} puntos`, "global");
       }
       if (isCriminal(s)) consoleMsg(s, "Estado: Criminal", "combate");
       consoleMsg(s, `Oro: ${s.gold.toLocaleString("es")}  Posición: ${s.position.x.toString()},${s.position.y.toString()} en mapa ${s.mapId.toString()}`, "global");
@@ -4782,6 +4788,68 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
     function handleChat(s: Session, chat: ChatSend): void {
       if (typeof chat.text !== "string" || chat.text.length > 500) return;
       // /desc <texto>: setear la descripción del personaje (todos los jugadores).
+      // ── Facciones: /enlistar y /recompensa (cerca del NPC enlistador) ──────
+      const enlisterFactionNear = (): number | null => {
+        for (const n of npcs.inMap(s.mapId)) {
+          const f = ENLISTER_FACTION[n.type.number];
+          if (f !== undefined && chebyshev(s.position, n.position) <= 5) return f;
+        }
+        return null;
+      };
+      function handleEnlistar(sess: Session): void {
+        const near = enlisterFactionNear();
+        if (near === null) {
+          consoleMsg(sess, "Acercate al enlistador de una facción (Tancredo en Banderbill / el Demonio Legionario) para enlistarte.", "global");
+          return;
+        }
+        const reason = near === FACTION_ARMADA ? canEnlistArmada(sess) : canEnlistCaos(sess);
+        if (reason !== null) { consoleMsg(sess, reason, "global"); return; }
+        sess.faction = near;
+        sess.factionRank = 0;
+        consoleMsg(sess, `¡Bienvenido a la ${FACTION_NAMES[near]!}! Escribí /recompensa para reclamar tu rango.`, "global", 6);
+        broadcastToMap(sess.mapId, {
+          op: ServerToClientOp.FactionUpdate,
+          id: sess.characterId as EntityId,
+          faction: sess.faction,
+        } satisfies FactionUpdate);
+        sendStatsUpdate(sess);
+      }
+      function handleRecompensa(sess: Session): void {
+        if (sess.faction === FACTION_NONE) {
+          consoleMsg(sess, "No perteneces a ninguna facción. Enlistate con /enlistar.", "global");
+          return;
+        }
+        if (enlisterFactionNear() !== sess.faction) {
+          consoleMsg(sess, "Acercate al enlistador de tu facción para ascender.", "global");
+          return;
+        }
+        const next = nextRank(sess.faction, sess.factionRank);
+        if (!next) {
+          consoleMsg(sess, `Ya alcanzaste el rango máximo: ${factionRankName(sess.faction, sess.factionRank)}.`, "global");
+          return;
+        }
+        if (sess.level < next.level || sess.factionPoints < next.points) {
+          const faltaLvl = Math.max(0, next.level - sess.level);
+          const faltaPts = Math.max(0, next.points - sess.factionPoints);
+          const partes: string[] = [];
+          if (faltaLvl > 0) partes.push(`${faltaLvl.toString()} nivel(es)`);
+          if (faltaPts > 0) partes.push(`${faltaPts.toString()} puntos de facción`);
+          consoleMsg(sess, `Para ascender a ${next.name} te falta: ${partes.join(" y ")}.`, "global");
+          return;
+        }
+        sess.factionRank += 1;
+        addGold(sess, next.gold);
+        const armor = factionRankArmor(sess.faction, sess.factionRank, sess.classId);
+        let armorMsg = "";
+        if (armor !== undefined && carryCapacity(sess.inventory, armor) >= 1) {
+          sess.inventory = addItem(sess.inventory, armor, 1);
+          armorMsg = " y una armadura de tu rango";
+          sendInventoryUpdate(sess);
+        }
+        consoleMsg(sess, `¡Ascendiste a ${next.name}! Recibís ${next.gold.toLocaleString("es")} de oro${armorMsg}.`, "global", 6);
+        sendStatsUpdate(sess);
+      }
+
       if (/^\/desc(\s|$)/i.test(chat.text)) {
         // Con cooldown de chat: cada /desc escribe a la DB (spam = DoS de DB).
         const dnow = Date.now();
@@ -4798,6 +4866,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       if (cmd === "/meditar" || cmd === "/med") { handleMeditate(s); return; }
       if (cmd === "/descansar" || cmd === "/rest") { handleRest(s); return; }
       if (cmd === "/seguro" || cmd === "/seg") { handleSafeToggle(s); return; }
+      if (cmd === "/enlistar") { handleEnlistar(s); return; }
+      if (cmd === "/recompensa") { handleRecompensa(s); return; }
       // /est · /stats: estadísticas completas del personaje (SendUserStatsTxt de AO Libre).
       if (cmd === "/est" || cmd === "/stats") { void sendUserStats(s); return; }
       // Comandos informativos del AO clásico.
@@ -4982,6 +5052,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           pardonedKills: characters.pardonedKills,
           bailsPaid: characters.bailsPaid,
           factionRewards: characters.factionRewards,
+          factionPoints: characters.factionPoints,
+          factionRank: characters.factionRank,
           equippedArrow: characters.equippedArrow,
         })
         .from(characters)
@@ -5066,6 +5138,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.pardonedKills = character.pardonedKills;
       session.bailsPaid = character.bailsPaid;
       session.factionRewards = character.factionRewards;
+      session.factionPoints = character.factionPoints;
+      session.factionRank = character.factionRank;
       session.friends = [...character.friends];
       // Privilegios frescos de la cuenta (GMs — panel /admin).
       const [acc] = await db

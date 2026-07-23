@@ -126,8 +126,12 @@ export const characters = pgTable(
     // pardonedKills) y cantidad de fianzas pagadas (precio Fibonacci).
     pardonedKills: integer("pardoned_kills").notNull().default(0),
     bailsPaid: integer("bails_paid").notNull().default(0),
-    // Recompensas de facción ya cobradas (índice en la tabla de premios).
+    // Recompensas de facción ya cobradas (índice en la tabla de premios). [legacy]
     factionRewards: integer("faction_rewards").notNull().default(0),
+    // Sistema de puntos de facción: puntos acumulados (+10 por kill válida) y
+    // rango ya reclamado (0 = enlistado sin rango · 1..5 = rangos con /recompensa).
+    factionPoints: integer("faction_points").notNull().default(0),
+    factionRank: integer("faction_rank").notNull().default(0),
     // Tipo de flecha equipado (munición elegida del arquero).
     equippedArrow: integer("equipped_arrow"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
