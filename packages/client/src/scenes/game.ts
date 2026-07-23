@@ -1887,6 +1887,10 @@ export async function startGameScene(
     187: "yacimiento", 562: "yacimiento",
     138: "agua", 563: "agua", 543: "agua",
   };
+  // Herramientas de trabajo: la caña/hacha/piquete/red son objType "weapon" y
+  // martillo(389/565)/serrucho(198/564) también, pero al USARLAS deben ARMAR el
+  // modo trabajo / abrir el crafteo (useItemAction), NO equiparse como arma.
+  const WORK_TOOLS = new Set<number>([...Object.keys(TOOL_KIND).map(Number), 389, 565, 198, 564]);
 
   // Acción USAR del AO (UseInvItem): pociones/comida/bebida, barcos, monturas,
   // llaves… Las herramientas arman el modo de trabajo y martillo/serrucho
@@ -2134,9 +2138,19 @@ export async function startGameScene(
     client.send(pkt);
   };
 
+  // ¿El foco está en un campo de texto editable (chat, textareas del popup de
+  // clan, montos de banco/trade, etc.)? Si es así, el juego NO debe capturar
+  // teclas — se escribe normal (mover/ocultarse/etc. quedan deshabilitados).
+  const isTypingInField = (): boolean => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el) return false;
+    return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable;
+  };
+
   const onKeyDown = (e: KeyboardEvent): void => {
-    // Si el chat tiene foco, dejamos que el input se quede con todas
-    // las teclas — no movemos al personaje ni capturamos nada.
+    // Foco en un input/textarea (chat, editar clan, etc.): dejamos que el campo
+    // se quede con todas las teclas — no movemos al personaje ni capturamos nada.
+    if (isTypingInField()) return;
     if (chat?.isInputFocused()) return;
     // El panel de configuración captura teclas propias.
     if (keyConfig?.isOpen()) return;
@@ -2212,7 +2226,10 @@ export async function startGameScene(
       e.preventDefault();
       if (lastSelectedItem !== null) {
         const def = getItem(lastSelectedItem);
-        if (def?.type === "weapon" && def.ranged) {
+        if (WORK_TOOLS.has(lastSelectedItem)) {
+          // Herramientas: arman el modo trabajo / abren crafteo (aunque sean arma).
+          useItemAction(lastSelectedItem);
+        } else if (def?.type === "weapon" && def.ranged) {
           // Arco: "usar" = cargar flecha (si está equipado).
           if (selfEquippedWeapon === lastSelectedItem) nockArrow();
           else chat?.appendMessage({ fromName: "", text: "Equipá el arco (E) antes de cargar una flecha.", timestamp: Date.now(), isSelf: false, kind: "combate" });
@@ -3569,6 +3586,9 @@ export async function startGameScene(
     inventory = mountInventory(sideCol, {
       onUse: (item) => {
         const def = getItem(item);
+        // Herramientas de trabajo (caña/hacha/piquete/red/martillo/serrucho):
+        // arman el modo trabajo aunque sean objType weapon. Va ANTES de equipar.
+        if (WORK_TOOLS.has(item)) { useItemAction(item); return; }
         // Arco: si ya está equipado, "click en el arco" CARGA una flecha
         // (cruz); si no, lo equipa. Para desequiparlo usá la tecla Equipar (E).
         if (def?.type === "weapon" && def.ranged) {
@@ -3696,7 +3716,9 @@ export async function startGameScene(
           // Equipo → equipar directo; usables → flujo Usar completo (las
           // herramientas arman el modo de trabajo, martillo abre herrería).
           const def = getItem(slot.id);
-          if (def?.type === "weapon" && def.ranged) {
+          if (WORK_TOOLS.has(slot.id)) {
+            useItemAction(slot.id);
+          } else if (def?.type === "weapon" && def.ranged) {
             // Arco: si está equipado, el macro CARGA una flecha; si no, equipa.
             if (selfEquippedWeapon === slot.id) nockArrow();
             else client?.send({ op: ClientToServerOp.UseItem, item: slot.id } satisfies UseItemRequest);

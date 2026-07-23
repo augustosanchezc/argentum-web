@@ -367,7 +367,22 @@ function broadcastEffect(
 }
 
 // Atacar o castear rompe la invisibilidad propia (AO).
+// Sigilo de CLASE: el Asesino con armadura de Asesino y el Cazador con la
+// Armadura de Cazador (item 360) mantienen el OCULTARSE al actuar (caminar,
+// atacar, tomar pociones) — no así la invisibilidad por hechizo.
+function hasClassStealth(s: Session): boolean {
+  const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
+  return (
+    (s.classId === 5 && (armor?.name.includes("Asesino") ?? false)) ||
+    (s.classId === 4 && s.equippedArmor === 360)
+  );
+}
+
 function breakInvisibility(s: Session): void {
+  // Si está OCULTO (skill Ocultarse) y tiene sigilo de clase, no se rompe:
+  // sigue oculto igual que al caminar. (No aplica a la invisibilidad de hechizo,
+  // que no setea s.hiding.)
+  if (s.hiding && hasClassStealth(s)) return;
   s.hiding = false;
   if (s.invisibleUntil > Date.now()) {
     s.invisibleUntil = 0;
@@ -1488,21 +1503,15 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       broadcastToMap(s.mapId, update);
 
       // Fantasma: revivir si hay un sacerdote cerca.
-      // Caminar rompe el OCULTARSE (AO) — salvo dos casos de sigilo de clase:
-      // el Asesino con armadura de Asesino, o el Cazador con la Armadura de
-      // Cazador (item 360). La invisibilidad por hechizo no se rompe al caminar.
-      if (s.hiding) {
-        const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
-        const stealthy =
-          (s.classId === 5 && (armor?.name.includes("Asesino") ?? false)) ||
-          (s.classId === 4 && s.equippedArmor === 360);
-        if (!stealthy) {
-          s.hiding = false;
-          if (s.invisibleUntil > Date.now()) {
-            s.invisibleUntil = 0;
-            broadcastEffect(s.mapId, s.characterId, "invisible", false);
-            consoleMsg(s, "¡Has vuelto a ser visible!", "combate");
-          }
+      // Caminar rompe el OCULTARSE (AO) — salvo el sigilo de clase (Asesino con
+      // armadura de Asesino, o Cazador con Armadura de Cazador item 360). La
+      // invisibilidad por hechizo no se rompe al caminar.
+      if (s.hiding && !hasClassStealth(s)) {
+        s.hiding = false;
+        if (s.invisibleUntil > Date.now()) {
+          s.invisibleUntil = 0;
+          broadcastEffect(s.mapId, s.characterId, "invisible", false);
+          consoleMsg(s, "¡Has vuelto a ser visible!", "combate");
         }
       }
 
