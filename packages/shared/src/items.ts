@@ -43,6 +43,11 @@ export interface ItemDef {
   readonly defense?: number;
   readonly defenseMin?: number;
   readonly defenseMax?: number;
+  // Atributos ADICIONALES editables desde el panel admin (house rule): cualquier
+  // item equipable puede otorgar, además de su stat base, HP máximo y/o ataque
+  // extra mientras está equipado. Se suman entre todas las piezas equipadas.
+  readonly bonusHp?: number;
+  readonly bonusHit?: number;
   // Armadura: NumRopaje — body de Personajes.ini que muestra el personaje
   // al equiparla (sistema de ropaje del AO).
   readonly bodyId?: number;

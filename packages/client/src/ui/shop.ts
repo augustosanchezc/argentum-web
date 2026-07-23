@@ -113,13 +113,13 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
     nameEl.textContent = def.name;
     const total = selected.unit * qty();
     priceEl.textContent = `$: ${total.toLocaleString("es")}`;
-    if (def.maxHit && def.maxHit > 0) {
-      statEl.textContent = `Golpe ${(def.minHit ?? 0).toString()}/${def.maxHit.toString()}`;
-    } else if (def.defense && def.defense > 0) {
-      statEl.textContent = `Defensa ${def.defense.toString()}`;
-    } else {
-      statEl.innerHTML = "&nbsp;";
-    }
+    const parts: string[] = [];
+    if (def.maxHit && def.maxHit > 0) parts.push(`Golpe ${(def.minHit ?? 0).toString()}/${def.maxHit.toString()}`);
+    else if (def.defense && def.defense > 0) parts.push(`Defensa ${def.defense.toString()}`);
+    if (def.bonusHp) parts.push(`+${def.bonusHp.toString()} Vida`);
+    if (def.bonusHit) parts.push(`+${def.bonusHit.toString()} Ataque`);
+    if (parts.length > 0) statEl.textContent = parts.join(" · ");
+    else statEl.innerHTML = "&nbsp;";
   }
 
   function select(side: "npc" | "user", item: number, unit: number, cell: HTMLElement): void {

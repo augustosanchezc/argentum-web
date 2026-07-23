@@ -390,6 +390,31 @@ function breakInvisibility(s: Session): void {
   }
 }
 
+// Atributos ADICIONALES por items equipados (house rule editable en el panel
+// admin): cualquier pieza equipada (arma/armadura/casco/escudo) puede sumar HP
+// máximo y/o ataque extra, además de su stat base. Se suman entre todas.
+function equipSlotIds(s: Session): Array<number | null> {
+  return [s.equippedWeapon, s.equippedArmor, s.equippedHelmet, s.equippedShield];
+}
+function equipBonusHp(s: Session): number {
+  let b = 0;
+  for (const id of equipSlotIds(s)) if (id !== null) b += getItem(id)?.bonusHp ?? 0;
+  return b;
+}
+function equipBonusHit(s: Session): number {
+  let b = 0;
+  for (const id of equipSlotIds(s)) if (id !== null) b += getItem(id)?.bonusHit ?? 0;
+  return b;
+}
+// HP máximo = base por clase/nivel/constitución + bonus de equipo. Clampa el HP
+// actual. Reemplaza los `s.maxHp = calcMaxHp(...)` sueltos para incluir el bonus.
+function recomputeMaxHp(s: Session): void {
+  const cd = getClass(s.classId);
+  const base = cd ? calcMaxHp(cd, s.level, s.con) : maxHpForLevel(s.level);
+  s.maxHp = base + equipBonusHp(s);
+  if (s.hp > s.maxHp) s.hp = s.maxHp;
+}
+
 // Body visible del jugador: navegando = el barco; si no, el ropaje
 // (NumRopaje de obj.dat) de la armadura equipada, o el body base.
 function computeVisibleBody(s: Session): number {
@@ -1737,7 +1762,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           userHitMax: golpeUsuario(s.classId, s.level).max,
           fuerza: s.str + s.strBonus,
           modClaseDano: prep.modDano,
-        }) - defTotal,
+        }) + equipBonusHit(s) - defTotal,
       );
 
       // Apuñalar (arma con Apunala=1): daño extra ×1.4 asesino / ×1.5 resto.
@@ -1805,7 +1830,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           userHitMax: golpeUsuario(s.classId, s.level).max,
           fuerza: s.str + s.strBonus,
           modClaseDano: prep.modDano,
-        }) - npc.type.defense,
+        }) + equipBonusHit(s) - npc.type.defense,
       );
 
       // Apuñalar contra criaturas: daño extra ×2 (DoApunalar del AO).
@@ -1833,12 +1858,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         recv.skills = skillsForLevel(recv.level);
         const classDef = getClass(recv.classId);
         if (classDef) {
-          recv.maxHp = calcMaxHp(classDef, recv.level, recv.con);
           recv.maxMana = calcMaxMp(classDef, recv.level, recv.int_);
           recv.maxSta = calcMaxSta(classDef, recv.level);
-        } else {
-          recv.maxHp = maxHpForLevel(recv.level);
         }
+        recomputeMaxHp(recv); // base por clase/nivel + bonus de HP del equipo
         recv.hp = recv.maxHp;
         recv.mana = recv.maxMana;
         partyRegistry.updateMemberStats(recv.characterId, recv.hp, recv.maxHp);
@@ -2373,6 +2396,9 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         else s.equippedShield = isEquipped ? null : pkt.item;
         // SND_SACARARMA del AO al equipar un arma.
         if (def.type === "weapon" && !isEquipped) consoleMsg(s, "", "global", 25);
+        // El equipo puede dar HP máximo extra (bonusHp) → recalcular y avisar.
+        recomputeMaxHp(s);
+        sendStatsUpdate(s);
         sendInventoryUpdate(s);
       }
     }
@@ -3501,10 +3527,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           // AO Libre: los atributos son fijos; no se otorgan puntos de atributo por nivel.
           const classDef = getClass(s.classId);
           if (classDef) s.maxSta = calcMaxSta(classDef, s.level);
-          if (classDef) {
-            s.maxHp = calcMaxHp(classDef, s.level, s.con);
-            s.maxMana = calcMaxMp(classDef, s.level, s.int_);
-          }
+          if (classDef) s.maxMana = calcMaxMp(classDef, s.level, s.int_);
+          recomputeMaxHp(s);
           s.hp = s.maxHp;
           s.mana = s.maxMana;
           sendSpellsKnown(s);
@@ -4650,10 +4674,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         s.skills = skillsForLevel(s.level);
         const classDef = getClass(s.classId);
         if (classDef) {
-          s.maxHp = calcMaxHp(classDef, s.level, s.con);
           s.maxMana = calcMaxMp(classDef, s.level, s.int_);
           s.maxSta = calcMaxSta(classDef, s.level);
         }
+        recomputeMaxHp(s);
         s.hp = s.maxHp;
         s.mana = s.maxMana;
         s.sta = s.maxSta;
@@ -5046,16 +5070,15 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (!session.guildName) session.guildId = null;
       }
 
-      // Recalcular HP/MP máximos desde la clase (fuente de verdad)
+      // Recalcular HP/MP máximos desde la clase (fuente de verdad) + bonus de equipo.
       const classDef = getClass(session.classId);
       if (classDef) {
-        session.maxHp = calcMaxHp(classDef, session.level, session.con);
         session.maxMana = calcMaxMp(classDef, session.level, session.int_);
         session.maxSta = calcMaxSta(classDef, session.level);
       } else {
-        session.maxHp = maxHpForLevel(character.level);
         session.maxMana = 0;
       }
+      recomputeMaxHp(session);
       // Muerto persistido: sigue fantasma al reconectar (antes un F5 revivía
       // gratis con vida completa en el mismo tile).
       if (character.dead) {

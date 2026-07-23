@@ -136,6 +136,10 @@ function itemStatsRows(def: ReturnType<typeof getItem>): string {
     const d = range(def.defenseMin, def.defenseMax);
     if (d) rows.push(["Defensa", d]);
   }
+  // Atributos adicionales (bonus de equipo, editables desde el panel admin): se
+  // muestran en cualquier item que los tenga, además de su stat base.
+  if (def.bonusHp) rows.push(["Vida", `+${def.bonusHp.toString()}`]);
+  if (def.bonusHit) rows.push(["Ataque extra", `+${def.bonusHit.toString()}`]);
   return rows.map(([k, v]) => `<div class="ao-inv__d-row"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 
