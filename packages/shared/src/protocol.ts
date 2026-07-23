@@ -58,6 +58,12 @@ export enum ClientToServerOp {
   // Popup de clan: pedir la info del propio clan / editar descripción y reglas (líder).
   GuildInfo = 0x68,
   GuildEdit = 0x69,
+  // Directorio de clanes + solicitudes de ingreso.
+  GuildList = 0x6a,          // pedir la lista de todos los clanes
+  GuildJoinRequest = 0x6b,   // solicitar unirse a un clan
+  GuildRequestAccept = 0x6c, // líder/oficial acepta una solicitud
+  GuildRequestReject = 0x6d, // líder/oficial rechaza una solicitud
+  GuildSetRank = 0x6e,       // líder otorga/quita rango a un miembro
   // Amigos (lista de 50 como el AO).
   FriendAdd = 0x5d,
   FriendRemove = 0x5e,
@@ -157,6 +163,8 @@ export enum ServerToClientOp {
   CriminalUpdate = 0xb4,
   // Info del propio clan para el popup (miembros + descripción + reglas).
   GuildInfoResponse = 0xfd,
+  // Directorio de todos los clanes (popup cuando no estás en ninguno).
+  GuildListResponse = 0xfe,
 }
 
 export interface LoginRequest {
@@ -868,11 +876,21 @@ export interface GuildEditRequest {
 
 // Un miembro del clan, para el listado del popup.
 export interface GuildMemberInfo {
+  readonly characterId: number;
   readonly name: string;
   readonly level: number;
   readonly classId: number;
   readonly online: boolean;
   readonly leader: boolean;
+  // Rango: 0 = miembro · 1 = oficial.
+  readonly rank: number;
+}
+// Una solicitud de ingreso pendiente (visible para líder/oficiales).
+export interface GuildRequestInfo {
+  readonly characterId: number;
+  readonly name: string;
+  readonly level: number;
+  readonly classId: number;
 }
 // S→C: info completa del propio clan (respuesta a GuildInfoRequest).
 export interface GuildInfoResponse {
@@ -882,10 +900,60 @@ export interface GuildInfoResponse {
   readonly faction: number;
   readonly description: string;
   readonly rules: string;
-  // ¿El que pide es el líder? (habilita editar y ver el máximo).
+  // ¿El que pide es el líder? (habilita editar descripción/reglas y rangos).
   readonly isLeader: boolean;
+  // ¿Puede gestionar solicitudes (líder u oficial)?
+  readonly canManage: boolean;
   readonly maxMembers: number;
   readonly members: readonly GuildMemberInfo[];
+  // Solicitudes pendientes (solo se llena para quien puede gestionar).
+  readonly requests: readonly GuildRequestInfo[];
+}
+
+// Un clan en el directorio (popup cuando NO estás en ningún clan).
+export interface GuildDirectoryEntry {
+  readonly id: number;
+  readonly name: string;
+  readonly faction: number;
+  readonly leaderName: string;
+  readonly memberCount: number;
+  readonly maxMembers: number;
+  readonly description: string;
+  // ¿Ya mandaste solicitud a este clan?
+  readonly requested: boolean;
+  // ¿Podés unirte (misma facción y con cupo)?
+  readonly canJoin: boolean;
+}
+// C→S: pedir el directorio de todos los clanes.
+export interface GuildListRequest {
+  readonly op: ClientToServerOp.GuildList;
+}
+// S→C: directorio de clanes.
+export interface GuildListResponse {
+  readonly op: ServerToClientOp.GuildListResponse;
+  // Facción del que pide (para saber a cuáles puede unirse). 0/1.
+  readonly myFaction: number;
+  readonly guilds: readonly GuildDirectoryEntry[];
+}
+// C→S: solicitar unirse a un clan.
+export interface GuildJoinRequestReq {
+  readonly op: ClientToServerOp.GuildJoinRequest;
+  readonly guildId: number;
+}
+// C→S: aceptar / rechazar una solicitud (líder u oficial).
+export interface GuildRequestAcceptReq {
+  readonly op: ClientToServerOp.GuildRequestAccept;
+  readonly characterId: number;
+}
+export interface GuildRequestRejectReq {
+  readonly op: ClientToServerOp.GuildRequestReject;
+  readonly characterId: number;
+}
+// C→S: el líder otorga (rank=1) o quita (rank=0) rango a un miembro.
+export interface GuildSetRankReq {
+  readonly op: ClientToServerOp.GuildSetRank;
+  readonly characterId: number;
+  readonly rank: number;
 }
 
 // Amigos: agregar/quitar por nombre y pedir la lista (respuestas por ConsoleMsg).
@@ -1062,6 +1130,11 @@ export type ClientPacket =
   | GuildOnlineRequest
   | GuildInfoRequest
   | GuildEditRequest
+  | GuildListRequest
+  | GuildJoinRequestReq
+  | GuildRequestAcceptReq
+  | GuildRequestRejectReq
+  | GuildSetRankReq
   | FriendAddRequest
   | FriendRemoveRequest
   | FriendListRequest
@@ -1107,6 +1180,7 @@ export type ServerPacket =
   | FactionUpdate
   | GuildTagUpdate
   | GuildInfoResponse
+  | GuildListResponse
   | MapTileUpdate
   | RainToggle
   | GameConfigMsg

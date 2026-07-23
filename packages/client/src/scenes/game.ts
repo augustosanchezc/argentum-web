@@ -2577,7 +2577,10 @@ export async function startGameScene(
         handleGuildTagUpdate(packet);
         break;
       case ServerToClientOp.GuildInfoResponse:
-        guildUi?.update(packet);
+        guildUi?.showInfo(packet);
+        break;
+      case ServerToClientOp.GuildListResponse:
+        guildUi?.showDirectory(packet);
         break;
       case ServerToClientOp.MapTileUpdate:
         handleMapTileUpdate(packet);
@@ -3549,6 +3552,18 @@ export async function startGameScene(
       onSaveText: (description, rules) => {
         client?.send({ op: ClientToServerOp.GuildEdit, description, rules });
       },
+      onRequestJoin: (guildId) => {
+        client?.send({ op: ClientToServerOp.GuildJoinRequest, guildId });
+      },
+      onAcceptRequest: (characterId) => {
+        client?.send({ op: ClientToServerOp.GuildRequestAccept, characterId });
+      },
+      onRejectRequest: (characterId) => {
+        client?.send({ op: ClientToServerOp.GuildRequestReject, characterId });
+      },
+      onSetRank: (characterId, rank) => {
+        client?.send({ op: ClientToServerOp.GuildSetRank, characterId, rank });
+      },
     });
 
     inventory = mountInventory(sideCol, {
@@ -3658,7 +3673,10 @@ export async function startGameScene(
         chat?.appendMessage({ fromName: "", text: "Party: Alt+click en un jugador para invitarlo. /salirparty para salir.", timestamp: Date.now(), isSelf: false, kind: "global" });
       },
       onOpenClanes: () => {
-        chat?.appendMessage({ fromName: "", text: "Clanes: /fundarclan <nombre> (nv38 + 1.500.000 oro) · /invitarclan <nombre> · /cmsg <texto> · /onlineclan · tecla G: ver clan (miembros/descripción/reglas).", timestamp: Date.now(), isSelf: false, kind: "global" });
+        // Abre el popup de clanes: si estás en uno muestra tu clan; si no, el
+        // directorio para explorar y solicitar unirte (el server rutea).
+        if (guildUi?.isOpen()) guildUi.close();
+        else client?.send({ op: ClientToServerOp.GuildInfo });
       },
       onOpenWorldMap: () => {
         worldMap?.open(currentMapId);

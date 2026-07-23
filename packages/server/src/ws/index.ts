@@ -31,8 +31,15 @@ import {
   type GuildEditRequest,
   type GuildInfoResponse,
   type GuildInviteRequest,
+  type GuildJoinRequestReq,
+  type GuildListResponse,
+  type GuildDirectoryEntry,
   type GuildMemberInfo,
   type GuildMessageRequest,
+  type GuildRequestAcceptReq,
+  type GuildRequestInfo,
+  type GuildRequestRejectReq,
+  type GuildSetRankReq,
   type GuildTagUpdate,
   type MapTileUpdate,
   type RainToggle,
@@ -182,14 +189,24 @@ import {
 import {
   canFoundGuild,
   canJoinGuild,
+  canManageGuild,
+  clearRequestsForCharacter,
+  clearRequestsForGuild,
   createGuild,
+  createJoinRequest,
+  deleteJoinRequest,
   factionName,
   getGuild,
   getGuildMembers,
+  guildIdsRequestedBy,
   isGuildLeader,
   joinGuild,
+  joinGuildById,
   leaveGuild,
+  listGuilds,
+  listJoinRequests,
   sessionFaction,
+  setGuildRank,
   setGuildText,
   validGuildName,
   GUILD_COST,
@@ -596,8 +613,10 @@ async function enforceGuildFaction(s: Session): Promise<void> {
   const oldId = s.guildId;
   const oldName = s.guildName ?? g.name;
   const result = await leaveGuild(s);
+  await setGuildRank(s.characterId, 0);
   s.guildId = null;
   s.guildName = null;
+  s.guildRank = 0;
   consoleTo(
     s,
     `Tu alineación cambió y ya no coincidís con el clan ${oldName} (${factionName(g.faction)}): fuiste expulsado.`,
@@ -607,7 +626,7 @@ async function enforceGuildFaction(s: Session): Promise<void> {
     id: s.characterId as EntityId,
     guild: null,
   } satisfies GuildTagUpdate);
-  if (result.disbanded) return;
+  if (result.disbanded) { await clearRequestsForGuild(oldId); return; }
   for (const member of sessions.all()) {
     if (member.guildId !== oldId) continue;
     consoleTo(member, `${s.characterName} fue expulsado del clan (cambió de alineación).`);
@@ -1271,6 +1290,31 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         case ClientToServerOp.GuildEdit:
           void handleGuildEdit(session, packet).catch((err) =>
             req.log.error({ err }, "[guild] error al editar"),
+          );
+          break;
+        case ClientToServerOp.GuildList:
+          void handleGuildList(session).catch((err) =>
+            req.log.error({ err }, "[guild] error al listar"),
+          );
+          break;
+        case ClientToServerOp.GuildJoinRequest:
+          void handleGuildJoinRequest(session, packet).catch((err) =>
+            req.log.error({ err }, "[guild] error al solicitar"),
+          );
+          break;
+        case ClientToServerOp.GuildRequestAccept:
+          void handleGuildRequestAccept(session, packet).catch((err) =>
+            req.log.error({ err }, "[guild] error al aceptar solicitud"),
+          );
+          break;
+        case ClientToServerOp.GuildRequestReject:
+          void handleGuildRequestReject(session, packet).catch((err) =>
+            req.log.error({ err }, "[guild] error al rechazar solicitud"),
+          );
+          break;
+        case ClientToServerOp.GuildSetRank:
+          void handleGuildSetRank(session, packet).catch((err) =>
+            req.log.error({ err }, "[guild] error al setear rango"),
           );
           break;
         // Amigos
@@ -3705,6 +3749,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       sendStatsUpdate(s);
       s.guildId = g.id;
       s.guildName = g.name;
+      s.guildRank = 0; // el líder se identifica por guilds.leaderId, no por rango
+      await clearRequestsForCharacter(s.characterId); // ya tiene clan
       consoleMsg(
         s,
         `¡Has fundado el clan ${g.name} (${factionName(faction)})! Invita miembros con /invitarclan <nombre>.`,
@@ -3727,12 +3773,24 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         if (sess.guildId === s.guildId) onlineIds.add(sess.characterId);
       }
       const members: GuildMemberInfo[] = rows.map((m) => ({
+        characterId: m.id,
         name: m.name,
         level: m.level,
         classId: m.classId,
         online: onlineIds.has(m.id),
         leader: m.id === g.leaderId,
+        rank: m.rank,
       }));
+      // Solicitudes pendientes: solo se cargan si el que pide puede gestionar.
+      const manage = canManageGuild(s, g);
+      const requests: GuildRequestInfo[] = manage
+        ? (await listJoinRequests(s.guildId)).map((r) => ({
+            characterId: r.characterId,
+            name: r.name,
+            level: r.level,
+            classId: r.classId,
+          }))
+        : [];
       const pkt: GuildInfoResponse = {
         op: ServerToClientOp.GuildInfoResponse,
         name: g.name,
@@ -3740,14 +3798,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         description: g.description,
         rules: g.rules,
         isLeader: g.leaderId === s.characterId,
+        canManage: manage,
         maxMembers: GUILD_MAX_MEMBERS,
         members,
+        requests,
       };
       send(s.socket, pkt);
     }
 
     async function handleGuildInfo(s: Session): Promise<void> {
-      await sendGuildInfo(s);
+      // Un solo punto de entrada (botón Clanes / tecla G): si tenés clan mostramos
+      // su info; si no, el directorio de clanes para explorar y solicitar.
+      if (s.guildId) await sendGuildInfo(s);
+      else await handleGuildList(s);
     }
 
     async function handleGuildEdit(s: Session, pkt: GuildEditRequest): Promise<void> {
@@ -3764,6 +3827,118 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       await sendGuildInfo(s);
     }
 
+    // ── Directorio de clanes + solicitudes de ingreso ────────────────────
+    async function handleGuildList(s: Session): Promise<void> {
+      const myFaction = sessionFaction(s);
+      const summaries = await listGuilds();
+      const requestedIds = new Set(await guildIdsRequestedBy(s.characterId));
+      const entries: GuildDirectoryEntry[] = summaries.map((g) => ({
+        id: g.id,
+        name: g.name,
+        faction: g.faction,
+        leaderName: g.leaderName,
+        memberCount: g.memberCount,
+        maxMembers: GUILD_MAX_MEMBERS,
+        description: g.description,
+        requested: requestedIds.has(g.id),
+        // Puede unirse si no tiene clan, coincide la facción y hay cupo.
+        canJoin: !s.guildId && g.faction === myFaction && g.memberCount < GUILD_MAX_MEMBERS,
+      }));
+      const pkt: GuildListResponse = {
+        op: ServerToClientOp.GuildListResponse,
+        myFaction,
+        guilds: entries,
+      };
+      send(s.socket, pkt);
+    }
+
+    async function handleGuildJoinRequest(s: Session, pkt: GuildJoinRequestReq): Promise<void> {
+      const reason = await createJoinRequest(pkt.guildId, s);
+      if (reason) {
+        consoleMsg(s, reason, "global");
+        return;
+      }
+      const g = await getGuild(pkt.guildId);
+      consoleMsg(s, `Solicitud enviada al clan ${g?.name ?? ""}.`, "global");
+      // Avisar a los gestores online del clan (líder + oficiales).
+      if (g) {
+        for (const member of guildMembersOnline(pkt.guildId)) {
+          if (canManageGuild(member, g)) {
+            consoleMsg(member, `${s.characterName} solicitó unirse al clan. Revisá las solicitudes (tecla G).`, "global");
+          }
+        }
+      }
+    }
+
+    async function handleGuildRequestAccept(s: Session, pkt: GuildRequestAcceptReq): Promise<void> {
+      if (!s.guildId) return;
+      const g = await getGuild(s.guildId);
+      if (!g || !canManageGuild(s, g)) {
+        consoleMsg(s, "No tenés permiso para gestionar solicitudes.", "global");
+        return;
+      }
+      const target = sessions.getByCharacterId(pkt.characterId);
+      // Debe seguir teniendo una solicitud a ESTE clan y poder unirse.
+      const reqs = await listJoinRequests(s.guildId);
+      if (!reqs.some((r) => r.characterId === pkt.characterId)) {
+        consoleMsg(s, "Esa solicitud ya no existe.", "global");
+        return;
+      }
+      await deleteJoinRequest(s.guildId, pkt.characterId);
+      if (target) {
+        // Aplicante online: validar cupo/facción actuales y sumarlo.
+        const joinReason = await canJoinGuild(s.guildId, target);
+        if (joinReason) { consoleMsg(s, joinReason, "global"); return; }
+        await joinGuild(s.guildId, target);
+        await clearRequestsForCharacter(pkt.characterId);
+        target.guildId = s.guildId;
+        target.guildName = g.name;
+        target.guildRank = 0;
+        for (const member of guildMembersOnline(s.guildId)) {
+          consoleMsg(member, `${target.characterName} se unió al clan.`, "global");
+        }
+        broadcastGuildTag(target);
+      } else {
+        // Aplicante offline: lo sumamos en la DB; toma el clan al loguear.
+        await joinGuildById(s.guildId, pkt.characterId);
+        await clearRequestsForCharacter(pkt.characterId);
+        consoleMsg(s, "Solicitud aceptada (el jugador está offline).", "global");
+      }
+      await sendGuildInfo(s);
+    }
+
+    async function handleGuildRequestReject(s: Session, pkt: GuildRequestRejectReq): Promise<void> {
+      if (!s.guildId) return;
+      const g = await getGuild(s.guildId);
+      if (!g || !canManageGuild(s, g)) {
+        consoleMsg(s, "No tenés permiso para gestionar solicitudes.", "global");
+        return;
+      }
+      await deleteJoinRequest(s.guildId, pkt.characterId);
+      const target = sessions.getByCharacterId(pkt.characterId);
+      if (target) consoleMsg(target, `Tu solicitud al clan ${g.name} fue rechazada.`, "global");
+      await sendGuildInfo(s);
+    }
+
+    async function handleGuildSetRank(s: Session, pkt: GuildSetRankReq): Promise<void> {
+      if (!s.guildId) return;
+      if (!(await isGuildLeader(s))) {
+        consoleMsg(s, "Solo el líder puede otorgar rangos.", "global");
+        return;
+      }
+      if (pkt.characterId === s.characterId) return; // el líder no se cambia el rango
+      const rank = pkt.rank >= 1 ? 1 : 0;
+      // El objetivo debe ser miembro del mismo clan.
+      const members = await getGuildMembers(s.guildId);
+      if (!members.some((m) => m.id === pkt.characterId)) return;
+      await setGuildRank(pkt.characterId, rank);
+      const target = sessions.getByCharacterId(pkt.characterId);
+      if (target) {
+        target.guildRank = rank;
+        consoleMsg(target, rank ? "Ahora sos oficial del clan (podés gestionar solicitudes)." : "Ya no sos oficial del clan.", "global");
+      }
+      await sendGuildInfo(s);
+    }
 
     async function handleGuildInvite(s: Session, pkt: GuildInviteRequest): Promise<void> {
       if (!s.guildId || !s.guildName) {
@@ -3813,8 +3988,10 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         return;
       }
       await joinGuild(invite.guildId, s);
+      await clearRequestsForCharacter(s.characterId); // ya tiene clan
       s.guildId = invite.guildId;
       s.guildName = invite.guildName;
+      s.guildRank = 0;
       for (const member of guildMembersOnline(invite.guildId)) {
         consoleMsg(member, `${s.characterName} se ha unido al clan ${invite.guildName}.`, "global");
       }
@@ -3829,11 +4006,13 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const oldName = s.guildName;
       const oldId = s.guildId;
       const result = await leaveGuild(s);
+      await setGuildRank(s.characterId, 0);
       s.guildId = null;
       s.guildName = null;
+      s.guildRank = 0;
       consoleMsg(s, `Has abandonado el clan ${oldName}.`, "global");
       broadcastGuildTag(s);
-      if (result.disbanded) return;
+      if (result.disbanded) { await clearRequestsForGuild(oldId); return; }
       for (const member of guildMembersOnline(oldId)) {
         consoleMsg(member, `${s.characterName} ha abandonado el clan.`, "global");
         if (result.newLeaderId === member.characterId) {
@@ -4734,6 +4913,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           citizensKilled: characters.citizensKilled,
           criminalsKilled: characters.criminalsKilled,
           guildId: characters.guildId,
+          guildRank: characters.guildRank,
           friends: characters.friends,
           gold: characters.gold,
           inventory: characters.inventory,
@@ -4848,6 +5028,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       session.role = acc?.role ?? 0;
       if (character.guildId) {
         session.guildId = character.guildId;
+        session.guildRank = character.guildRank;
         const [g] = await db
           .select({ name: guilds.name })
           .from(guilds)

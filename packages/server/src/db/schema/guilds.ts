@@ -22,3 +22,20 @@ export const guilds = pgTable(
 );
 
 export type Guild = typeof guilds.$inferSelect;
+
+// Solicitudes de ingreso a un clan (el jugador pide, el líder/oficial aprueba).
+// Persistentes: sobreviven reinicios. Una por (clan, personaje).
+export const guildRequests = pgTable(
+  "guild_requests",
+  {
+    id: serial("id").primaryKey(),
+    guildId: integer("guild_id").notNull(),
+    characterId: integer("character_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    uniq: uniqueIndex("guild_requests_guild_char_uniq").on(table.guildId, table.characterId),
+  }),
+);
+
+export type GuildRequest = typeof guildRequests.$inferSelect;

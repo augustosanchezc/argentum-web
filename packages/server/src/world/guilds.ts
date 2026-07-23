@@ -1,6 +1,6 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
-import { guilds } from "../db/schema/guilds.js";
+import { guilds, guildRequests } from "../db/schema/guilds.js";
 import { characters } from "../db/schema/characters.js";
 import type { Session } from "../ws/sessions.js";
 import { isCriminal } from "./criminal.js";
@@ -100,6 +100,7 @@ export interface GuildMemberRow {
   readonly name: string;
   readonly level: number;
   readonly classId: number;
+  readonly rank: number;
 }
 
 export async function getGuildMembers(guildId: number): Promise<GuildMemberRow[]> {
@@ -109,10 +110,128 @@ export async function getGuildMembers(guildId: number): Promise<GuildMemberRow[]
       name: characters.name,
       level: characters.level,
       classId: characters.classId,
+      rank: characters.guildRank,
     })
     .from(characters)
     .where(eq(characters.guildId, guildId))
     .orderBy(sql`${characters.level} desc`);
+}
+
+// ── Directorio de clanes (para el popup cuando NO estás en ninguno) ─────────
+export interface GuildSummary {
+  readonly id: number;
+  readonly name: string;
+  readonly faction: number;
+  readonly leaderName: string;
+  readonly memberCount: number;
+  readonly description: string;
+}
+
+export async function listGuilds(): Promise<GuildSummary[]> {
+  const gs = await db
+    .select({
+      id: guilds.id,
+      name: guilds.name,
+      faction: guilds.faction,
+      leaderId: guilds.leaderId,
+      description: guilds.description,
+    })
+    .from(guilds)
+    .orderBy(guilds.name);
+  if (gs.length === 0) return [];
+  // Conteo de miembros por clan.
+  const countRows = await db
+    .select({ gid: characters.guildId, n: sql<number>`count(*)::int` })
+    .from(characters)
+    .where(isNotNull(characters.guildId))
+    .groupBy(characters.guildId);
+  const counts = new Map<number, number>();
+  for (const r of countRows) if (r.gid !== null) counts.set(r.gid, r.n);
+  // Nombres de los líderes.
+  const leaders = await db
+    .select({ id: characters.id, name: characters.name })
+    .from(characters)
+    .where(inArray(characters.id, gs.map((g) => g.leaderId)));
+  const leaderNames = new Map<number, string>();
+  for (const l of leaders) leaderNames.set(l.id, l.name);
+  return gs.map((g) => ({
+    id: g.id,
+    name: g.name,
+    faction: g.faction,
+    leaderName: leaderNames.get(g.leaderId) ?? "?",
+    memberCount: counts.get(g.id) ?? 0,
+    description: g.description,
+  }));
+}
+
+// ── Solicitudes de ingreso (persistentes) ──────────────────────────────────
+// El jugador pide unirse; el líder u oficial (rank≥1) aprueba/rechaza.
+export async function createJoinRequest(guildId: number, member: Session): Promise<string | null> {
+  const reason = await canJoinGuild(guildId, member); // sin clan + facción + cupo
+  if (reason) return reason;
+  try {
+    await db.insert(guildRequests).values({ guildId, characterId: member.characterId });
+    return null;
+  } catch {
+    return "Ya enviaste una solicitud a ese clan.";
+  }
+}
+
+export interface GuildRequestRow {
+  readonly characterId: number;
+  readonly name: string;
+  readonly level: number;
+  readonly classId: number;
+}
+
+export async function listJoinRequests(guildId: number): Promise<GuildRequestRow[]> {
+  return db
+    .select({
+      characterId: characters.id,
+      name: characters.name,
+      level: characters.level,
+      classId: characters.classId,
+    })
+    .from(guildRequests)
+    .innerJoin(characters, eq(characters.id, guildRequests.characterId))
+    .where(eq(guildRequests.guildId, guildId))
+    .orderBy(guildRequests.createdAt);
+}
+
+// Ids de los clanes a los que este personaje ya mandó solicitud (para marcar
+// "Solicitado" en el directorio).
+export async function guildIdsRequestedBy(characterId: number): Promise<number[]> {
+  const rows = await db
+    .select({ guildId: guildRequests.guildId })
+    .from(guildRequests)
+    .where(eq(guildRequests.characterId, characterId));
+  return rows.map((r) => r.guildId);
+}
+
+export async function deleteJoinRequest(guildId: number, characterId: number): Promise<void> {
+  await db
+    .delete(guildRequests)
+    .where(and(eq(guildRequests.guildId, guildId), eq(guildRequests.characterId, characterId)));
+}
+
+// Al entrar a un clan (o fundarlo) se limpian TODAS las solicitudes del personaje.
+export async function clearRequestsForCharacter(characterId: number): Promise<void> {
+  await db.delete(guildRequests).where(eq(guildRequests.characterId, characterId));
+}
+
+// Al disolverse un clan se borran sus solicitudes pendientes.
+export async function clearRequestsForGuild(guildId: number): Promise<void> {
+  await db.delete(guildRequests).where(eq(guildRequests.guildId, guildId));
+}
+
+// ── Rangos dentro del clan ─────────────────────────────────────────────────
+export async function setGuildRank(characterId: number, rank: number): Promise<void> {
+  await db.update(characters).set({ guildRank: rank }).where(eq(characters.id, characterId));
+}
+
+// ¿La sesión puede gestionar el clan (aprobar solicitudes, etc.)? Líder u oficial.
+export function canManageGuild(s: Session, guild: GuildInfo): boolean {
+  return guild.leaderId === s.characterId || s.guildRank >= 1;
 }
 
 // Chequea si un personaje puede unirse: sin clan, cupo disponible y misma
@@ -141,7 +260,13 @@ export async function setGuildText(guildId: number, description: string, rules: 
 }
 
 export async function joinGuild(guildId: number, member: Session): Promise<void> {
-  await db.update(characters).set({ guildId }).where(eq(characters.id, member.characterId));
+  await joinGuildById(guildId, member.characterId);
+}
+
+// Suma un personaje (por id) a un clan y le resetea el rango a miembro. Sirve
+// para aceptar solicitudes de jugadores offline.
+export async function joinGuildById(guildId: number, characterId: number): Promise<void> {
+  await db.update(characters).set({ guildId, guildRank: 0 }).where(eq(characters.id, characterId));
 }
 
 // Salir del clan. Si el que sale es el líder, el liderazgo pasa al miembro más

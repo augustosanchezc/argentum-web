@@ -151,6 +151,8 @@ export interface Session {
   // Clan (modGuilds.bas — núcleo): id y nombre, más invitación pendiente.
   guildId: number | null;
   guildName: string | null;
+  // Rango en el clan: 0 = miembro · 1 = oficial (otorgado por el líder).
+  guildRank: number;
   guildInvite: { guildId: number; guildName: string; from: string } | null;
   // Amigos (nombres, máx. 50 como el AO).
   friends: string[];
@@ -290,6 +292,7 @@ export class SessionRegistry {
       criminalsKilled: 0,
       guildId: null,
       guildName: null,
+      guildRank: 0,
       guildInvite: null,
       friends: [],
       role: 0,

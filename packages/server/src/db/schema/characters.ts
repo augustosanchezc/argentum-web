@@ -76,6 +76,9 @@ export const characters = pgTable(
     faction: integer("faction").notNull().default(0),
     // Clan al que pertenece (null = sin clan).
     guildId: integer("guild_id"),
+    // Rango dentro del clan: 0 = miembro · 1 = oficial (puede aprobar/rechazar
+    // solicitudes y lo otorga el líder). El líder se determina por guilds.leaderId.
+    guildRank: integer("guild_rank").notNull().default(0),
     citizensKilled: integer("citizens_killed").notNull().default(0),
     criminalsKilled: integer("criminals_killed").notNull().default(0),
     // Lista de amigos (nombres de personaje, máx. 50 como el AO).

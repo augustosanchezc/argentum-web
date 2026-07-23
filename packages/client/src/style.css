@@ -3420,7 +3420,7 @@ html, body { background: #050506; height: 100%; }
   padding: 14px 16px; color: #d2cee2; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
 }
 .ao-guild__header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 16px; }
-.ao-guild__titles { display: flex; align-items: baseline; gap: 10px; }
+.ao-guild__htitle { font-size: 16px; font-weight: 800; color: #f1f0f6; letter-spacing: 0.3px; }
 .ao-guild__name { font-size: 18px; font-weight: 800; color: #f1f0f6; letter-spacing: 0.3px; }
 .ao-guild__faction { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.5px; }
 .ao-guild__faction--ciu { background: rgba(79, 143, 240, 0.18); color: #7ab0ff; border: 1px solid #2f6fd6; }
@@ -3464,9 +3464,43 @@ html, body { background: #050506; height: 100%; }
 .ao-guild__save { background: var(--gold-soft); border-color: var(--gold-dim); color: var(--gold-bright); }
 .ao-guild__save, .ao-guild__cancel { display: none; }
 /* En modo edición: ocultar texto plano, mostrar textareas + guardar/cancelar. */
-.ao-guild--editing .ao-guild__desc, .ao-guild--editing .ao-guild__rules { display: none; }
-.ao-guild--editing .ao-guild__desc-edit, .ao-guild--editing .ao-guild__rules-edit { display: block; }
-.ao-guild--editing .ao-guild__save, .ao-guild--editing .ao-guild__cancel { display: block; }
+.ao-guild__view--editing .ao-guild__desc, .ao-guild__view--editing .ao-guild__rules { display: none; }
+.ao-guild__view--editing .ao-guild__desc-edit, .ao-guild__view--editing .ao-guild__rules-edit { display: block; }
+.ao-guild__view--editing .ao-guild__save, .ao-guild__view--editing .ao-guild__cancel { display: block; }
+
+/* Cabecera del clan (modo "mi clan"). */
+.ao-guild__clanhead { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+
+/* Directorio de clanes (modo "no estás en ninguno"). */
+.ao-guild__dirlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.ao-guild__dircard { background: #0d0c13; border: 1px solid #2a2836; border-radius: 11px; padding: 10px 12px; }
+.ao-guild__dirhead { display: flex; align-items: center; gap: 10px; }
+.ao-guild__dircount { margin-left: auto; color: #7ab0ff; font-size: 12px; font-weight: 700; }
+.ao-guild__dirmeta { font-size: 11px; color: #8a86a4; margin-top: 3px; }
+.ao-guild__dirdesc { margin: 6px 0 8px; font-size: 12px; line-height: 1.4; color: #c4c0d8; white-space: pre-wrap; word-break: break-word; }
+.ao-guild__diractions { display: flex; justify-content: flex-end; }
+.ao-guild__reqbtn {
+  font-size: 12px; font-weight: 700; padding: 5px 12px; border-radius: 7px; cursor: pointer;
+  background: var(--gold-soft); border: 1px solid var(--gold-dim); color: var(--gold-bright);
+}
+.ao-guild__reqbtn:disabled { background: #1a1926; border-color: #2a2836; color: #6a6784; cursor: default; }
+.ao-guild__reqbtn:not(:disabled):hover { background: rgba(79,143,240,0.28); }
+
+/* Solicitudes pendientes (gestores). */
+.ao-guild__reqs { margin-top: 10px; }
+.ao-guild__reqlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.ao-guild__reqitem { display: flex; align-items: center; gap: 6px; padding: 4px 6px; background: #0d0c13; border: 1px solid #2a2836; border-radius: 7px; }
+.ao-guild__acc, .ao-guild__rej, .ao-guild__rankbtn {
+  font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 6px; cursor: pointer;
+  background: #1e1c2a; border: 1px solid #3b3852; color: #c8c4de;
+}
+.ao-guild__acc { border-color: #2f6f4a; color: #6ed69a; }
+.ao-guild__acc:hover { background: rgba(76,184,126,0.18); }
+.ao-guild__rej:hover, .ao-guild__rankbtn:hover { background: #2a2838; color: #fff; }
+.ao-guild__rankbtn { margin-left: auto; }
+.ao-guild__muted { color: #6a6784; font-size: 12px; }
+.ao-guild__empty { color: #8a86a4; font-size: 13px; text-align: center; padding: 20px; }
+
 @media (max-width: 620px) {
   .ao-guild__body { flex-direction: column; }
   .ao-guild__col--members { flex: 1 1 auto; width: 100%; }
