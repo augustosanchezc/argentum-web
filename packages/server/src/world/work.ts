@@ -44,12 +44,14 @@ export function toolKind(item: number): WorkKind | null {
   return null;
 }
 
-// Fórmula de éxito de extracción (DoTalar/DoMineria/DoPescar):
+// Fórmula de éxito de extracción (DoTalar/DoMineria/DoPescar de AO Libre):
 //   Suerte = trunc(-0.00125·skill² − 0.3·skill + 49)
-//   éxito si RandomNumber(1, Suerte) <= 6
-// (a skill 0: ~12% · a skill 100: 100%)
+//   éxito si RandomNumber(1, Suerte) <= 6  → prob = 6/Suerte
+// House rule: TOPE de éxito del 50%. Se logra con piso de Suerte = 12
+// (6/12 = 50%), así ni con skill 100 el trabajo es garantizado.
+//   a skill 0: ~12% · skill 85: ~43% · skill 90+: 50% (tope).
 export function rollWorkSuccess(skill: number, rng: () => number = Math.random): boolean {
-  const suerte = Math.max(6, Math.trunc(-0.00125 * skill * skill - 0.3 * skill + 49));
+  const suerte = Math.max(12, Math.trunc(-0.00125 * skill * skill - 0.3 * skill + 49));
   const roll = 1 + Math.floor(rng() * suerte);
   return roll <= 6;
 }
