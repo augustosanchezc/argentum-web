@@ -118,6 +118,8 @@ export function mountShop(parent: HTMLElement, cb: ShopCallbacks): ShopHandle {
     else if (def.defense && def.defense > 0) parts.push(`Defensa ${def.defense.toString()}`);
     if (def.bonusHp) parts.push(`+${def.bonusHp.toString()} Vida`);
     if (def.bonusHit) parts.push(`+${def.bonusHit.toString()} Ataque`);
+    if (def.bonusHitPvp) parts.push(`+${def.bonusHitPvp.toString()} Atk PvP`);
+    if (def.bonusHitNpc) parts.push(`+${def.bonusHitNpc.toString()} Atk criaturas`);
     if (parts.length > 0) statEl.textContent = parts.join(" · ");
     else statEl.innerHTML = "&nbsp;";
   }

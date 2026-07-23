@@ -273,6 +273,7 @@ export const registerAdminRoutes: FastifyPluginAsync = async (app: FastifyInstan
         id, name: d.name, type: d.type, objType: d.objType, value: d.value, graphic: d.graphic,
         minHit: d.minHit ?? 0, maxHit: d.maxHit ?? 0, defense: d.defense ?? 0,
         bonusHp: d.bonusHp ?? 0, bonusHit: d.bonusHit ?? 0,
+        bonusHitPvp: d.bonusHitPvp ?? 0, bonusHitNpc: d.bonusHitNpc ?? 0,
         heal: d.heal ?? 0, manaHeal: d.manaHeal ?? 0, damageBonus: d.damageBonus ?? 0,
         // Para los filtros del editor de vendedores (género + clase).
         mujer: d.mujer ?? false, forbiddenClasses: d.forbiddenClasses ?? [],
@@ -287,8 +288,10 @@ export const registerAdminRoutes: FastifyPluginAsync = async (app: FastifyInstan
   const ITEM_EDITABLE: Record<string, [number, number]> = {
     value: [0, 2_000_000_000], minHit: [0, 1_000_000], maxHit: [0, 1_000_000],
     defense: [0, 1_000_000], heal: [0, 1_000_000], manaHeal: [0, 1_000_000], damageBonus: [0, 1_000_000],
-    // Atributos adicionales editables: HP máximo y ataque extra que da al equiparlo.
+    // Atributos adicionales editables: HP máximo y ataque extra (general +
+    // específico vs jugadores / vs criaturas) que da al equiparlo.
     bonusHp: [0, 1_000_000], bonusHit: [0, 1_000_000],
+    bonusHitPvp: [0, 1_000_000], bonusHitNpc: [0, 1_000_000],
   };
   app.post<{ Params: { id: string }; Body: Record<string, unknown> }>(
     "/api/items/:id/update",

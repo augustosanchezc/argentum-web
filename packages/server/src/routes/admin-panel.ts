@@ -385,7 +385,7 @@ async function loadItems(){
 }
 function openItem(id){
   var r = itemCache[id]; if(!r) return;
-  var fields = [["name","Nombre","text"],["value","Valor (precio)","number"],["minHit","Golpe mín","number"],["maxHit","Golpe máx","number"],["defense","Defensa","number"],["bonusHp","+ Vida (HP)","number"],["bonusHit","+ Ataque","number"],["heal","Cura HP","number"],["manaHeal","Cura maná","number"],["damageBonus","Bonus de daño","number"]];
+  var fields = [["name","Nombre","text"],["value","Valor (precio)","number"],["minHit","Golpe mín","number"],["maxHit","Golpe máx","number"],["defense","Defensa","number"],["bonusHp","+ Vida (HP)","number"],["bonusHit","+ Ataque (ambos)","number"],["bonusHitPvp","+ Ataque solo PvP","number"],["bonusHitNpc","+ Ataque solo criaturas","number"],["heal","Cura HP","number"],["manaHeal","Cura maná","number"],["damageBonus","Bonus de daño","number"]];
   var html = "<button class='card__close' id='mClose'>✕</button><div style='display:flex;align-items:center;gap:12px'>"+itemImg(r.graphic,44)+"<h2 style='margin:0'>"+esc(r.name)+" <span class='muted' style='font-size:12px'>código "+id+" · "+esc(r.type)+"</span></h2></div>";
   html += "<div class='sect'><div class='grid'>";
   fields.forEach(function(f){ var val=r[f[0]]; html += "<div class='fld'><label>"+f[1]+"</label><input type='"+f[2]+"' data-if='"+f[0]+"' value='"+esc(val==null?0:val)+"'></div>"; });

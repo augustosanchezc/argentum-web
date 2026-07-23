@@ -47,7 +47,12 @@ export interface ItemDef {
   // item equipable puede otorgar, además de su stat base, HP máximo y/o ataque
   // extra mientras está equipado. Se suman entre todas las piezas equipadas.
   readonly bonusHp?: number;
+  // Ataque extra. `bonusHit` aplica a AMBOS (jugadores y criaturas); `bonusHitPvp`
+  // suma SOLO contra jugadores y `bonusHitNpc` SOLO contra criaturas. El bonus
+  // efectivo vs jugadores = bonusHit + bonusHitPvp; vs criaturas = bonusHit + bonusHitNpc.
   readonly bonusHit?: number;
+  readonly bonusHitPvp?: number;
+  readonly bonusHitNpc?: number;
   // Armadura: NumRopaje — body de Personajes.ini que muestra el personaje
   // al equiparla (sistema de ropaje del AO).
   readonly bodyId?: number;

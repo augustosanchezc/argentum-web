@@ -140,6 +140,8 @@ function itemStatsRows(def: ReturnType<typeof getItem>): string {
   // muestran en cualquier item que los tenga, además de su stat base.
   if (def.bonusHp) rows.push(["Vida", `+${def.bonusHp.toString()}`]);
   if (def.bonusHit) rows.push(["Ataque extra", `+${def.bonusHit.toString()}`]);
+  if (def.bonusHitPvp) rows.push(["Ataque PvP", `+${def.bonusHitPvp.toString()}`]);
+  if (def.bonusHitNpc) rows.push(["Ataque criaturas", `+${def.bonusHitNpc.toString()}`]);
   return rows.map(([k, v]) => `<div class="ao-inv__d-row"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 

@@ -401,9 +401,23 @@ function equipBonusHp(s: Session): number {
   for (const id of equipSlotIds(s)) if (id !== null) b += getItem(id)?.bonusHp ?? 0;
   return b;
 }
-function equipBonusHit(s: Session): number {
+// Ataque extra del equipo: `bonusHit` (ambos) + el específico del contexto.
+function equipBonusHitVsPlayer(s: Session): number {
   let b = 0;
-  for (const id of equipSlotIds(s)) if (id !== null) b += getItem(id)?.bonusHit ?? 0;
+  for (const id of equipSlotIds(s)) {
+    if (id === null) continue;
+    const it = getItem(id);
+    b += (it?.bonusHit ?? 0) + (it?.bonusHitPvp ?? 0);
+  }
+  return b;
+}
+function equipBonusHitVsNpc(s: Session): number {
+  let b = 0;
+  for (const id of equipSlotIds(s)) {
+    if (id === null) continue;
+    const it = getItem(id);
+    b += (it?.bonusHit ?? 0) + (it?.bonusHitNpc ?? 0);
+  }
   return b;
 }
 // HP máximo = base por clase/nivel/constitución + bonus de equipo. Clampa el HP
@@ -1762,7 +1776,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           userHitMax: golpeUsuario(s.classId, s.level).max,
           fuerza: s.str + s.strBonus,
           modClaseDano: prep.modDano,
-        }) + equipBonusHit(s) - defTotal,
+        }) + equipBonusHitVsPlayer(s) - defTotal,
       );
 
       // Apuñalar (arma con Apunala=1): daño extra ×1.4 asesino / ×1.5 resto.
@@ -1830,7 +1844,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           userHitMax: golpeUsuario(s.classId, s.level).max,
           fuerza: s.str + s.strBonus,
           modClaseDano: prep.modDano,
-        }) + equipBonusHit(s) - npc.type.defense,
+        }) + equipBonusHitVsNpc(s) - npc.type.defense,
       );
 
       // Apuñalar contra criaturas: daño extra ×2 (DoApunalar del AO).
