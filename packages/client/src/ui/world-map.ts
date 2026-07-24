@@ -23,7 +23,7 @@ export function mountWorldMap(parent: HTMLElement): WorldMapHandle {
         <button type="button" class="ao-worldmap__close" aria-label="Cerrar">✕</button>
       </div>
       <div class="ao-worldmap__imgwrap">
-        <img class="ao-worldmap__img" src="/ao-assets/ui/mapa-mundi-dark.jpg" alt="Mapa del mundo" />
+        <img class="ao-worldmap__img" src="/ao-assets/ui/mapa-mundi.jpg" alt="Mapa del mundo" />
       </div>
     </div>
   `;
@@ -34,8 +34,8 @@ export function mountWorldMap(parent: HTMLElement): WorldMapHandle {
   const tabs = [...overlay.querySelectorAll<HTMLButtonElement>(".ao-worldmap__tab")];
 
   const SRC = {
-    mundi: "/ao-assets/ui/mapa-mundi-dark.jpg",
-    dungeon: "/ao-assets/ui/mapa-dungeon-dark.jpg",
+    mundi: "/ao-assets/ui/mapa-mundi.jpg",
+    dungeon: "/ao-assets/ui/mapa-dungeon.jpg",
   } as const;
 
   for (const tab of tabs) {
