@@ -10,7 +10,7 @@ import { calcInitialStatsRaced } from "../world/classes.js";
 //   463 Vestimentas Comunes (ropaje 1) · 857 Poción Roja · 856 Poción Azul
 //   467 Manzana Roja · 468 Botella de Agua
 // El arma y la armadura arrancan equipadas (el ropaje se ve al entrar).
-function newbieKit(classId: number): {
+function newbieKit(classId: number, race: number): {
   inventory: InventorySlot[];
   weapon: number;
   armor: number;
@@ -25,7 +25,10 @@ function newbieKit(classId: number): {
     7: 861, // Paladín → Espada (Newbie)
   };
   const weapon = weaponByClass[classId] ?? 460;
-  const armor = 463;
+  // Estatura: Enano(5)/Gnomo(4) arrancan con la Túnica (E/G) newbie (body
+  // corto) en vez de las Vestimentas Comunes altas (463); si no, el newbie
+  // enano no podría re-equipar su propia ropa (regla de talla del AO).
+  const armor = race === 4 || race === 5 ? 1045 : 463;
   const usesMana = classId === 2 || classId === 3 || classId === 6 || classId === 7;
 
   const inventory: InventorySlot[] = [
@@ -143,7 +146,7 @@ export const registerCharactersRoutes: FastifyPluginAsync = async (app: FastifyI
       }
 
       const init = calcInitialStatsRaced(classId, race, gender, head);
-      const kit = newbieKit(classId);
+      const kit = newbieKit(classId, race);
 
       const [character] = await db
         .insert(characters)

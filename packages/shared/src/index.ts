@@ -9,3 +9,4 @@ export * from "./spells.generated.js";
 export * from "./spellbook.js";
 export * from "./skills-uso.js";
 export * from "./quests.generated.js";
+export * from "./armor-stature.js";

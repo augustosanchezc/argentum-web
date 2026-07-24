@@ -98,6 +98,7 @@ import {
   type Vector2,
   QUESTS,
   getItem,
+  isEnanoArmor,
   skillsForLevel,
 } from "@ao/shared";
 import { eq, and, sql } from "drizzle-orm";
@@ -942,7 +943,11 @@ function sendInventoryUpdate(s: Session): void {
     const appearance: EntityAppearance = {
       op: ServerToClientOp.EntityAppearance,
       id: s.characterId as EntityId,
-      bodyId: visible,
+      // Muerto = cuerpo fantasma (Casper), igual que la cabeza (computeVisibleHead).
+      // Sin este guard, un re-broadcast de apariencia tras un InventoryUpdate mandaba
+      // el cuerpo VIVO con cabeza de fantasma → bug "muerte fantasma" (enano con
+      // cabeza de casper y cuerpo normal). El resto de los sitios ya usa este ternario.
+      bodyId: s.deadUntil !== 0 ? CASPER_BODY : visible,
       headId: computeVisibleHead(s),
       ...equip,
     };
@@ -2431,6 +2436,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           }
           if (s.factionRank < (def.factionRankReq ?? 1)) {
             consoleMsg(s, `Necesitás el rango ${(def.factionRankReq ?? 1).toString()} de tu facción para equipar esta armadura.`, "combate");
+            return;
+          }
+        }
+        // Estatura de la armadura (AO original): las armaduras vienen en dos
+        // tallas. Enano(5)/Gnomo(4) solo equipan las variantes "(E/G)"
+        // (RazaEnana=1); Humano/Elfo/Elfo Oscuro solo las "altas". Sin esto un
+        // enano equipaba un ropaje alto y se veía con cuerpo de raza alta.
+        // No aplica a las faccionarias custom: /recompensa ya entrega la
+        // variante correcta según la raza del jugador.
+        if (!isEquipped && s.role === 0 && def.type === "armor" && def.factionReq === undefined) {
+          const eg = s.race === 4 || s.race === 5;
+          if (eg && !isEnanoArmor(pkt.item)) {
+            consoleMsg(s, "Es de talla alta: los Enanos y Gnomos solo pueden usar armaduras de su estatura (E/G).", "combate");
+            return;
+          }
+          if (!eg && isEnanoArmor(pkt.item)) {
+            consoleMsg(s, "Es una armadura de talla Enano/Gnomo: no es de tu estatura.", "combate");
             return;
           }
         }
