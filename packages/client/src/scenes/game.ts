@@ -1566,6 +1566,17 @@ export async function startGameScene(
   let questsUi: QuestsHandle | null = null;
   // Herramienta armada (modo trabajo): click en el tile objetivo.
   let armedTool: number | null = null;
+  // Trabajo AUTOMÁTICO (QoL): tras el primer click con la herramienta armada,
+  // el cliente re-envía el Work al mismo tile hasta que el personaje se MUEVE,
+  // cambia de herramienta/hechizo, muere o se queda sin energía (auto-pausa y
+  // reanuda al recuperarla). El server valida y throttlea cada Work igual.
+  const WORK_REPEAT_MS = 900; // > IntervaloTrabajo del server (850) → sin throttle
+  const WORK_MIN_STA = 6; // igual que el server: con <6 de energía no se trabaja
+  let autoWork: { item: number; x: number; y: number } | null = null;
+  let lastAutoWorkAt = 0;
+  function stopAutoWork(): void {
+    autoWork = null;
+  }
   let classSkillId = 0; // ID de la skill del personaje (0 = sin skill conocida)
   // Hechizo del libro seleccionado para lanzar (click en objetivo = cast).
   let selectedSpellId: number | null = null;
@@ -1623,6 +1634,7 @@ export async function startGameScene(
     if (!isWalkableLocal(target.x, target.y)) return;
 
     lastLocalMoveAt = now;
+    stopAutoWork(); // moverse detiene el trabajo automático (regla del pedido)
     moveSequence += 1;
 
     // Pasos alternados del AO (WAV 23/24).
@@ -1847,6 +1859,7 @@ export async function startGameScene(
     if (on) {
       selectedSpellId = null;
       armedTool = null;
+      stopAutoWork();
     }
     app.canvas.style.cursor = on ? "crosshair" : "default";
     app.renderer.events.cursorStyles.pointer = on ? "crosshair" : "pointer";
@@ -1865,6 +1878,7 @@ export async function startGameScene(
     if (spellId !== null) {
       armedTool = null;
       armedArrow = false;
+      stopAutoWork();
     }
     app.canvas.style.cursor = spellId !== null ? "crosshair" : "default";
     app.renderer.events.cursorStyles.pointer = spellId !== null ? "crosshair" : "pointer";
@@ -1917,6 +1931,7 @@ export async function startGameScene(
 
   function setArmedTool(item: number | null): void {
     armedTool = item;
+    stopAutoWork(); // re-armar o desarmar reinicia el trabajo automático
     if (item !== null) {
       selectedSpellId = null;
       armedArrow = false;
@@ -1926,7 +1941,7 @@ export async function startGameScene(
     // Igual que el casteo: fuerza la cruz por CSS mientras la herramienta está armada.
     viewportBox.classList.toggle("ao-casting", selectedSpellId !== null || item !== null || armedArrow);
     if (item !== null) {
-      castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · Esc cancela`;
+      castBanner.textContent = `🪓 Trabajando — click en el ${TOOL_KIND[item] ?? "objetivo"} · sigue solo hasta que te muevas · Esc cancela`;
       castBanner.classList.add("ao-castbanner--on");
     } else if (selectedSpellId === null) {
       castBanner.classList.remove("ao-castbanner--on");
@@ -2043,10 +2058,14 @@ export async function startGameScene(
       return;
     }
 
-    // Herramienta armada: trabajar en el tile (árbol/agua/roca).
+    // Herramienta armada: trabajar en el tile (árbol/agua/roca). Además de la
+    // acción inmediata, se arma el trabajo automático: el tick reenvía el Work
+    // al mismo tile hasta que el personaje se mueva (o cambie de acción).
     if (armedTool !== null) {
       const pkt: WorkRequest = { op: ClientToServerOp.Work, item: armedTool, x: tx, y: ty };
       client.send(pkt);
+      autoWork = { item: armedTool, x: tx, y: ty };
+      lastAutoWorkAt = performance.now();
       return;
     }
 
@@ -2472,6 +2491,22 @@ export async function startGameScene(
       if (cdFrac >= 0 || cooldownWasActive) {
         inventory?.setWeaponCooldown(cdFrac);
         cooldownWasActive = cdFrac >= 0;
+      }
+    }
+
+    // Trabajo automático: mientras la herramienta siga armada sobre el mismo
+    // tile, reenviar el Work cada WORK_REPEAT_MS. Se corta al moverse (tryStep),
+    // desarmar o morir; se auto-pausa sin energía y reanuda al recuperarla.
+    if (autoWork) {
+      if (armedTool !== autoWork.item) {
+        stopAutoWork(); // cambió/soltó la herramienta
+      } else if (client) {
+        const self = entityVisuals.get(character.id);
+        const canWork = self !== undefined && !self.dead && panelStats.sta >= WORK_MIN_STA;
+        if (canWork && now - lastAutoWorkAt >= WORK_REPEAT_MS) {
+          client.send({ op: ClientToServerOp.Work, item: autoWork.item, x: autoWork.x, y: autoWork.y } satisfies WorkRequest);
+          lastAutoWorkAt = now;
+        }
       }
     }
   };
@@ -3030,8 +3065,18 @@ export async function startGameScene(
     macroSpellIds = [...p.spellIds];
   }
 
+  // Mensajes del server que indican OBJETIVO INVÁLIDO al trabajar (deben
+  // coincidir textualmente con handleWork en el server). Al recibirlos se corta
+  // el trabajo automático para no spamear reintentos sobre un tile sin recurso.
+  const WORK_INVALID_TARGET_MSGS = new Set<string>([
+    "No hay ningún árbol ahí.",
+    "Ahí no hay ningún yacimiento.",
+    "No hay agua donde pescar ahí.",
+  ]);
+
   // Mensajes de consola del server (trabajos, seguros, avisos).
   function handleConsoleMsg(p: ConsoleMsg): void {
+    if (autoWork && WORK_INVALID_TARGET_MSGS.has(p.text)) stopAutoWork();
     // Texto vacío = solo sonido (p. ej. el glup de la poción) — sin línea en el chat.
     if (p.text) {
       const kind = p.kind === "chat" ? "normal" : p.kind;
