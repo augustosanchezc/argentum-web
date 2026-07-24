@@ -382,25 +382,28 @@ export function mountMacroBar(
         cell.classList.add("ao-macrobar__slot--filled");
         cell.title = slotLabel(slot);
 
-        // Ícono real para items; nombre corto para hechizos/skills.
+        // Ícono: para items, el gráfico del item; para hechizos/skills/comandos,
+        // el gráfico del item 41 (Libro Antiguo). Siempre hay ícono.
         let iconed = false;
-        if (slot.kind === "item") {
-          const def = getItem(slot.id);
-          const icon = def && def.graphic > 0 ? cb.resolveIcon(def.graphic) : null;
-          if (icon) {
-            const img = document.createElement("div");
-            img.className = "ao-macrobar__icon";
-            img.style.width = `${icon.w.toString()}px`;
-            img.style.height = `${icon.h.toString()}px`;
-            img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
-            img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
-            // Escala por sprite para caber en el slot de 54px (los grandes se
-            // recortaban con el scale fijo 1.35; los chicos se agrandan).
-            const k = Math.min(48 / Math.max(icon.w, icon.h), 1.5);
-            img.style.transform = `scale(${k.toFixed(3)})`;
-            cell.appendChild(img);
-            iconed = true;
-          }
+        const FALLBACK_GRAPHIC = getItem(41)?.graphic ?? 0; // hechizos/comandos/etc.
+        const graphicId = slot.kind === "item" ? (getItem(slot.id)?.graphic ?? 0) : FALLBACK_GRAPHIC;
+        // Si el gráfico del item no resuelve, cae al del item 41 igual.
+        const icon =
+          (graphicId > 0 ? cb.resolveIcon(graphicId) : null) ??
+          (FALLBACK_GRAPHIC > 0 ? cb.resolveIcon(FALLBACK_GRAPHIC) : null);
+        if (icon) {
+          const img = document.createElement("div");
+          img.className = "ao-macrobar__icon";
+          img.style.width = `${icon.w.toString()}px`;
+          img.style.height = `${icon.h.toString()}px`;
+          img.style.backgroundImage = `url(/ao-assets/graficos/${icon.fileNum.toString()}.png)`;
+          img.style.backgroundPosition = `-${icon.x.toString()}px -${icon.y.toString()}px`;
+          // Escala por sprite para caber en el slot de 54px (los grandes se
+          // recortaban con el scale fijo 1.35; los chicos se agrandan).
+          const k = Math.min(48 / Math.max(icon.w, icon.h), 1.5);
+          img.style.transform = `scale(${k.toFixed(3)})`;
+          cell.appendChild(img);
+          iconed = true;
         }
         if (!iconed) {
           const name = document.createElement("span");
