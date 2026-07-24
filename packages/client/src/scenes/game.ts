@@ -1568,10 +1568,9 @@ export async function startGameScene(
   let armedTool: number | null = null;
   // Trabajo AUTOMÁTICO (QoL): tras el primer click con la herramienta armada,
   // el cliente re-envía el Work al mismo tile hasta que el personaje se MUEVE,
-  // cambia de herramienta/hechizo, muere o se queda sin energía (auto-pausa y
-  // reanuda al recuperarla). El server valida y throttlea cada Work igual.
+  // cambia de herramienta/hechizo o muere. La energía NO influye (house rule):
+  // no se pausa por energía baja. El server valida y throttlea cada Work igual.
   const WORK_REPEAT_MS = 900; // > IntervaloTrabajo del server (850) → sin throttle
-  const WORK_MIN_STA = 6; // igual que el server: con <6 de energía no se trabaja
   let autoWork: { item: number; x: number; y: number } | null = null;
   let lastAutoWorkAt = 0;
   function stopAutoWork(): void {
@@ -2496,13 +2495,13 @@ export async function startGameScene(
 
     // Trabajo automático: mientras la herramienta siga armada sobre el mismo
     // tile, reenviar el Work cada WORK_REPEAT_MS. Se corta al moverse (tryStep),
-    // desarmar o morir; se auto-pausa sin energía y reanuda al recuperarla.
+    // desarmar o morir. La energía no influye (no se pausa por energía baja).
     if (autoWork) {
       if (armedTool !== autoWork.item) {
         stopAutoWork(); // cambió/soltó la herramienta
       } else if (client) {
         const self = entityVisuals.get(character.id);
-        const canWork = self !== undefined && !self.dead && panelStats.sta >= WORK_MIN_STA;
+        const canWork = self !== undefined && !self.dead;
         if (canWork && now - lastAutoWorkAt >= WORK_REPEAT_MS) {
           client.send({ op: ClientToServerOp.Work, item: autoWork.item, x: autoWork.x, y: autoWork.y } satisfies WorkRequest);
           lastAutoWorkAt = now;

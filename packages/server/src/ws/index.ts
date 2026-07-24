@@ -3353,10 +3353,8 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const map = getMap(s.mapId);
       if (!map) return;
       if (chebyshev(s.position, { x: pkt.x, y: pkt.y }) > 2) return;
-      if (s.sta < 6) {
-        consoleMsg(s, "Estás muy cansado para trabajar.", "global");
-        return;
-      }
+      // La energía NO influye en el trabajo (house rule, igual que en combate):
+      // no se chequea ni se consume al talar/minar/pescar.
 
       s.lastWorkAt = now;
       s.resting = false;
@@ -3371,7 +3369,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consoleMsg(s, "No hay ningún árbol ahí.", "global");
           return;
         }
-        s.sta = Math.max(0, s.sta - 6);
         const ok = rollWorkSuccess(s.skills.talar);
         trainSkill(s, "talar", ok);
         if (ok) {
@@ -3381,7 +3378,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         } else {
           consoleMsg(s, "No has obtenido leña.", "global", WORK_WAV.talar);
         }
-        sendStatsUpdate(s);
         return;
       }
 
@@ -3390,7 +3386,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
           consoleMsg(s, "Ahí no hay ningún yacimiento.", "global");
           return;
         }
-        s.sta = Math.max(0, s.sta - 6);
         const ok = rollWorkSuccess(s.skills.mineria);
         trainSkill(s, "mineria", ok);
         if (ok) {
@@ -3401,7 +3396,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         } else {
           consoleMsg(s, "No has conseguido nada.", "global", WORK_WAV.minar);
         }
-        sendStatsUpdate(s);
         return;
       }
 
@@ -3411,7 +3405,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         consoleMsg(s, "No hay agua donde pescar ahí.", "global");
         return;
       }
-      s.sta = Math.max(0, s.sta - 3);
       const ok = rollWorkSuccess(s.skills.pesca);
       trainSkill(s, "pesca", ok);
       if (ok) {
@@ -3421,7 +3414,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       } else {
         consoleMsg(s, "No has pescado nada.", "global", WORK_WAV.pescar);
       }
-      sendStatsUpdate(s);
     }
 
     function handleCraft(s: Session, pkt: CraftRequest): void {
