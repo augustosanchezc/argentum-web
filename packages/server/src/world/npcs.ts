@@ -9,6 +9,10 @@ import { storedGmNpcs } from "./gm-npcs.js";
 
 export const NPC_ID_BASE = 1_000_000;
 
+// NPCs que NO se spawnean desde los mapas. Vendedores de montura: las monturas
+// (objType 25) todavía no tienen gráfico, así que se sacan de circulación.
+const BLOCKED_MAP_NPCS = new Set<number>([160]); // Mario [Vendedor Monturas]
+
 export function isNpcId(id: number): boolean {
   return id >= NPC_ID_BASE;
 }
@@ -288,6 +292,8 @@ class NpcRegistry {
       const map = getMap(mapId);
       if (!map) continue;
       for (const s of map.npcSpawns) {
+        // Vendedores de montura (sin gráfico): no se spawnean.
+        if (BLOCKED_MAP_NPCS.has(s.npcNumber)) continue;
         const type = getNpcType(s.npcNumber);
         if (!type) {
           unknown++;
