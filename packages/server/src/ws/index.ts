@@ -4130,8 +4130,6 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
     // ── Ocultarse (DoOcultarse / Trabajo.bas, fórmulas literales) ────────
 
-    const INTERVALO_OCULTO = 500; // Server.ini:127
-
     function handleHide(s: Session): void {
       if (s.deadUntil !== 0) return;
       const now = Date.now();
@@ -4152,22 +4150,11 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const suerte = (((0.000002 * skill - 0.0002) * skill + 0.0064) * skill + 0.1124) * 100;
       const res = 1 + Math.floor(Math.random() * 100);
       if (res <= suerte) {
-        // Duración: el Cazador (clase 4) se oculta lo mismo que el hechizo
-        // Invisibilidad (INVISIBILITY_MS); el resto usa la fórmula de AO por
-        // skill (polinomio sobre (100 − skill) × IntervaloOculto, en segundos).
-        let durMs: number;
-        if (s.classId === 4) {
-          durMs = INVISIBILITY_MS;
-        } else {
-          const q = 100 - skill;
-          const secs = Math.max(
-            10,
-            (-0.000001 * q ** 3 + 0.00009229 * q ** 2 - 0.0088 * q + 0.9571) * INTERVALO_OCULTO,
-          );
-          durMs = Math.floor(secs * 1000);
-        }
+        // Duración del ocultarse = la del hechizo Invisibilidad (60s) para TODAS
+        // las clases (house rule), en vez de la fórmula de AO por skill.
+        const durMs = INVISIBILITY_MS;
         s.invisibleUntil = now + durMs;
-        s.hiding = true; // caminar lo rompe (salvo Asesino con su armadura)
+        s.hiding = true; // caminar lo rompe (salvo sigilo de clase con su armadura)
         broadcastEffect(s.mapId, s.characterId, "invisible", true, durMs);
         consoleMsg(s, "¡Te has escondido entre las sombras!", "global");
         trainSkill(s, "ocultarse", true);
