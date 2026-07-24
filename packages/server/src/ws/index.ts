@@ -4152,15 +4152,23 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const suerte = (((0.000002 * skill - 0.0002) * skill + 0.0064) * skill + 0.1124) * 100;
       const res = 1 + Math.floor(Math.random() * 100);
       if (res <= suerte) {
-        // Duración: polinomio sobre (100 − skill) × IntervaloOculto (en segundos).
-        const q = 100 - skill;
-        const secs = Math.max(
-          10,
-          (-0.000001 * q ** 3 + 0.00009229 * q ** 2 - 0.0088 * q + 0.9571) * INTERVALO_OCULTO,
-        );
-        s.invisibleUntil = now + Math.floor(secs * 1000);
+        // Duración: el Cazador (clase 4) se oculta lo mismo que el hechizo
+        // Invisibilidad (INVISIBILITY_MS); el resto usa la fórmula de AO por
+        // skill (polinomio sobre (100 − skill) × IntervaloOculto, en segundos).
+        let durMs: number;
+        if (s.classId === 4) {
+          durMs = INVISIBILITY_MS;
+        } else {
+          const q = 100 - skill;
+          const secs = Math.max(
+            10,
+            (-0.000001 * q ** 3 + 0.00009229 * q ** 2 - 0.0088 * q + 0.9571) * INTERVALO_OCULTO,
+          );
+          durMs = Math.floor(secs * 1000);
+        }
+        s.invisibleUntil = now + durMs;
         s.hiding = true; // caminar lo rompe (salvo Asesino con su armadura)
-        broadcastEffect(s.mapId, s.characterId, "invisible", true, Math.floor(secs * 1000));
+        broadcastEffect(s.mapId, s.characterId, "invisible", true, durMs);
         consoleMsg(s, "¡Te has escondido entre las sombras!", "global");
         trainSkill(s, "ocultarse", true);
       } else {
