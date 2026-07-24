@@ -307,14 +307,76 @@ export function mountInventory(
   const gridResizeObserver = new ResizeObserver(() => { fitIcons(); });
   gridResizeObserver.observe(gridEl);
 
-  // Tira al suelo el stack completo del objeto seleccionado (botón Tirar o la
-  // tecla configurable de "Tirar objeto").
-  function dropSelected(): void {
-    const slot = selectedSlot >= 0 && selectedSlot < last.slots.length ? last.slots[selectedSlot] : null;
+  // Tirar un objeto: si el stack tiene MÁS DE 1, abre un popup para elegir
+  // cuántos tirar (ej: 100 pociones → tirar 50). Con 1 solo se tira directo.
+  function requestDrop(slotIndex: number): void {
+    const slot = slotIndex >= 0 && slotIndex < last.slots.length ? last.slots[slotIndex] : null;
     if (!slot) return;
-    cb.onDrop(selectedSlot, slot.qty);
+    if (slot.qty <= 1) {
+      cb.onDrop(slotIndex, slot.qty);
+      return;
+    }
+    openDropQty(slotIndex, getItem(slot.item)?.name ?? `Objeto ${slot.item.toString()}`, slot.qty);
   }
-  wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", dropSelected);
+
+  // Popup "¿cuántos tirar?" para stacks > 1. Overlay modal centrado; Enter tira,
+  // Esc/click afuera cancela. La cantidad se clampa a [1, máx].
+  function openDropQty(slotIndex: number, name: string, max: number): void {
+    const overlay = document.createElement("div");
+    overlay.className = "ao-dropqty";
+    const box = document.createElement("div");
+    box.className = "ao-dropqty__box";
+    box.innerHTML = `
+      <div class="ao-dropqty__title">Tirar objeto</div>
+      <div class="ao-dropqty__name"></div>
+      <div class="ao-dropqty__sub">¿Cuántos querés tirar? (máx ${max.toString()})</div>
+      <div class="ao-dropqty__row">
+        <button type="button" class="ao-dropqty__step" data-step="-1">−</button>
+        <input class="ao-vp__field ao-dropqty__input" type="number" min="1" max="${max.toString()}" value="${max.toString()}" />
+        <button type="button" class="ao-dropqty__step" data-step="1">+</button>
+        <button type="button" class="ao-dropqty__all">Todos</button>
+      </div>
+      <div class="ao-dropqty__actions">
+        <button type="button" class="ao-dropqty__cancel">Cancelar</button>
+        <button type="button" class="ao-dropqty__ok">🗑 Tirar</button>
+      </div>`;
+    overlay.appendChild(box);
+    box.querySelector<HTMLDivElement>(".ao-dropqty__name")!.textContent = name;
+    const input = box.querySelector<HTMLInputElement>(".ao-dropqty__input")!;
+
+    const clamp = (n: number): number => Math.max(1, Math.min(max, Math.floor(Number.isFinite(n) ? n : max)));
+    function close(): void {
+      overlay.remove();
+    }
+    function confirm(): void {
+      const n = clamp(Number(input.value));
+      close();
+      cb.onDrop(slotIndex, n);
+    }
+    box.querySelectorAll<HTMLButtonElement>(".ao-dropqty__step").forEach((b) => {
+      b.addEventListener("click", () => {
+        input.value = clamp(Number(input.value) + Number(b.dataset.step)).toString();
+      });
+    });
+    box.querySelector<HTMLButtonElement>(".ao-dropqty__all")!.addEventListener("click", () => {
+      input.value = max.toString();
+    });
+    box.querySelector<HTMLButtonElement>(".ao-dropqty__ok")!.addEventListener("click", confirm);
+    box.querySelector<HTMLButtonElement>(".ao-dropqty__cancel")!.addEventListener("click", close);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+    // El input capta el teclado (Enter tira, Esc cancela) y evita que las teclas
+    // lleguen a los handlers del juego mientras el popup está abierto.
+    input.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      if (e.key === "Enter") { e.preventDefault(); confirm(); }
+      else if (e.key === "Escape") { e.preventDefault(); close(); }
+    });
+    parent.appendChild(overlay);
+    input.focus();
+    input.select();
+  }
+
+  wrap.querySelector<HTMLButtonElement>(".ao-inv__dropbtn")!.addEventListener("click", () => { requestDrop(selectedSlot); });
 
   const trashEl = wrap.querySelector<HTMLDivElement>(".ao-inv__trash")!;
   const spellsEl = wrap.querySelector<HTMLDivElement>(".ao-spells__list")!;
@@ -658,9 +720,7 @@ export function mountInventory(
     ev.preventDefault();
     trashEl.classList.remove("ao-inv__trash--hover");
     if (draggingFrom === null) return;
-    const slot = last.slots[draggingFrom];
-    if (!slot) return;
-    cb.onDrop(draggingFrom, slot.qty);
+    requestDrop(draggingFrom);
   });
 
   function setOpen(v: boolean): void {
@@ -711,7 +771,7 @@ export function mountInventory(
       setOpen(!open);
     },
     isOpen: () => open,
-    dropSelected,
+    dropSelected: () => { requestDrop(selectedSlot); },
     destroy: () => {
       if (buffTimer) clearInterval(buffTimer);
       gridResizeObserver.disconnect();
