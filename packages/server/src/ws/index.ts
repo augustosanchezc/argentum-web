@@ -374,13 +374,16 @@ function broadcastEffect(
 
 // Atacar o castear rompe la invisibilidad propia (AO).
 // Sigilo de CLASE: el Asesino con armadura de Asesino y el Cazador con la
-// Armadura de Cazador (item 360) mantienen el OCULTARSE al actuar (caminar,
-// atacar, tomar pociones) — no así la invisibilidad por hechizo.
+// Armadura de Cazador mantienen el OCULTARSE al actuar (caminar, atacar, tomar
+// pociones) — no así la invisibilidad por hechizo. La Armadura de Cazador
+// tiene dos tallas: 360 (alto) y 648 (E/G para Enano/Gnomo); ambas habilitan
+// el sigilo. NO cuentan las variantes faccionarias ni el Barragan.
+const HUNTER_STEALTH_ARMORS = new Set<number>([360, 648]);
 function hasClassStealth(s: Session): boolean {
   const armor = s.equippedArmor !== null ? getItem(s.equippedArmor) : undefined;
   return (
     (s.classId === 5 && (armor?.name.includes("Asesino") ?? false)) ||
-    (s.classId === 4 && s.equippedArmor === 360)
+    (s.classId === 4 && s.equippedArmor !== null && HUNTER_STEALTH_ARMORS.has(s.equippedArmor))
   );
 }
 
@@ -1561,7 +1564,7 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       // Fantasma: revivir si hay un sacerdote cerca.
       // Caminar rompe el OCULTARSE (AO) — salvo el sigilo de clase (Asesino con
-      // armadura de Asesino, o Cazador con Armadura de Cazador item 360). La
+      // armadura de Asesino, o Cazador con Armadura de Cazador 360/648). La
       // invisibilidad por hechizo no se rompe al caminar.
       if (s.hiding && !hasClassStealth(s)) {
         s.hiding = false;
