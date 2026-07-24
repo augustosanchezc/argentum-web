@@ -4,6 +4,7 @@
 // por nivel con la progresión típica de cada clase.
 import { getAoSpell } from "./spells.generated.js";
 import { skillsForLevel } from "./skills-uso.js";
+import { getClass } from "./classes.js";
 
 export interface SpellbookEntry {
   readonly spellId: number; // ID en Hechizos.dat (AO_SPELLS)
@@ -75,10 +76,11 @@ export function spellMinLevel(classId: number, spellId: number): number | undefi
   return spellRequirement(classId, spellId)?.minLevel;
 }
 
-// Si la clase puede usar magia (tiene hechizos aprendibles). Guerrero/Arquero no;
-// Mago/Clérigo/Druida/Paladín/Asesino sí.
+// Si la clase usa magia = tiene maná (manaK > 0), fiel a AO Libre. Guerrero y
+// Arquero no ganan maná; Mago/Clérigo/Druida/Paladín/Asesino sí (el Asesino gana
+// maná = INT por nivel, aunque su libro curado esté vacío: aprende por pergamino).
 export function classUsesMagic(classId: number): boolean {
-  return (CLASS_SPELLBOOK[classId] ?? []).length > 0;
+  return (getClass(classId)?.manaK ?? 0) > 0;
 }
 
 // Overrides manuales del nivel de aprendizaje, por spellId. Ajuste de balance
