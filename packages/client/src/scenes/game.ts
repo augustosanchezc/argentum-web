@@ -2403,6 +2403,9 @@ export async function startGameScene(
       }
       v.swingAppliedX = ox;
       v.swingAppliedY = oy;
+      // Parpadeo de invisibilidad para los DEMÁS: alterna entre semi-transparente
+      // y oculto (nunca 100% opaco). El self mantiene su alpha fijo.
+      if (v.invisible && !v.isSelf && !v.dead) v.container.alpha = invisFlickerAlpha(now);
       // y-sort: el zIndex por Y decide la oclusión con los árboles/paredes
       // de la capa 3 (que usan el pie del objeto como zIndex).
       v.container.zIndex = v.renderY + TILE_SIZE / 2;
@@ -2834,14 +2837,25 @@ export async function startGameScene(
     if (id === character.id) showDeathOverlay();
   }
 
+  // Invisibilidad (hechizo u ocultarse): alpha semi-transparente para uno mismo,
+  // y PARPADEO intermitente para los demás (house rule — en AO clásico el
+  // invisible desaparece 100%). En la fase visible del parpadeo se usa el mismo
+  // alpha que el self: nunca vuelve a ser 100% opaco.
+  const INVIS_ALPHA = 0.45;
+  const INVIS_FLICKER_PERIOD = 1000; // ms del ciclo
+  const INVIS_FLICKER_ON = 250;      // ms visible por ciclo (tuneable)
+  function invisFlickerAlpha(now: number): number {
+    return now % INVIS_FLICKER_PERIOD < INVIS_FLICKER_ON ? INVIS_ALPHA : 0;
+  }
+
   // Estado "invisible" al crear la entidad (spawn/MapData): mismo look que el
-  // efecto en vivo — semi-transparente si soy yo, oculto para los demás.
+  // efecto en vivo — semi-transparente si soy yo, parpadeo para los demás.
   function applyInvisibleVisual(id: number): void {
     const v = entityVisuals.get(id);
     if (!v) return;
     v.invisible = true;
-    if (id === character.id) v.container.alpha = 0.45;
-    else v.container.visible = false;
+    v.container.visible = true;
+    v.container.alpha = id === character.id ? INVIS_ALPHA : invisFlickerAlpha(performance.now());
   }
 
   function handleDeath(p: Death): void {
@@ -3084,11 +3098,14 @@ export async function startGameScene(
       case "invisible": {
         if (!v) return;
         v.invisible = p.active;
+        v.container.visible = true;
         if (isSelf) {
-          // Uno se ve a sí mismo semi-transparente.
-          v.container.alpha = p.active ? 0.45 : 1;
+          // Uno se ve a sí mismo semi-transparente (constante, sin parpadeo).
+          v.container.alpha = p.active ? INVIS_ALPHA : 1;
         } else {
-          v.container.visible = !p.active;
+          // Los demás lo ven parpadear (el tick actualiza el alpha); al apagar,
+          // vuelve a opaco.
+          v.container.alpha = p.active ? invisFlickerAlpha(now) : 1;
         }
         break;
       }
