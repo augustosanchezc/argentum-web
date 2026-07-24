@@ -4619,7 +4619,17 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
         const t = findOnlineByName(setf[1]!);
         if (!t) { consoleMsg(s, "Ese personaje no está online.", "global"); return; }
         const f = setf[2]!.toLowerCase();
-        t.faction = f === "armada" ? FACTION_ARMADA : f === "caos" ? FACTION_CAOS : 0;
+        if (f === "armada") t.faction = FACTION_ARMADA;
+        else if (f === "caos") t.faction = FACTION_CAOS;
+        else t.faction = FACTION_NONE;
+        // "ciudadano" además PERDONA los crímenes: el estado criminal lo define
+        // citizens_killed > pardoned_kills, no la facción. Sin esto, alguien que
+        // mató un ciudadano seguía criminal (nombre rojo, bloqueado de clanes
+        // ciudadanos) aunque el GM lo pusiera "ciudadano".
+        if (f === "ciudadano") {
+          t.pardonedKills = t.citizensKilled;
+          t.criminalUntil = 0;
+        }
         sendStatsUpdate(t);
         // Actualiza el color del nombre (criminal/ciudadano) para los que lo ven.
         broadcastToMap(t.mapId, { op: ServerToClientOp.CriminalUpdate, id: t.characterId as EntityId, criminal: isCriminal(t), expiresAt: 0 });
