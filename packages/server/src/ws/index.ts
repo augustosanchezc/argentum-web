@@ -1422,6 +1422,14 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       const destMap = getMap(portal.toMapId);
       if (!destMap) return;
 
+      // El Dungeon Newbie (167) es SOLO para newbies (nivel <= 12). Un no-newbie
+      // ya graduado NO puede re-entrar por el portal de Ulla (antes cualquiera
+      // podía volver y quedar dentro pasado el nivel 12). Los GM sí entran.
+      if (destMap.id === NEWBIE_DUNGEON_MAP && s.role === 0 && s.level > NEWBIE_MAX_LEVEL) {
+        consoleMsg(s, "El Dungeon Newbie es solo para newbies (nivel 12 o menos).", "global");
+        return;
+      }
+
       const fromMapId = s.mapId;
 
       const despawn: EntityDespawn = {
@@ -5120,11 +5128,20 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
 
       let spawnInfo: { map: MapState; position: Vector2 };
       try {
-        spawnInfo = resolveSpawn(
-          character.mapId,
-          { x: character.posX, y: character.posY },
-          character.navigating,
-        );
+        // No-newbie (nivel > 12) guardado en el Dungeon Newbie (167): se lo
+        // saca a Ullathorpe al entrar. Cubre a los que ya estaban dentro antes
+        // del gate de entrada (re-entraban por el portal siendo ya no-newbies).
+        if (character.mapId === NEWBIE_DUNGEON_MAP && character.level > NEWBIE_MAX_LEVEL) {
+          const ulla = getMap(1);
+          if (!ulla) throw new Error("map 1 missing");
+          spawnInfo = { map: ulla, position: ulla.spawn };
+        } else {
+          spawnInfo = resolveSpawn(
+            character.mapId,
+            { x: character.posX, y: character.posY },
+            character.navigating,
+          );
+        }
       } catch {
         sendLoginResponse(socket, false, "MAP_NOT_FOUND");
         socket.close(CLOSE_AUTH_FAILED, "MAP_NOT_FOUND");
