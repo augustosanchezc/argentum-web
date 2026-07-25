@@ -2719,6 +2719,10 @@ export async function startGameScene(
     const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
     bubble.x = dx;
     bubble.y = headTop - 8 - h / 2;
+    // El globo va SIEMPRE por encima del aura de meditar (FX zIndex 10) y del
+    // resto de sprites del personaje: sortableChildren + zIndex alto.
+    v.container.sortableChildren = true;
+    bubble.zIndex = 100;
     v.container.addChild(bubble);
     v.overheadText = bubble;
     // Duración tipo AO: base + tiempo de lectura por caracteres.
@@ -2779,6 +2783,10 @@ export async function startGameScene(
     const headTop = v.bodySprite ? v.bodySprite.y - v.bodySprite.height : -34;
     bubble.x = 0;
     bubble.y = headTop - 8 - h / 2;
+    // El globo va SIEMPRE por encima del aura de meditar (FX zIndex 10) y del
+    // resto de sprites del personaje: sortableChildren + zIndex alto.
+    v.container.sortableChildren = true;
+    bubble.zIndex = 100;
     v.container.addChild(bubble);
     v.overheadText = bubble;
     v.overheadUntil = performance.now() + 2_500 + text.length * 60;
