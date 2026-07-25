@@ -105,7 +105,6 @@ import { mountWorldMap, type WorldMapHandle } from "../ui/world-map";
 import { mountPartyUi, type PartyUiHandle } from "../ui/party-ui";
 import { mountGuildUi, type GuildUiHandle } from "../ui/guild";
 import { mountQuests, type QuestsHandle } from "../ui/quests";
-import { mountPlayerList, type PlayerListHandle } from "../ui/player-list";
 import { mountShop, type ShopHandle } from "../ui/shop";
 import { mountStatsPanel, type StatsPanelHandle } from "../ui/stats-panel";
 import { mountTouchControls, type TouchControlsHandle } from "../ui/touch-controls";
@@ -128,9 +127,12 @@ const ATTACK_COOLDOWN_MS = 800;
 const SWING_DURATION_MS = 160;
 const FLOATER_DURATION_MS = 800;
 // Velocidad de interpolacion visual: en cuanto tiempo el sprite recorre 1 tile.
-// IGUAL al cooldown de movimiento: así, manteniendo la tecla, el personaje
-// se desliza de tile en tile SIN micro-frenadas (el flow continuo del AO).
-const TWEEN_DURATION_MS = 200;
+// LIGERAMENTE MAYOR al cooldown de movimiento (200): cuando arranca el próximo
+// paso, el tween anterior todavía NO terminó (t≈0.83), así el sprite nunca cae
+// a la pose idle entre pasos (se veía como un "tironeo/robótico") y encadena
+// pasos de forma continua; al soltar la tecla, el último tramo desliza suave
+// (ease-out natural). El ritmo de ENVÍO no cambia (sigue MOVE_COOLDOWN_MS).
+const TWEEN_DURATION_MS = 240;
 
 // Paleta heuristica de FALLBACK. Ya renderizamos el tileset real del AO
 // (ver world/tileset.ts), pero si un tile no tiene textura — grh 0 (vacio)
@@ -1232,17 +1234,10 @@ export async function startGameScene(
     groundLayer.removeChildren();
   }
 
-  // Recolecta los nombres de las entidades conocidas y refresca el panel
-  // de jugadores online. El nombre se lee del label del container.
+  // El contador "En línea" fue eliminado por pedido del usuario: esta función
+  // quedó como no-op (se mantiene por sus llamadores al agregar/quitar entidades).
   function refreshPlayerList(): void {
-    if (!playerList) return;
-    const names: string[] = [];
-    for (const v of entityVisuals.values()) {
-      if (v.kind !== "player") continue; // los NPCs no van en la lista de online
-      if (v.name.startsWith("?")) continue; // placeholder de entidad desconocida
-      names.push(v.name);
-    }
-    playerList.setPlayers(names);
+    /* sin panel de online */
   }
 
   function centerCameraOnSelf(): void {
@@ -1543,10 +1538,25 @@ export async function startGameScene(
     return (mapWater[idx] === 1) === navigating;
   }
 
+  // ¿Hay otra entidad VIVA (jugador o NPC) parada en el tile? Espeja el chequeo
+  // de ocupación del server (handleMove.isOccupied): los muertos/fantasmas no
+  // bloquean, y un self fantasma atraviesa a todos. Predecirlo en el cliente
+  // evita el REBOTE: antes el cliente avanzaba optimista hacia el tile ocupado,
+  // el server rechazaba el Move y devolvía una corrección que "snapeaba" al
+  // personaje de vuelta a su lugar (el tironeo al chocar dos personajes).
+  function tileHasEntity(x: number, y: number): boolean {
+    const own = entityVisuals.get(character.id);
+    if (own?.dead) return false; // el fantasma atraviesa a todos
+    for (const v of entityVisuals.values()) {
+      if (v === own || v.dead) continue;
+      if (v.position.x === x && v.position.y === y) return true;
+    }
+    return false;
+  }
+
   // -- Movimiento y combate --
   let client: ReconnectingClient | null = null;
   let chat: ChatHandle | null = null;
-  let playerList: PlayerListHandle | null = null;
   let touchControls: TouchControlsHandle | null = null;
   let inventory: InventoryHandle | null = null;
   let shop: ShopHandle | null = null;
@@ -1631,6 +1641,10 @@ export async function startGameScene(
     // no mandamos paquete. Si lo dejamos pasar, el server nos rebotaria
     // con un EntityUpdate de correccion — funciona pero gasta.
     if (!isWalkableLocal(target.x, target.y)) return;
+    // Otro personaje/NPC ocupa el destino: no avanzamos ni mandamos el Move
+    // (el server lo rechazaría y correríamos el snap de vuelta = el rebote).
+    // Ya giramos hacia esa dirección arriba (turn-in-place), como en el AO.
+    if (tileHasEntity(target.x, target.y)) return;
 
     lastLocalMoveAt = now;
     stopAutoWork(); // moverse detiene el trabajo automático (regla del pedido)
@@ -3603,8 +3617,8 @@ export async function startGameScene(
     });
     void client.start();
 
-    // Lista de jugadores online: overlay arriba-derecha del segmento del mundo.
-    playerList = mountPlayerList(viewportBox);
+    // Contador "En línea" eliminado por pedido del usuario: ya no se monta.
+    // El `playerList` queda null y su update (setPlayers) es no-op.
 
     keyConfig = mountKeyConfig(frame, (map) => {
       keymap = map;
@@ -4039,7 +4053,6 @@ export async function startGameScene(
       window.removeEventListener("keyup", onKeyUp);
       app.ticker.remove(tick);
       chat?.destroy();
-      playerList?.destroy();
       inventory?.destroy();
       shop?.destroy();
       bank?.destroy();
