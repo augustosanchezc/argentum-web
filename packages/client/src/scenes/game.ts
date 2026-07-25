@@ -127,12 +127,12 @@ const ATTACK_COOLDOWN_MS = 800;
 const SWING_DURATION_MS = 160;
 const FLOATER_DURATION_MS = 800;
 // Velocidad de interpolacion visual: en cuanto tiempo el sprite recorre 1 tile.
-// LIGERAMENTE MAYOR al cooldown de movimiento (200): cuando arranca el próximo
-// paso, el tween anterior todavía NO terminó (t≈0.83), así el sprite nunca cae
-// a la pose idle entre pasos (se veía como un "tironeo/robótico") y encadena
-// pasos de forma continua; al soltar la tecla, el último tramo desliza suave
-// (ease-out natural). El ritmo de ENVÍO no cambia (sigue MOVE_COOLDOWN_MS).
-const TWEEN_DURATION_MS = 240;
+// IGUAL al cooldown de movimiento (200): el paso es AXIS-LOCKED (recto), sin
+// arrastre. Con tween > cooldown el render quedaba atrasado y al doblar el
+// sprite interpolaba en DIAGONAL hacia el nuevo tile (se veía caminar en
+// diagonal). La fluidez entre pasos se logra NO reseteando el walk cycle a
+// idle mientras el jugador sigue caminando (ver el tick), no alargando el tween.
+const TWEEN_DURATION_MS = 200;
 
 // Paleta heuristica de FALLBACK. Ya renderizamos el tileset real del AO
 // (ver world/tileset.ts), pero si un tile no tiene textura — grh 0 (vacio)
@@ -2392,6 +2392,11 @@ export async function startGameScene(
       const tex = tileset.get(at.frames[idx]!);
       if (tex && at.sprite.texture !== tex) at.sprite.texture = tex;
     }
+    // El propio jugador sigue caminando si mantiene una tecla de dirección: en
+    // ese caso NO cortamos su walk cycle a idle entre pasos (el próximo paso
+    // arranca este mismo frame). Sin esto parpadeaba 1 frame a la pose idle
+    // cada tile → se veía "robótico". El tween queda igual (axis-locked).
+    const selfWalking = keysHeld.some((c) => codeToDirection(c) !== null);
     for (const v of entityVisuals.values()) {
       if (v.tweenDuration > 0) {
         const t = Math.min(1, (now - v.tweenStart) / v.tweenDuration);
@@ -2407,8 +2412,9 @@ export async function startGameScene(
           v.lastFrameAt = now;
           refreshCharTextures(v);
         }
-      } else if (v.bodySprite && v.walkFrame !== 0) {
+      } else if (v.bodySprite && v.walkFrame !== 0 && !(v.isSelf && selfWalking)) {
         // Idle: reset al primer frame para que quede parado con pose base.
+        // Excepción: el self que sigue caminando (evita el parpadeo a idle).
         v.walkFrame = 0;
         refreshCharTextures(v);
       }
