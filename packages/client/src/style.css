@@ -1442,6 +1442,15 @@ h3 {
 .ao-chat__msg--combate .ao-chat__text { color: #e8a95c; }
 .ao-chat__msg--global .ao-chat__text { color: #7fd4e0; }
 .ao-chat__msg--whisper .ao-chat__text { color: #c9a6e8; font-style: italic; }
+/* Anuncio de NUEVO RECORD de online: grande, celeste, bold. */
+.ao-chat__msg--record .ao-chat__text {
+  color: #4fc3f7;
+  font-weight: 800;
+  font-size: 1.45em;
+  line-height: 1.25;
+  text-shadow: 0 0 8px rgba(79, 195, 247, 0.55);
+  letter-spacing: 0.01em;
+}
 
 /* ── Fila de equipamiento (arma/armadura/casco/escudo) ── */
 .ao-panel__equip {

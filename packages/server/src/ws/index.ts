@@ -168,6 +168,7 @@ import { applyXpGain, calcMaxHp, calcMaxMp, levelProgress, maxHpForLevel, MAX_LE
 import { getClass, golpeUsuario, calcMaxSta } from "../world/classes.js";
 import { tickRegen, REGEN_INTERVAL_MS } from "../world/regen.js";
 import { currentIntervals, onIntervalsChanged } from "../world/game-config.js";
+import { checkOnlineRecord } from "../world/online-record.js";
 import { addCustomTeleport, removeCustomTeleport } from "../world/teleports.js";
 import { addNpcDeletion } from "../world/npc-deletions.js";
 import { addGmNpc, removeGmNpc } from "../world/gm-npcs.js";
@@ -5284,6 +5285,19 @@ export const registerWsRoutes: FastifyPluginAsync = async (app: FastifyInstance)
       sendInventoryUpdate(session);
       sendSpellsKnown(session);
       sendQuestState(session);
+
+      // Record de jugadores online simultáneos: si este login marca un nuevo
+      // pico (contando personajes DISTINTOS, no sesiones duplicadas por
+      // reconexión), anunciarlo a TODOS en el chat global (grande, celeste).
+      const online = new Set([...sessions.all()].map((s) => s.characterId)).size;
+      if (online >= 2 && checkOnlineRecord(online)) {
+        const recordMsg: ConsoleMsg = {
+          op: ServerToClientOp.ConsoleMsg,
+          text: `¡Nuevo record de ${online.toString()} personajes online simultáneamente!`,
+          kind: "record",
+        };
+        for (const s of sessions.all()) send(s.socket, recordMsg);
+      }
 
       req.log.info(
         {

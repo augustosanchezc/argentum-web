@@ -796,8 +796,9 @@ export interface SaveMacrosRequest {
 export interface ConsoleMsg {
   readonly op: ServerToClientOp.ConsoleMsg;
   readonly text: string;
-  // Pestaña destino: chat/combate/global.
-  readonly kind: "chat" | "combate" | "global";
+  // Pestaña destino: chat/combate/global. "record" = anuncio de nuevo pico de
+  // jugadores online (va a la pestaña global, resaltado grande celeste).
+  readonly kind: "chat" | "combate" | "global" | "record";
   // WAV opcional a reproducir (talar, pescar, etc.)
   readonly wav?: number;
 }

@@ -7,7 +7,7 @@ export interface ChatMessage {
   isSelf: boolean;
   // normal/whisper → pestaña Chat · combate → pestaña Combate ·
   // global → pestaña Global (mensajes de sistema: zonas, niveles, muertes).
-  kind?: "normal" | "whisper" | "combate" | "global";
+  kind?: "normal" | "whisper" | "combate" | "global" | "record";
   // Color custom del texto (p. ej. "Ves a X" según ciudadano/criminal/GM). En
   // bold. Si se define, pisa el color de la clase de `kind`.
   color?: string;
@@ -103,10 +103,11 @@ export function mountChat(opts: MountChatOptions): ChatHandle {
       kind === "whisper" ? " ao-chat__msg--whisper"
       : kind === "combate" ? " ao-chat__msg--combate"
       : kind === "global" ? " ao-chat__msg--global"
+      : kind === "record" ? " ao-chat__msg--record"
       : msg.isSelf ? " ao-chat__msg--self" : "";
     row.className = `ao-chat__msg${extraClass}`;
-    // Categoría para el filtrado por pestaña.
-    row.dataset.cat = kind === "combate" ? "combate" : kind === "global" ? "global" : "chat";
+    // Categoría para el filtrado por pestaña (el record va a global).
+    row.dataset.cat = kind === "combate" ? "combate" : (kind === "global" || kind === "record") ? "global" : "chat";
     const time = document.createElement("span");
     time.className = "ao-chat__time";
     time.textContent = fmtTime(msg.timestamp);
